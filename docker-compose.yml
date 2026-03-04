@@ -1,0 +1,120 @@
+version: "3.9"
+
+services:
+  # ─── Database ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: india_ai_postgres
+    environment:
+      POSTGRES_USER:     india_ai
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-secret}
+      POSTGRES_DB:       india_ai_gpr
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U india_ai -d india_ai_gpr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Cache / dedup store ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: india_ai_redis
+    command: redis-server --save 60 1 --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Ingestion (GDELT → clean → dedup → FinBERT → GPT → PostgreSQL) ──────────
+  ingestion:
+    build:
+      context: .
+      dockerfile: ingestion/Dockerfile
+    container_name: india_ai_ingestion
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./ingestion:/app/ingestion
+      - ./extraction:/app/extraction
+    restart: unless-stopped
+
+  # ─── GPR index daily runner ───────────────────────────────────────────────────
+  gpr_index:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: india_ai_gpr_index
+    command: python -m gpr_index.scheduler
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./gpr_index:/app/gpr_index
+      - ./ml_inference:/app/ml_inference
+    restart: unless-stopped
+
+  # ─── API gateway ─────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: india_ai_api
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Prometheus ───────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: india_ai_prometheus
+    volumes:
+      - ./monitoring/prometheus_config.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    depends_on:
+      - api
+
+  # ─── Grafana ──────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: india_ai_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana_dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  redis_data:
+  grafana_data:
