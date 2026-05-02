@@ -1,53 +1,88 @@
-# ─── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
-*.pyo
 *.pyd
+*.so
 *.egg
 *.egg-info/
-dist/
-build/
 .eggs/
+build/
+dist/
+wheels/
+pip-wheel-metadata/
 
-# ─── Virtual environments ─────────────────────────────────────────────────────
+# Virtual environments
 .venv/
 venv/
 env/
 ENV/
+.conda/
 
-# ─── Environment / secrets ────────────────────────────────────────────────────
+# Environment / secrets
 .env
-*.env.local
+.env.*
+!.env.example
+!.env.sample
 
-# ─── Model artefacts ──────────────────────────────────────────────────────────
+# Caches / tooling
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.pyright/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+htmlcov/
+coverage/
+.coverage
+coverage.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs / temp
+*.log
+*.tmp
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Data / large artifacts
+data/
+events_2023_2026/
+gkg_raw/
+gkg_processed/
+gkg_processed_subset_*/
+full_nlp_*/
+*.parquet
+*.feather
+*.arrow
+*.h5
+*.hdf5
+*.npz
+*.npy
+
+# Model artifacts
 models/
 *.pkl
 *.joblib
 *.pt
 *.pth
+*.onnx
 
-# ─── Jupyter ──────────────────────────────────────────────────────────────────
-.ipynb_checkpoints/
-*.ipynb_checkpoints
-
-# ─── OS ───────────────────────────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-
-# ─── Docker ───────────────────────────────────────────────────────────────────
-*.log
-
-# ─── Testing / coverage ───────────────────────────────────────────────────────
-.pytest_cache/
-htmlcov/
-.coverage
-coverage.xml
-
-# ─── IDE ──────────────────────────────────────────────────────────────────────
-.vscode/settings.json
-.idea/
-
-# ─── Data files ───────────────────────────────────────────────────────────────
-data/
-*.csv
-*.parquet
+# Frontend (if applicable)
+node_modules/
+dist/
+build/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
