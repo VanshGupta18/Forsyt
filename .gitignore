@@ -1,29 +1,104 @@
-__pycache__/
-*.py[cod]
-*.pyd
-*.so
-*.egg
-*.egg-info/
-.eggs/
-build/
-dist/
-wheels/
-pip-wheel-metadata/
+*
+!*/
+!.gitignore
+!**/.gitignore
 
-# Virtual environments
+# Source code
+!**/*.py
+!**/*.pyi
+!**/*.pyx
+!**/*.c
+!**/*.h
+!**/*.cpp
+!**/*.hpp
+!**/*.js
+!**/*.jsx
+!**/*.ts
+!**/*.tsx
+!**/*.css
+!**/*.scss
+!**/*.sass
+!**/*.less
+!**/*.html
+!**/*.sql
+!**/*.graphql
+!**/*.proto
+
+# Scripts
+!**/*.sh
+!**/*.bash
+!**/*.ps1
+!**/*.bat
+!**/*.cmd
+
+# Config and metadata
+!**/*.toml
+!**/*.ini
+!**/*.cfg
+!**/*.conf
+!**/*.yaml
+!**/*.yml
+!**/*.json
+!**/*.xml
+!**/*.properties
+!**/*.example
+!**/*.sample
+!**/*.txt
+!**/*.md
+!**/*.rst
+!**/*.lock
+
+# Common project files without extensions
+!**/Dockerfile
+!**/Dockerfile.*
+!**/docker-compose*.yml
+!**/Makefile
+!**/CMakeLists.txt
+!**/.editorconfig
+!**/.gitattributes
+!**/.gitmodules
+!**/.dockerignore
+!**/.prettierrc
+!**/.prettierrc.*
+!**/.eslintrc
+!**/.eslintrc.*
+!**/.stylelintrc
+!**/.stylelintrc.*
+!**/.envrc
+
+# Python tooling files
+!**/pyproject.toml
+!**/requirements*.txt
+!**/Pipfile
+!**/Pipfile.lock
+!**/poetry.lock
+!**/setup.cfg
+!**/setup.py
+!**/tox.ini
+!**/mypy.ini
+!**/pytest.ini
+
+# Frontend config
+!**/package.json
+!**/package-lock.json
+!**/yarn.lock
+!**/pnpm-lock.yaml
+!**/tsconfig*.json
+!**/vite.config.*
+!**/next.config.*
+!**/webpack.config.*
+!**/babel.config.*
+!**/postcss.config.*
+!**/tailwind.config.*
+
+# Force-ignore local environments and caches
 .venv/
 venv/
 env/
 ENV/
 .conda/
-
-# Environment / secrets
-.env
-.env.*
-!.env.example
-!.env.sample
-
-# Caches / tooling
+.python-version
+__pycache__/
 .pytest_cache/
 .mypy_cache/
 .pytype/
@@ -32,34 +107,32 @@ ENV/
 .tox/
 .nox/
 .hypothesis/
-htmlcov/
-coverage/
-.coverage
-coverage.xml
-
-# Jupyter
 .ipynb_checkpoints/
-
-# Logs / temp
+.cache/
 *.log
 *.tmp
 *.swp
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Data / large artifacts
+# Force-ignore large data and artifacts (even if extensions match above)
 data/
 events_2023_2026/
 gkg_raw/
 gkg_processed/
 gkg_processed_subset_*/
 full_nlp_*/
+**/models/
+**/checkpoints/
+**/runs/
+**/outputs/
+**/artifacts/
+**/logs/
+
+# Data and binary formats
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.xlsm
 *.parquet
 *.feather
 *.arrow
@@ -67,22 +140,54 @@ full_nlp_*/
 *.hdf5
 *.npz
 *.npy
-
-# Model artifacts
-models/
 *.pkl
 *.joblib
 *.pt
 *.pth
 *.onnx
+*.safetensors
+*.ckpt
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.bz2
+*.xz
+*.zst
+*.7z
+*.rar
+*.sqlite
+*.db
+*.mdb
+*.accdb
+*.pickle
+*.bin
+*.dat
 
-# Frontend (if applicable)
-node_modules/
-dist/
-build/
-.next/
-out/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# Media assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.mp3
+*.wav
+*.flac
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
