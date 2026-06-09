@@ -38,7 +38,7 @@ import requests
 import zipfile
 import shutil
 
-from ingestion.gdelt_gpr_sample import (
+from scripts.gdelt_gpr_sample import (
     SQLDATE_COL,
     load_gdelt_events,
     filter_conflict_events,
