@@ -1,241 +1,827 @@
 """
 Authors: Rishabh Gupta (rg089), Vishal Singhania (vishalvvs)
+Updated: 2026 - Rewrote scrapers to use RSS feeds + updated BeautifulSoup selectors
 """
 
 import requests
 from bs4 import BeautifulSoup
+import feedparser
 from datetime import datetime
 import re
+import logging
 
-class IndiaToday():
-    @staticmethod
-    def generate_dataset():
-        data= []
-        for i in range(3):
-          url = "https://www.indiatoday.in/top-stories" + "?page=" + str(i)
-          html = requests.get(url)
-          soup = BeautifulSoup(html.text,"lxml")
-          for i in soup.find_all(class_ = "catagory-listing"):
-              news_url = 'https://www.indiatoday.in/'+i.a["href"]
-              news_title, news_content, time = IndiaToday().get_content(news_url)
-              if news_content == None or news_content == "":
-                  continue
-              article = {}
-              article["link"] = news_url
-              article["content"] = news_content
-              article["source"] = "IT"
-              article["title"] = news_title
-              article["time"] = time
-              data.append(article)
-        return data
-    
-    @staticmethod
-    def get_content(url):
-        ar = requests.get(url)
-        article = BeautifulSoup(ar.text,"lxml")
-        title = article.find("h1").get_text()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+}
+
+
+def safe_get(url, timeout=15):
+    """Safely fetch a URL with error handling."""
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=timeout)
+        resp.raise_for_status()
+        return resp
+    except Exception as e:
+        logger.warning(f"Failed to fetch {url}: {e}")
+        return None
+
+
+def parse_rss_time(entry):
+    """Extract and format time from an RSS feed entry."""
+    time_str = None
+    if hasattr(entry, "published_parsed") and entry.published_parsed:
         try:
-          time = article.find("span", class_="update-data").text
-          time = re.sub("Updated:|IST|AM|PM", "", time, flags=re.IGNORECASE).strip()
-        #   time = datetime.strptime(time, "%B %d, %Y %H:%M")
-        except:
-          time = None
-        if (article.find('div',{"class":"description"}) == None) or time==None:
-            return None, None, None
-        else:
-            content = ""
-            for para in article.find(class_ = "description").find_all("p")[:-3]:
-                content+=para.get_text()
-            return title,content,time
+            dt = datetime(*entry.published_parsed[:6])
+            time_str = dt.strftime("%B %d, %Y %H:%M")
+        except Exception:
+            pass
+    if not time_str and hasattr(entry, "updated_parsed") and entry.updated_parsed:
+        try:
+            dt = datetime(*entry.updated_parsed[:6])
+            time_str = dt.strftime("%B %d, %Y %H:%M")
+        except Exception:
+            pass
+    return time_str
 
-class TheHindu():
+
+class IndiaToday:
+    RSS_URL = "https://www.indiatoday.in/rss/home"
+
     @staticmethod
     def get_content(url):
-        html = requests.get(url)
-        article = BeautifulSoup(html.text,"lxml")
-        content = ""; time = ""
-        for i in article.find_all("span", class_="blue-color ksl-time-stamp"):
-            if i.find("none") is not None:
-                time = i.get_text()
-                time = re.sub("Updated:|IST|AM|PM", "", time, flags=re.IGNORECASE).strip()
+        """Extract article content from an India Today article page."""
+        resp = safe_get(url)
+        if resp is None:
+            return None, None
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        # Try multiple selectors for the article body
+        content_div = None
+        for selector in [
+            {"itemprop": "articleBody"},
+            {"class": re.compile(r"Story_description")},
+            {"class": re.compile(r"description")},
+            {"class": "story-right"},
+        ]:
+            content_div = soup.find("div", selector)
+            if content_div:
                 break
-        # time = datetime.strptime(time, "%B %d, %Y %H:%M")
-        paras = article.find_all("p")[1:-5]
-        for para in paras:
-            content+=para.get_text()
-        return content, time
-    
+
+        if content_div is None:
+            return None, None
+
+        paragraphs = content_div.find_all("p")
+        content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        # Try to get time from the page
+        time_str = None
+        time_el = soup.find("span", class_=re.compile(r"date|time|update", re.I))
+        if time_el:
+            time_str = time_el.get_text(strip=True)
+            time_str = re.sub(r"Updated:|IST|AM|PM", "", time_str, flags=re.IGNORECASE).strip()
+
+        return content if content else None, time_str
+
     @staticmethod
     def generate_dataset():
-        url = "https://www.thehindu.com/trending/"
-        html = requests.get(url)
-        soup = BeautifulSoup(html.text,"lxml")        
         data = []
-        
-        for story in soup.find_all(class_ = "story-card-news"):
-            news_title = story.get_text().split("\n")[6]
-            possible_links = [el.get("href", "") for el in story.find_all("a") if el.get("href", "").endswith(".ece")]
-            if len(possible_links) == 0: continue
-            content_url = possible_links[0]
-            content, time = TheHindu.get_content(content_url)
-            if content != "":
-                article = {}
-                article["link"] = content_url
-                article["content"] = content
-                article["source"] = "TH"
-                article["title"] = news_title
-                article["time"] = time
+        feed = feedparser.parse(IndiaToday.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = IndiaToday.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "IT",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
                 data.append(article)
-            else:
+            except Exception as e:
+                logger.warning(f"IndiaToday: error processing entry: {e}")
                 continue
+
+        logger.info(f"IndiaToday: scraped {len(data)} articles")
         return data
 
-class TimesOfIndiaNews():
+
+class TheHindu:
+    RSS_URL = "https://www.thehindu.com/latest-news/feeder/default.rss"
 
     @staticmethod
-    def get_toi_links_titles():
-        url = "https://timesofindia.indiatimes.com/news"
-        data = requests.get(url).content
-        soup = BeautifulSoup(data,"lxml")
-        pages = len(soup.find("ul", class_ = "curpgcss").find_all("li"))
-        page_data = [soup] + [BeautifulSoup(requests.get(url+f"/{page_num}").content, "lxml") for page_num in range(2, pages+1)]
-        links_titles = []
-        for page in page_data:
-            ul = page.find('ul', {'class': 'cvs_wdt clearfix', "data-msid": "-2128958273"})
-            links_titles += [("https://timesofindia.indiatimes.com" + li.find("a").get("href", ""), li.find("a").get("title", "")) for li in ul.find_all("li") if li.find("a").get("href", "").startswith("/")]
-        return links_titles
+    def get_content(url):
+        """Extract article content from a The Hindu article page."""
+        resp = safe_get(url)
+        if resp is None:
+            return None, None
+        soup = BeautifulSoup(resp.text, "lxml")
 
-    @staticmethod
-    def get_toi_links_titles_old(div_class):
-        url = "https://timesofindia.indiatimes.com/home/headlines"
-        data = requests.get(url).content
-        soup = BeautifulSoup(data,"lxml")
-        ul = soup.find('div', {'class': div_class}).find('ul', {'class': 'clearfix'})
-        links_titles = [("https://timesofindia.indiatimes.com" + li.find("a").get("href", ""), li.find("a").get("title", "")) for li in ul.find_all("li") if li.find("a").get("href", "").startswith("/")]
-        return links_titles
+        # Try multiple selectors
+        content_div = None
+        for selector in [
+            {"class": "articlebodycontent"},
+            {"itemprop": "articleBody"},
+            {"class": re.compile(r"article-body|paywall")},
+        ]:
+            content_div = soup.find("div", selector)
+            if content_div:
+                break
 
-    @staticmethod
-    def get_toi_content(url):
-        data = requests.get(url).content
-        soup = BeautifulSoup(data,"lxml")
-        div = soup.find("div", class_= "_3YYSt clearfix ")
-        if div is None:
-            div = soup.find("div", class_= "_3YYSt clearfix")
-        if div is not None:
-            time = soup.find("div", class_="yYIu- byline").find("span").text
-            time = re.sub("Updated:|IST|AM|PM", "", time, flags=re.IGNORECASE).strip()
-            # time = datetime.strptime(time, "%b %d, %Y, %H:%M")
-            return "".join(list(div.strings)), time
-        return None, None
+        if content_div is None:
+            return None, None
+
+        paragraphs = content_div.find_all("p")
+        content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        # Time
+        time_str = None
+        time_el = soup.find("span", class_=re.compile(r"date|time|update|publish", re.I))
+        if time_el:
+            time_str = time_el.get_text(strip=True)
+            time_str = re.sub(r"Updated:|Published:|IST|AM|PM", "", time_str, flags=re.IGNORECASE).strip()
+
+        return content if content else None, time_str
 
     @staticmethod
     def generate_dataset():
-        # link_titles = TimesOfIndiaNews.get_toi_links_titles("headlines-list") + TimesOfIndiaNews.get_toi_links_titles("top-newslist")
-        link_titles = TimesOfIndiaNews.get_toi_links_titles()
         data = []
-        for link, title in link_titles:
-            article = {}
-            content, time = TimesOfIndiaNews.get_toi_content(link)
-            if content is not None:
-                article["link"] = link
-                article["title"] = title
-                article["source"] = "TOI"
-                article["content"] = content
-                article["time"] = time
+        feed = feedparser.parse(TheHindu.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = TheHindu.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "TH",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
                 data.append(article)
+            except Exception as e:
+                logger.warning(f"TheHindu: error processing entry: {e}")
+                continue
+
+        logger.info(f"TheHindu: scraped {len(data)} articles")
         return data
 
-class NDTVNEWS():
-    @staticmethod
-    def generate_dataset():
-        data= []
-        url = "https://www.ndtv.com/top-stories"
-        html = requests.get(url)
-        soup = BeautifulSoup(html.text,"lxml")
-        for i in soup.find_all("h2",{"class" : "newsHdng"}):
-            news_title = i.get_text().strip()
-            news_url = i.a["href"]
-            news_content, time = NDTVNEWS().get_content(news_url)
-            article = {}
-            article["link"] = news_url
-            article["content"] = news_content
-            article["source"] = "NDTV"
-            article["title"] = news_title
-            article["time"] = time
-            data.append(article)
-        return data
-    
+
+class TimesOfIndiaNews:
+    RSS_URL = "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"
+
     @staticmethod
     def get_content(url):
-        ar = requests.get(url)
-        article = BeautifulSoup(ar.text,"lxml")
-        if article.find('div',{'id':"ins_storybody"}) == None:
+        """Extract article content from a TOI article page.
+        Primary method: LD+JSON articleBody (most reliable).
+        Fallback: HTML div selectors.
+        """
+        resp = safe_get(url)
+        if resp is None:
             return None, None
-        else:
-            time = article.find("span", {"itemprop":"dateModified"}).text
-            time = re.sub("Updated:|IST|AM|PM", "", time, flags=re.IGNORECASE).strip()
-            # time = datetime.strptime(time, "%B %d, %Y %H:%M")
-            content = ""
-            for para in article.find('div',{'id':"ins_storybody"}).find_all("p"):
-                content+=para.get_text()
-            return content, time
+        soup = BeautifulSoup(resp.text, "lxml")
 
-class TheIndianExpress():
-    
+        content = None
+        time_str = None
+
+        # Primary: extract from LD+JSON structured data
+        import json as _json
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                ld_data = _json.loads(script.string)
+                if isinstance(ld_data, dict) and "articleBody" in ld_data:
+                    content = ld_data["articleBody"].strip()
+                    # Also try to get time from LD+JSON
+                    date_mod = ld_data.get("dateModified") or ld_data.get("datePublished")
+                    if date_mod:
+                        try:
+                            dt = datetime.fromisoformat(date_mod.replace("Z", "+00:00"))
+                            time_str = dt.strftime("%b %d, %Y, %H:%M")
+                        except Exception:
+                            time_str = date_mod
+                    break
+            except Exception:
+                continue
+
+        # Fallback: try HTML selectors
+        if not content:
+            for selector in [
+                {"itemprop": "articleBody"},
+                {"class": re.compile(r"ga-headlines|article-body|story-content")},
+                {"class": "Normal"},
+            ]:
+                content_div = soup.find("div", selector)
+                if content_div:
+                    paras = content_div.find_all("p")
+                    content = " ".join(p.get_text(strip=True) for p in paras if p.get_text(strip=True))
+                    if content:
+                        break
+
+        # Fallback: arttextxml
+        if not content:
+            arttextxml = soup.find("arttextxml")
+            if arttextxml:
+                content = arttextxml.get_text(strip=True)
+
+        # Time fallback from HTML
+        if not time_str:
+            time_el = soup.find("div", class_=re.compile(r"byline|xf8Pm|publish", re.I))
+            if time_el:
+                span = time_el.find("span")
+                if span:
+                    time_str = span.get_text(strip=True)
+                    time_str = re.sub(r"Updated:|IST|AM|PM", "", time_str, flags=re.IGNORECASE).strip()
+
+        return content if content else None, time_str
+
     @staticmethod
     def generate_dataset():
-        data= []
-        url = "https://indianexpress.com/section/india/"
-        html = requests.get(url)
-        soup = BeautifulSoup(html.text,"lxml")
-        for i in soup.find_all(class_ = "title"):
-            news_title = i.get_text()
-            news_url = i.a["href"]
-            news_content, time = TheIndianExpress().get_content(news_url) 
-            if news_content is not None:
-                article = {}
-                article["link"] = news_url
-                article["content"] = news_content.strip()
-                article["source"] = "TIE"
-                article["title"] = news_title.strip()
-                article["time"] = time
+        data = []
+        feed = feedparser.parse(TimesOfIndiaNews.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = TimesOfIndiaNews.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "TOI",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
                 data.append(article)
-            else:
-                pass
+            except Exception as e:
+                logger.warning(f"TOI: error processing entry: {e}")
+                continue
+
+        logger.info(f"TimesOfIndia: scraped {len(data)} articles")
         return data
-    
+
+
+class NDTVNEWS:
+    RSS_URL = "https://feeds.feedburner.com/ndtvnews-top-stories"
+
+    @staticmethod
+    def generate_dataset():
+        """NDTV blocks all server-side requests (403 Forbidden).
+        We extract content directly from the RSS feed instead.
+        The RSS provides title, link, summary, and publish time.
+        """
+        data = []
+        feed = feedparser.parse(NDTVNEWS.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                # Strip #publisher=newsstand from URLs
+                link = link.split("#")[0]
+
+                rss_time = parse_rss_time(entry)
+
+                # Get content from RSS (summary or content field)
+                content = ""
+                if hasattr(entry, "content") and entry.content:
+                    # Use the longest content entry
+                    content = max(
+                        (c.get("value", "") for c in entry.content),
+                        key=len, default=""
+                    )
+                if not content and hasattr(entry, "summary"):
+                    content = entry.summary
+
+                # Clean HTML tags from RSS content
+                if content:
+                    content_soup = BeautifulSoup(content, "lxml")
+                    content = content_soup.get_text(strip=True)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "NDTV",
+                    "title": title,
+                    "time": rss_time,
+                }
+                data.append(article)
+            except Exception as e:
+                logger.warning(f"NDTV: error processing entry: {e}")
+                continue
+
+        logger.info(f"NDTV: scraped {len(data)} articles")
+        return data
+
+
+class TheIndianExpress:
+    RSS_URL = "https://indianexpress.com/section/india/feed/"
+
     @staticmethod
     def get_content(url):
-        ar = requests.get(url)
-        article = BeautifulSoup(ar.text,"lxml")
-        if article.find(id="pcl-full-content") == None:
+        """Extract article content from an Indian Express article page."""
+        resp = safe_get(url)
+        if resp is None:
             return None, None
-        else:
-            time = article.find("span", {"itemprop":"dateModified"}).text
-            time = re.sub("Updated:|IST|AM|PM", "", time, flags=re.IGNORECASE).strip()
-            # time = datetime.strptime(time, "%B %d, %Y %H:%M:%S")
-            content = ""
-            for para in article.find('div', id = "pcl-full-content").find_all("p"):
-                content+=para.get_text()
-            return content, time
+        soup = BeautifulSoup(resp.text, "lxml")
 
-                
+        # Try multiple selectors
+        content_div = None
+        for selector in [
+            {"id": "pcl-full-content"},
+            {"itemprop": "articleBody"},
+            {"class": re.compile(r"full-details|story_details")},
+        ]:
+            content_div = soup.find("div", selector)
+            if content_div:
+                break
+
+        if content_div is None:
+            return None, None
+
+        paragraphs = content_div.find_all("p")
+        content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        # Time
+        time_str = None
+        time_el = soup.find("span", {"itemprop": "dateModified"})
+        if not time_el:
+            time_el = soup.find("span", class_=re.compile(r"date|time|update", re.I))
+        if time_el:
+            time_str = time_el.get_text(strip=True)
+            time_str = re.sub(r"Updated:|IST|AM|PM", "", time_str, flags=re.IGNORECASE).strip()
+
+        return content if content else None, time_str
+
+    @staticmethod
+    def generate_dataset():
+        data = []
+        feed = feedparser.parse(TheIndianExpress.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = TheIndianExpress.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content.strip(),
+                    "source": "TIE",
+                    "title": title.strip(),
+                    "time": page_time or rss_time,
+                }
+                data.append(article)
+            except Exception as e:
+                logger.warning(f"IndianExpress: error processing entry: {e}")
+                continue
+
+        logger.info(f"IndianExpress: scraped {len(data)} articles")
+        return data
+
+
+# ============================================================
+# HINDI NEWS SOURCES
+# ============================================================
+
+
+class AmarUjala:
+    RSS_URL = "https://www.amarujala.com/rss/breaking-news.xml"
+
+    @staticmethod
+    def get_content(url):
+        """Extract article content from Amar Ujala via LD+JSON."""
+        resp = safe_get(url)
+        if resp is None:
+            return None, None
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        content = None
+        time_str = None
+
+        # Primary: LD+JSON
+        import json as _json
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                ld_data = _json.loads(script.string)
+                if isinstance(ld_data, dict) and "articleBody" in ld_data:
+                    content = ld_data["articleBody"].strip()
+                    date_mod = ld_data.get("dateModified") or ld_data.get("datePublished")
+                    if date_mod:
+                        try:
+                            dt = datetime.fromisoformat(date_mod.replace("Z", "+00:00"))
+                            time_str = dt.strftime("%b %d, %Y, %H:%M")
+                        except Exception:
+                            time_str = date_mod
+                    break
+            except Exception:
+                continue
+
+        return content if content else None, time_str
+
+    @staticmethod
+    def generate_dataset():
+        data = []
+        feed = feedparser.parse(AmarUjala.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = AmarUjala.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "AU",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
+                data.append(article)
+            except Exception as e:
+                logger.warning(f"AmarUjala: error processing entry: {e}")
+                continue
+
+        logger.info(f"AmarUjala: scraped {len(data)} articles")
+        return data
+
+
+class BBCHindi:
+    RSS_URL = "https://www.bbc.com/hindi/index.xml"
+
+    @staticmethod
+    def get_content(url):
+        """Extract article content from BBC Hindi via <main> tag."""
+        resp = safe_get(url)
+        if resp is None:
+            return None, None
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        content = None
+        time_str = None
+
+        # BBC Hindi uses <main> tag for article content
+        main = soup.find("main")
+        if main:
+            paragraphs = main.find_all("p")
+            content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        # Fallback: <article> tag
+        if not content:
+            article = soup.find("article")
+            if article:
+                paragraphs = article.find_all("p")
+                content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        # Time from LD+JSON or time tag
+        time_el = soup.find("time")
+        if time_el and time_el.get("datetime"):
+            try:
+                dt = datetime.fromisoformat(time_el["datetime"].replace("Z", "+00:00"))
+                time_str = dt.strftime("%b %d, %Y, %H:%M")
+            except Exception:
+                time_str = time_el.get_text(strip=True)
+
+        return content if content else None, time_str
+
+    @staticmethod
+    def generate_dataset():
+        data = []
+        feed = feedparser.parse(BBCHindi.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                # Strip tracking params
+                link = link.split("?")[0]
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = BBCHindi.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "BBC",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
+                data.append(article)
+            except Exception as e:
+                logger.warning(f"BBCHindi: error processing entry: {e}")
+                continue
+
+        logger.info(f"BBCHindi: scraped {len(data)} articles")
+        return data
+
+
+class OneIndiaHindi:
+    RSS_URL = "https://hindi.oneindia.com/rss/feeds/oneindia-hindi-fb.xml"
+
+    @staticmethod
+    def get_content(url):
+        """Extract article content from OneIndia Hindi via LD+JSON or HTML."""
+        resp = safe_get(url)
+        if resp is None:
+            return None, None
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        content = None
+        time_str = None
+
+        # Primary: LD+JSON
+        import json as _json
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                ld_data = _json.loads(script.string)
+                if isinstance(ld_data, dict) and "articleBody" in ld_data:
+                    content = ld_data["articleBody"].strip()
+                    date_mod = ld_data.get("dateModified") or ld_data.get("datePublished")
+                    if date_mod:
+                        try:
+                            dt = datetime.fromisoformat(date_mod.replace("Z", "+00:00"))
+                            time_str = dt.strftime("%b %d, %Y, %H:%M")
+                        except Exception:
+                            time_str = date_mod
+                    break
+            except Exception:
+                continue
+
+        # Fallback: HTML article-body
+        if not content:
+            content_div = soup.find("div", class_=re.compile(r"article.?body", re.I))
+            if content_div:
+                paragraphs = content_div.find_all("p")
+                content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        return content if content else None, time_str
+
+    @staticmethod
+    def generate_dataset():
+        data = []
+        feed = feedparser.parse(OneIndiaHindi.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = OneIndiaHindi.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "OI",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
+                data.append(article)
+            except Exception as e:
+                logger.warning(f"OneIndiaHindi: error processing entry: {e}")
+                continue
+
+        logger.info(f"OneIndiaHindi: scraped {len(data)} articles")
+        return data
+
+
+class LiveHindustan:
+    RSS_URL = "https://feed.livehindustan.com/rss/3127"
+
+    @staticmethod
+    def get_content(url):
+        """Extract article content from Live Hindustan via LD+JSON."""
+        resp = safe_get(url)
+        if resp is None:
+            return None, None
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        content = None
+        time_str = None
+
+        # Primary: LD+JSON
+        import json as _json
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                ld_data = _json.loads(script.string)
+                if isinstance(ld_data, dict) and "articleBody" in ld_data:
+                    content = ld_data["articleBody"].strip()
+                    date_mod = ld_data.get("dateModified") or ld_data.get("datePublished")
+                    if date_mod:
+                        try:
+                            dt = datetime.fromisoformat(date_mod.replace("Z", "+00:00"))
+                            time_str = dt.strftime("%b %d, %Y, %H:%M")
+                        except Exception:
+                            time_str = date_mod
+                    break
+            except Exception:
+                continue
+
+        # Fallback: story-content div
+        if not content:
+            content_div = soup.find("div", class_=re.compile(r"story.?content", re.I))
+            if content_div:
+                paragraphs = content_div.find_all("p")
+                content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        return content if content else None, time_str
+
+    @staticmethod
+    def generate_dataset():
+        data = []
+        feed = feedparser.parse(LiveHindustan.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = LiveHindustan.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "LH",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
+                data.append(article)
+            except Exception as e:
+                logger.warning(f"LiveHindustan: error processing entry: {e}")
+                continue
+
+        logger.info(f"LiveHindustan: scraped {len(data)} articles")
+        return data
+
+
+class News18Hindi:
+    RSS_URL = "https://hindi.news18.com/rss/khabar/nation/nation.xml"
+
+    @staticmethod
+    def get_content(url):
+        """Extract article content from News18 Hindi via LD+JSON."""
+        resp = safe_get(url)
+        if resp is None:
+            return None, None
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        content = None
+        time_str = None
+
+        # Primary: LD+JSON
+        import json as _json
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                ld_data = _json.loads(script.string)
+                if isinstance(ld_data, dict) and "articleBody" in ld_data:
+                    content = ld_data["articleBody"].strip()
+                    date_mod = ld_data.get("dateModified") or ld_data.get("datePublished")
+                    if date_mod:
+                        try:
+                            dt = datetime.fromisoformat(date_mod.replace("Z", "+00:00"))
+                            time_str = dt.strftime("%b %d, %Y, %H:%M")
+                        except Exception:
+                            time_str = date_mod
+                    break
+            except Exception:
+                continue
+
+        return content if content else None, time_str
+
+    @staticmethod
+    def generate_dataset():
+        data = []
+        feed = feedparser.parse(News18Hindi.RSS_URL)
+        for entry in feed.entries:
+            try:
+                title = entry.get("title", "").strip()
+                link = entry.get("link", "").strip()
+                if not title or not link:
+                    continue
+
+                rss_time = parse_rss_time(entry)
+                content, page_time = News18Hindi.get_content(link)
+
+                if not content:
+                    continue
+
+                article = {
+                    "link": link,
+                    "content": content,
+                    "source": "N18",
+                    "title": title,
+                    "time": page_time or rss_time,
+                }
+                data.append(article)
+            except Exception as e:
+                logger.warning(f"News18Hindi: error processing entry: {e}")
+                continue
+
+        logger.info(f"News18Hindi: scraped {len(data)} articles")
+        return data
+
+
+# ============================================================
+# DATA COLLECTOR
+# ============================================================
+
+
 class Data:
     @staticmethod
     def collect(source="all"):
         """
-            Input : Ticker of News Site to Scraper, Default : The Indian Express
-            Output: List of Dictionary of the scraped articles from the source site
+        Input : Ticker of News Site to Scrape, Default : all
+        Output: List of Dictionary of the scraped articles from the source site
         """
-
-        d = {"toi":TimesOfIndiaNews,"tie":TheIndianExpress,"th":TheHindu,"it":IndiaToday,"ndtv":NDTVNEWS}
+        d = {
+            # English
+            "toi": TimesOfIndiaNews,
+            "tie": TheIndianExpress,
+            "th": TheHindu,
+            "it": IndiaToday,
+            "ndtv": NDTVNEWS,
+            # Hindi
+            "au": AmarUjala,
+            "bbc": BBCHindi,
+            "oi": OneIndiaHindi,
+            "lh": LiveHindustan,
+            "n18": News18Hindi,
+        }
         if source in d:
             news = d[source].generate_dataset()
             return news
         elif source == "all":
-            papers = [IndiaToday, TheHindu, TimesOfIndiaNews, NDTVNEWS, TheIndianExpress]
+            papers = [
+                # English
+                IndiaToday, TheHindu, TimesOfIndiaNews, NDTVNEWS, TheIndianExpress,
+                # Hindi
+                AmarUjala, BBCHindi, OneIndiaHindi, LiveHindustan, News18Hindi,
+            ]
             articles = []
             for paper in papers:
-                articles += paper.generate_dataset()
+                try:
+                    articles += paper.generate_dataset()
+                except Exception as e:
+                    logger.error(f"Error scraping {paper.__name__}: {e}")
+                    continue
             return articles
         return None

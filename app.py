@@ -12,13 +12,21 @@ api = Api(app)
 class News(Resource):
     def get(self, source="all"):
         source = source.lower()
-        papers = ["tie","toi","ndtv","it","th", "all"]
+        papers = [
+            # English
+            "tie", "toi", "ndtv", "it", "th",
+            # Hindi
+            "au", "bbc", "oi", "lh", "n18",
+            "all",
+        ]
         if source in papers:
             return read_data_db(source)
         s = """
-		The source should be one of the following: TIE/tie: The Indian Express, TOI/toi: Times of India, 
-		NDTV/ndtv, IT/it: India Today, TH/th: The Hindu, ALL/all: A collection of all the above
-		"""
+        Valid sources:
+        ENGLISH: TIE (Indian Express), TOI (Times of India), NDTV, IT (India Today), TH (The Hindu)
+        HINDI: AU (Amar Ujala), BBC (BBC Hindi), OI (OneIndia Hindi), LH (Live Hindustan), N18 (News18 Hindi)
+        ALL: All sources combined
+        """
         return s, 404
 
 api.add_resource(News, "/news", "/news/","/news/<string:source>")
