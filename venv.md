@@ -1,0 +1,1 @@
+source "$HOME/.venv/forsyt/bin/activate"

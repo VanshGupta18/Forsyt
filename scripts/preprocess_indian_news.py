@@ -8,8 +8,8 @@ Output schema matches what gkg_gpr_pipeline.score_articles() expects:
   SourceCommonName — outlet display name (e.g. "The Hindu")
   DocumentIdentifier — canonical URL (dedup key)
   V2Themes         — synthetic; semicolon-separated TIER codes from theme_tagger
-  V2Locations      — empty (no automatic location extraction; country-level GPR
-                     will be sparse, but daily/monthly index is unaffected)
+  V2Locations      — synthetic; country mentions extracted by location_tagger.py
+                     (populates gpr_country_level.csv from the news path)
   GCAM             — empty string (no GKG GCAM; gcam_score will be 0)
   tone_overall     — signed tone from DistilBERT
   tone_neg         — absolute negative tone (calibrated to GKG scale 0–30)
@@ -42,16 +42,24 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+
+def _extract_locations(title: str, content: str) -> str:
+    """Extract country mentions from text → synthetic V2Locations string."""
+    from scripts.location_tagger import tag_locations  # noqa: PLC0415
+    return tag_locations(title, content)
+
 REPO_ROOT  = Path(__file__).parent.parent
 RAW_DIR    = REPO_ROOT / "data" / "india_raw"
 OUT_DIR    = REPO_ROOT / "data" / "india_processed"
 
 SOURCE_NAMES: dict[str, str] = {
+    # English
     "TH":   "The Hindu",
     "TOI":  "Times of India",
     "TIE":  "Indian Express",
     "IT":   "India Today",
     "NDTV": "NDTV",
+    # Hindi
     "AU":   "Amar Ujala",
     "BBC":  "BBC Hindi",
     "OI":   "OneIndia Hindi",
@@ -137,16 +145,19 @@ def process_day(
         seen_links.add(link)
 
         source_code = art.get("source", "")
+        title   = art.get("title", "")
+        content = art.get("content", "")
         records.append({
             "SQLDATE":             sqldate,
             "SourceCommonName":    SOURCE_NAMES.get(source_code.upper(), source_code),
             "DocumentIdentifier":  link,
             "V2Themes":            art.get("_v2themes", ""),
-            "V2Locations":         "",  # no location NER; country-level GPR won't populate
+            "V2Locations":         _extract_locations(title, content),
             "GCAM":                "",  # no GCAM for scraped articles (gcam_score = 0)
             "tone_overall":        float(art.get("_tone_overall",  0.0)),
             "tone_neg":            float(art.get("_tone_neg",      0.0)),
             "tone_polarity":       float(art.get("_tone_polarity", 0.0)),
+            "language":            art.get("language", "en"),
         })
 
     if not records:

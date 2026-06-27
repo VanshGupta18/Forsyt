@@ -227,19 +227,31 @@ def run(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Fill calendar gaps in GPR daily index output")
-    p.add_argument("--output-dir",   default="outputs")
+    p.add_argument("--output-dir",   default="outputs/gkg")
     p.add_argument("--start-date",   default="2025-01-01")
     p.add_argument("--end-date",     default="2025-12-31")
     p.add_argument("--fill-method",  default="caldara", choices=list(FILL_METHODS))
+    p.add_argument("--anchor-date",  default=None,
+                   help="Do not impute dates >= anchor-date (forward-only news discipline). "
+                        "If omitted, all gaps are filled.")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    end = args.end_date
+    # For news path: only impute dates strictly before anchor
+    if args.anchor_date and args.end_date >= args.anchor_date:
+        end = str(
+            pd.Timestamp(args.anchor_date) - pd.Timedelta(days=1)
+        )[:10]
+        if end < args.start_date:
+            print("[GAPS] anchor_date is on or before start_date — nothing to fill.")
+            return
     run(
         output_dir=Path(args.output_dir),
         start_date=args.start_date,
-        end_date=args.end_date,
+        end_date=end,
         method=args.fill_method,
     )
 

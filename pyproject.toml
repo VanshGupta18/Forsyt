@@ -1,22 +1,7 @@
 [project]
 name = "forsyt"
 version = "0.1.0"
-description = "India GPR Research Pipeline — GKG-based Iacoviello & Tong (2026)"
+description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "pandas>=2.2",
-    "numpy>=1.26",
-    "pyarrow>=15.0",
-    "requests>=2.32",
-    "scipy>=1.13",
-    "matplotlib>=3.9",
-    "openpyxl>=3.1",
-    "xlrd>=2.0.2",
-]
-
-[project.optional-dependencies]
-bigquery = [
-    "google-cloud-bigquery>=3.25",
-    "db-dtypes>=1.3",
-]
+dependencies = []

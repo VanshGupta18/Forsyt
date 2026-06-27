@@ -1,6 +1,6 @@
 # Deployment Guide — Forsyt India GPR Pipeline
 
-## Target: Hetzner CX22 or DigitalOcean Basic ($6/mo)
+Target: Hetzner CX22 or DigitalOcean Basic ($6/mo)
 Requirements: 2 vCPU / 4 GB RAM (DistilBERT CPU fits in ~1.5 GB)
 
 ---
@@ -8,16 +8,12 @@ Requirements: 2 vCPU / 4 GB RAM (DistilBERT CPU fits in ~1.5 GB)
 ## 1. Server setup
 
 ```bash
-# On the VPS (Ubuntu 24.04 LTS)
-sudo apt update && sudo apt install -y git python3-pip python3-venv curl
+sudo apt update && sudo apt install -y git python3-pip curl
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Create service user
 sudo useradd -m -s /bin/bash forsyt
 sudo mkdir -p /var/lib/forsyt /var/log/forsyt
 sudo chown forsyt:forsyt /var/lib/forsyt /var/log/forsyt
-
-# Install uv (project uses uv, not pip)
-curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ## 2. Clone repo
@@ -25,9 +21,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```bash
 sudo -u forsyt bash
 cd /var/lib/forsyt
-
-git clone https://github.com/<your-org>/forsyt .
-# news_scraper code is now part of this repo as scraper/ package — no worktree needed
+git clone -b news_gpr https://github.com/VanshGupta18/Forsyt.git .
 ```
 
 ## 3. Create virtualenv + install dependencies
@@ -35,68 +29,39 @@ git clone https://github.com/<your-org>/forsyt .
 ```bash
 uv venv .venv
 uv pip install -r requirements.txt
-
-# news_scraper also needs its own deps
-uv pip install flask flask-restful feedparser beautifulsoup4 lxml requests
 ```
 
 ## 4. Create required directories
 
 ```bash
 mkdir -p data/india_db data/india_raw data/india_archive data/india_processed
-mkdir -p outputs/india/validation
+mkdir -p data/gkg_raw data/gkg_processed data/benchmarks
+mkdir -p outputs/news/validation outputs/gkg/validation outputs/compare
+mkdir -p logs
 ```
 
-## 5. Run backfill (one-time, ~3-5 days machine time)
+## 5. Day 1 bootstrap (news path)
 
 ```bash
-# Start in a tmux/screen session — will take hours
-python main.py backfill-india \
-    --start-date 2026-01-01 \
-    --end-date   2026-06-20 \
-    --workers 4
+# Scrape once across all 10 outlets
+python -m scraper once
+
+# Export to JSONL
+python main.py export-news
+
+# Tag + preprocess (downloads DistilBERT models ~800MB on first run)
+TODAY=$(date +%Y-%m-%d)
+python main.py preprocess-india --start-date $TODAY --end-date $TODAY --force
+
+# Build initial GPR index (sets anchor_date in data/india_archive/series_state.json)
+python main.py gpr-news --start-date $TODAY --end-date $TODAY
+
+echo "Anchor set: $(python -c "import json,pathlib; print(json.loads(pathlib.Path('data/india_archive/series_state.json').read_text()))")"
 ```
 
-Check coverage:
-```bash
-# After backfill
-python -c "
-import pandas as pd
-df = pd.read_csv('data/india_archive/backfill_coverage.csv')
-print(df.describe())
-print('Days with ≥200 articles:', (df.articles>=200).sum())
-"
-```
+## 6. Systemd services
 
-## 6. Initial GPR run over backfill
-
-```bash
-python main.py preprocess-india --start-date 2026-01-01 --end-date 2026-06-20
-python main.py gpr \
-    --processed-dir data/india_processed \
-    --output-dir    outputs/india \
-    --start-date    2026-01-01 \
-    --end-date      2026-06-20
-python main.py fill-gaps \
-    --output-dir outputs/india \
-    --start-date 2026-01-01 \
-    --end-date   2026-06-20
-python main.py validate \
-    --output-dir outputs/india \
-    --benchmark gprc_ind \
-    --start-date 2026-01-01 \
-    --end-date   2026-06-20
-```
-
-## 7. Calibrate DistilBERT tone (after backfill)
-
-Pick any day with a good number of articles:
-```bash
-python -m scripts.theme_tagger calibrate data/india_raw/2026-03-15.jsonl.gz --n 500
-```
-If the recommended TONE_SCALE differs significantly from 16.0, update `TONE_SCALE` in `scripts/theme_tagger.py` and re-run preprocess-india with `--force`.
-
-## 8. Install systemd services
+Copy service files:
 
 ```bash
 sudo cp deploy/news-scheduler.service /etc/systemd/system/
@@ -106,43 +71,100 @@ sudo systemctl enable news-scheduler news-api
 sudo systemctl start  news-scheduler news-api
 ```
 
-## 9. Install cron jobs
+Check status:
 
 ```bash
-chmod +x deploy/hourly_update.sh deploy/daily_gpr_india.sh deploy/weekly_validate.sh
-
-# Edit crontab for forsyt user:
-sudo -u forsyt crontab -e
-# Add:
-# 5 * * * *   /var/lib/forsyt/deploy/hourly_update.sh    >> /var/log/forsyt/hourly_update.log 2>&1
-# 0 3 * * *   /var/lib/forsyt/deploy/daily_gpr_india.sh  >> /var/log/forsyt/daily_gpr_india.log 2>&1
-# 0 4 * * 0   /var/lib/forsyt/deploy/weekly_validate.sh  >> /var/log/forsyt/weekly_validate.log 2>&1
+sudo journalctl -u news-scheduler -f   # scraper loop (5-min cycle, 10 outlets)
+sudo journalctl -u news-api -f          # Flask read API
 ```
 
-The hourly cron (`hourly_update.sh`) provides ~1h article-to-index latency.
-The daily cron is retained as a safety net and for gap-filling.
-
-
-## 10. Backup raw JSONL (irreplaceable)
-
-Install rclone and configure an S3/B2/R2 remote:
-```bash
-# Nightly backup of raw JSONL only (parquets are reproducible from JSONL)
-# Add to crontab:
-# 30 2 * * *  rclone sync /var/lib/forsyt/data/india_raw/ forsyt-backup:india-raw/
-```
-
-## Monitoring
+## 7. Cron jobs
 
 ```bash
-sudo journalctl -u news-scheduler -f   # live scraper logs
-sudo journalctl -u news-api -f         # API logs
-tail -f /var/log/forsyt/daily_gpr_india.log
+crontab -e
 ```
 
-## Environment variables
+Add:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEWS_DB_PATH` | `news_scraper/news.db` | Override SQLite path |
-| `FORSYT_ROOT`  | repo root | Override project root |
+```cron
+# Hourly: export today's articles → preprocess → re-score news GPR
+5 * * * *   /var/lib/forsyt/deploy/hourly_update.sh >> /var/log/forsyt/hourly_update.log 2>&1
+
+# Daily 03:00 IST: full news GPR rebuild for yesterday
+0 3 * * *   /var/lib/forsyt/deploy/daily_gpr_india.sh >> /var/log/forsyt/daily_gpr_india.log 2>&1
+
+# Weekly Sunday 04:00 IST: validate both paths + compare
+0 4 * * 0   /var/lib/forsyt/deploy/weekly_validate.sh >> /var/log/forsyt/weekly_validate.log 2>&1
+```
+
+Make scripts executable:
+
+```bash
+chmod +x deploy/*.sh
+```
+
+## 8. GKG path (historical — run separately when needed)
+
+```bash
+python main.py download    --start-date 2025-01-01 --end-date 2025-12-31
+python main.py preprocess  --start-date 2025-01-01 --end-date 2025-12-31
+python main.py gpr-gkg     --start-date 2025-01-01 --end-date 2025-12-31
+python main.py fill-gaps   --output-dir outputs/gkg \
+    --start-date 2025-01-01 --end-date 2025-12-31
+python main.py validate-gkg --start-date 2025-01-01 --end-date 2025-12-31
+```
+
+## 9. Compare news vs GKG (after both paths have data)
+
+```bash
+python main.py compare-gpr \
+  --news-dir outputs/news \
+  --gkg-dir  outputs/gkg
+```
+
+Results in `outputs/compare/`:
+- `compare_news_vs_gkg.csv` — Pearson/Spearman correlations
+- `spike_comparison.csv` — top-10 spike days per source
+- `volume_news_vs_gkg.csv` — article volume per day
+
+## 10. Theme tagger calibration (improve GPR hit rate)
+
+If positive share < 10%, lower the similarity threshold:
+
+```bash
+# Run calibration on a sample day:
+python -m scripts.theme_tagger calibrate data/india_raw/YYYY-MM-DD.jsonl.gz
+
+# Edit scripts/theme_tagger.py: SIMILARITY_THRESHOLD = 0.35
+# Reprocess with force:
+python main.py preprocess-india --start-date ANCHOR --end-date TODAY --force
+python main.py gpr-news --start-date ANCHOR --end-date TODAY
+```
+
+## 11. Monitoring
+
+```bash
+# Series state
+python -c "import json,pathlib; print(json.loads(pathlib.Path('data/india_archive/series_state.json').read_text()))"
+
+# Article counts per day
+ls -la data/india_raw/*.jsonl.gz | tail -10
+
+# Latest GPR
+tail -5 outputs/news/gpr_daily_index.csv
+
+# Validate quickly
+python main.py validate-news --start-date ANCHOR --end-date TODAY
+```
+
+---
+
+## Output directories
+
+| Directory | Contents |
+|-----------|----------|
+| `outputs/news/` | Scraper-based GPR (forward from anchor) |
+| `outputs/news/validation/` | Validation reports for news path |
+| `outputs/gkg/` | GDELT GKG GPR (historical) |
+| `outputs/gkg/validation/` | Validation reports for GKG path |
+| `outputs/compare/` | Cross-path comparison |

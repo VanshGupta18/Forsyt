@@ -1,7 +1,16 @@
-logs/
+# runtime / generated
 data/
+outputs/
+logs/
 .venv/
+
+# python / os junk
+__pycache__/
+*.pyc
 .DS_Store
-.cursor 
+._*
+
+# editor
+.cursor/
 CLAUDE.md
 /graphify-out
