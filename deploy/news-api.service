@@ -1,0 +1,18 @@
+[Unit]
+Description=Forsyt Newsemble REST API (read-only Flask)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=forsyt
+WorkingDirectory=/var/lib/forsyt
+Environment="NEWS_DB_PATH=/var/lib/forsyt/data/india_db/news.db"
+ExecStart=/var/lib/forsyt/.venv/bin/gunicorn -w 2 -b 0.0.0.0:8080 "scraper.api:create_app()"
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

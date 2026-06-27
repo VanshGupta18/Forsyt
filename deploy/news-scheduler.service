@@ -1,0 +1,19 @@
+[Unit]
+Description=Forsyt Newsemble Scraper + JSONL Export (15-min loop)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=forsyt
+WorkingDirectory=/var/lib/forsyt
+Environment="NEWS_DB_PATH=/var/lib/forsyt/data/india_db/news.db"
+Environment="PYTHONPATH=/var/lib/forsyt"
+ExecStart=/var/lib/forsyt/.venv/bin/python -m scraper schedule --interval 300
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

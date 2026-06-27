@@ -1,23 +1,7 @@
-*
-*
-!*/
-!.gitignore
-!requirements.txt
-
-# Allow only these code folders
-!extraction/
-!extraction/**
-!gpr_index/
-!gpr_index/**
-!ingestion/
-!ingestion/**
-!scripts/
-!scripts/**
-
-# Ignore caches inside allowed folders
-**/__pycache__/
-**/*.py[cod]
-**/.pytest_cache/
-**/.mypy_cache/
-**/.ruff_cache/
-**/.ipynb_checkpoints/
+logs/
+data/
+.venv/
+.DS_Store
+.cursor 
+CLAUDE.md
+/graphify-out
