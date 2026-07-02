@@ -13,7 +13,7 @@ services:
       - key: DATABASE_URL
         sync: false  # Set manually in Render Dashboard
       - key: SCRAPE_INTERVAL
-        value: "86400"  # Daily scraping via background thread
+        value: "7200"  # Scraping every 2 hours via background thread
       - key: PYTHON_VERSION
         value: "3.11.9"
 
@@ -27,7 +27,7 @@ services:
   #   name: newsemble-scraper
   #   runtime: python
   #   plan: starter
-  #   schedule: "30 0 * * *"  # Daily at 00:30 UTC (6:00 AM IST)
+  #   schedule: "0 */2 * * *"  # Every 2 hours
   #   buildCommand: pip install -r requirements.txt
   #   startCommand: python scheduler.py --once
   #   envVars:
