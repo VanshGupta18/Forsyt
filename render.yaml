@@ -1,0 +1,35 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: push to GitHub, connect repo in Render Dashboard, use this blueprint.
+
+services:
+  # ── Web Service (Flask API) ──────────────────────────────────
+  - type: web
+    name: newsemble-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Set manually in Render Dashboard
+      - key: SCRAPE_INTERVAL
+        value: "86400"  # Daily scraping via background thread
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+  # ── Cron Job (optional, $1/mo) ───────────────────────────────
+  # Uncomment the block below if you want Render to run the scraper
+  # on a schedule instead of using the background thread in the web service.
+  # If you enable this, set SCRAPE_INTERVAL=0 in the web service to disable
+  # the background thread.
+  #
+  # - type: cron
+  #   name: newsemble-scraper
+  #   runtime: python
+  #   plan: starter
+  #   schedule: "30 0 * * *"  # Daily at 00:30 UTC (6:00 AM IST)
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: python scheduler.py --once
+  #   envVars:
+  #     - key: DATABASE_URL
+  #       sync: false
