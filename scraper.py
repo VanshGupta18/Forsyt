@@ -717,38 +717,10 @@ class News18Hindi:
     RSS_URL = "https://hindi.news18.com/rss/khabar/nation/nation.xml"
 
     @staticmethod
-    def get_content(url):
-        """Extract article content from News18 Hindi via LD+JSON."""
-        resp = safe_get(url)
-        if resp is None:
-            return None, None
-        soup = BeautifulSoup(resp.text, "lxml")
-
-        content = None
-        time_str = None
-
-        # Primary: LD+JSON
-        import json as _json
-        for script in soup.find_all("script", type="application/ld+json"):
-            try:
-                ld_data = _json.loads(script.string)
-                if isinstance(ld_data, dict) and "articleBody" in ld_data:
-                    content = ld_data["articleBody"].strip()
-                    date_mod = ld_data.get("dateModified") or ld_data.get("datePublished")
-                    if date_mod:
-                        try:
-                            dt = datetime.fromisoformat(date_mod.replace("Z", "+00:00"))
-                            time_str = dt.strftime("%b %d, %Y, %H:%M")
-                        except Exception:
-                            time_str = date_mod
-                    break
-            except Exception:
-                continue
-
-        return content if content else None, time_str
-
-    @staticmethod
     def generate_dataset():
+        """News18 Hindi blocks server-side requests to article pages (403 Forbidden).
+        We extract content directly from the RSS feed instead.
+        """
         data = []
         feed = feedparser.parse(News18Hindi.RSS_URL)
         for entry in feed.entries:
@@ -759,17 +731,22 @@ class News18Hindi:
                     continue
 
                 rss_time = parse_rss_time(entry)
-                content, page_time = News18Hindi.get_content(link)
+
+                # Extract content from the RSS summary/description
+                content = entry.get("summary", "")
+                if content:
+                    content_soup = BeautifulSoup(content, "lxml")
+                    content = content_soup.get_text(strip=True)
 
                 if not content:
                     continue
 
                 article = {
                     "link": link,
-                    "content": content,
+                    "content": content.strip(),
                     "source": "N18",
-                    "title": title,
-                    "time": page_time or rss_time,
+                    "title": title.strip(),
+                    "time": rss_time,
                 }
                 data.append(article)
             except Exception as e:
