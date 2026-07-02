@@ -1,0 +1,190 @@
+================================================================================
+                        NEWSEMBLE - PROJECT SUMMARY
+              Real-Time Indian News Aggregator (English + Hindi)
+================================================================================
+
+
+WHAT IT DOES
+============
+Scrapes 10 Indian news websites (5 English + 5 Hindi) every 15 minutes,
+stores articles in a local SQLite database with auto-cleanup, and serves
+them through a REST API.
+
+
+ARCHITECTURE
+============
+    10 News Sites  --->  scraper.py (RSS + BeautifulSoup)
+                              |
+                    scheduler.py (every 15 min)
+                              |
+                         news.db (SQLite)
+                              |
+                      app.py (Flask REST API)
+                              |
+                        Your Project
+
+
+PROJECT FILES
+=============
+    scraper.py        - 10 scraper classes + Data.collect()
+    scheduler.py      - Real-time loop (15 min interval) + auto-cleanup
+    db.py             - SQLite database layer
+    app.py            - Flask REST API server
+    utils.py          - Helper for API to read from DB
+    requirements.txt  - Python dependencies
+    news.db           - SQLite database file (auto-created)
+
+
+NEWS SOURCES
+============
+
+  ENGLISH (5 sources):
+  --------------------
+  Code   Source              RSS Feed
+  IT     India Today         indiatoday.in/rss/home
+  TH     The Hindu           thehindu.com/latest-news/feeder/default.rss
+  TOI    Times of India      timesofindia.indiatimes.com/rssfeedstopstories.cms
+  NDTV   NDTV                feeds.feedburner.com/ndtvnews-top-stories
+  TIE    Indian Express      indianexpress.com/section/india/feed/
+
+  HINDI (5 sources):
+  -------------------
+  Code   Source              RSS Feed
+  AU     Amar Ujala          amarujala.com/rss/breaking-news.xml
+  BBC    BBC Hindi           bbc.com/hindi/index.xml
+  OI     OneIndia Hindi      hindi.oneindia.com/rss/feeds/oneindia-hindi-fb.xml
+  LH     Live Hindustan      feed.livehindustan.com/rss/3127
+  N18    News18 Hindi        hindi.news18.com/rss/khabar/nation/nation.xml
+
+
+CONTENT EXTRACTION METHODS
+===========================
+  India Today     -> HTML div with itemprop="articleBody"
+  The Hindu       -> HTML div class="articlebodycontent"
+  Times of India  -> LD+JSON articleBody (structured data in <script> tag)
+  NDTV            -> RSS summary only (site blocks all server-side requests)
+  Indian Express  -> HTML div id="pcl-full-content"
+  Amar Ujala      -> LD+JSON articleBody
+  BBC Hindi       -> HTML <main> tag
+  OneIndia Hindi  -> LD+JSON articleBody
+  Live Hindustan  -> LD+JSON articleBody
+  News18 Hindi    -> LD+JSON articleBody
+
+
+DATABASE
+========
+  Type:     SQLite (built into Python, no setup needed)
+  File:     news.db (in the project folder)
+  Auto-cleanup: Articles older than 7 days are deleted automatically
+
+  Table: articles
+  ---------------------------------------------------------------
+  Column       Type        Description
+  ---------------------------------------------------------------
+  id           INTEGER     Auto-increment primary key
+  title        TEXT        Article headline
+  content      TEXT        Full article text (1000-15000 chars)
+  source       TEXT        Source code (IT, TH, TOI, NDTV, TIE, AU, BBC, OI, LH, N18)
+  link         TEXT        Article URL (UNIQUE - prevents duplicates)
+  time         TEXT        Publish time from the article
+  language     TEXT        'en' for English, 'hi' for Hindi
+  scraped_at   TIMESTAMP   When it was scraped
+
+
+API ENDPOINTS
+=============
+  Base URL: http://127.0.0.1:5000
+
+  GET /news/       -> All articles (latest 500)
+  GET /news/toi    -> Times of India only
+  GET /news/th     -> The Hindu only
+  GET /news/it     -> India Today only
+  GET /news/ndtv   -> NDTV only
+  GET /news/tie    -> Indian Express only
+  GET /news/au     -> Amar Ujala only
+  GET /news/bbc    -> BBC Hindi only
+  GET /news/oi     -> OneIndia Hindi only
+  GET /news/lh     -> Live Hindustan only
+  GET /news/n18    -> News18 Hindi only
+
+  Response format (JSON):
+  [
+      {
+          "title": "Article headline here",
+          "content": "Full article text...",
+          "source": "TOI",
+          "link": "https://timesofindia.indiatimes.com/...",
+          "time": "Jun 09, 2026, 12:15",
+          "language": "en"
+      }
+  ]
+
+
+HOW TO RUN
+==========
+
+  1. Install dependencies (one time):
+     cd c:\Users\devasya\Desktop\newsscarpe\newsemble
+     .venv\Scripts\activate
+     pip install -r requirements.txt
+
+  2. Start real-time scraper (Terminal 1):
+     python scheduler.py
+
+     This will:
+     - Scrape all 10 sources immediately
+     - Clean up articles older than 7 days
+     - Wait 15 minutes
+     - Repeat forever (Ctrl+C to stop)
+
+  3. Start API server (Terminal 2):
+     python app.py
+
+     Visit http://127.0.0.1:5000/news/ to see articles.
+
+  4. One-time scrape (no loop):
+     python scheduler.py --once
+
+  5. Custom interval:
+     python scheduler.py --interval 600    (every 10 minutes)
+     python scheduler.py --interval 1800   (every 30 minutes)
+
+
+DATA FLOW (EVERY 15 MINUTES)
+==============================
+    1. scheduler.py wakes up
+    2. Deletes articles older than 7 days from news.db
+    3. Calls scraper.py -> Data.collect("all")
+    4. For each of 10 sources:
+       a. Parse RSS feed -> get article URLs + titles
+       b. Fetch each article page
+       c. Extract text via LD+JSON or BeautifulSoup
+    5. Returns ~700 articles
+    6. Inserts into news.db (skips duplicates via UNIQUE link)
+    7. ~50-100 genuinely new articles added per cycle
+    8. Sleeps 15 minutes
+    9. Repeat
+
+
+PERFORMANCE NUMBERS
+====================
+    Articles per scrape cycle:          ~700-750
+    New articles per cycle (after dedup): ~50-100
+    Scrape cycle duration:              ~3 minutes
+    DB size after 7 days:               ~200-300 MB
+    Total articles in DB (steady state): ~50,000-70,000
+
+
+DEPENDENCIES
+============
+    Flask>=3.0           - REST API framework
+    gunicorn>=22.0       - Production WSGI server
+    flask-restful>=0.3   - RESTful API helpers
+    requests>=2.31       - HTTP requests
+    beautifulsoup4>=4.12 - HTML parsing
+    lxml>=5.0            - Fast XML/HTML parser
+    feedparser>=6.0      - RSS feed parsing
+    python-dotenv>=1.0   - Environment variables
+    SQLite               - Built into Python (no install needed)
+
+================================================================================
