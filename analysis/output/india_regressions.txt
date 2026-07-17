@@ -1,0 +1,110 @@
+(1) CONTEMPORANEOUS  NIFTY vol ~ India-GPR
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:                   rvol   R-squared:                       0.025
+Model:                            OLS   Adj. R-squared:                  0.021
+Method:                 Least Squares   F-statistic:                     2.045
+Date:                Fri, 17 Jul 2026   Prob (F-statistic):              0.154
+Time:                        00:56:25   Log-Likelihood:                -851.46
+No. Observations:                 223   AIC:                             1707.
+Df Residuals:                     221   BIC:                             1714.
+Df Model:                           1                                         
+Covariance Type:                  HAC                                         
+==============================================================================
+                 coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------
+const         14.3772      1.632      8.812      0.000      11.179      17.575
+logGPR         3.2003      2.238      1.430      0.153      -1.186       7.586
+==============================================================================
+Omnibus:                      161.630   Durbin-Watson:                   0.724
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):             1482.183
+Skew:                           2.850   Prob(JB):                         0.00
+Kurtosis:                      14.271   Cond. No.                         3.63
+==============================================================================
+
+Notes:
+[1] Standard Errors are heteroscedasticity and autocorrelation robust (HAC) using 6 lags and without small sample correction
+
+(2) PREDICTIVE  NIFTY vol_t ~ India-GPR_{t-1} + vol_{t-1}
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:                   rvol   R-squared:                       0.437
+Model:                            OLS   Adj. R-squared:                  0.432
+Method:                 Least Squares   F-statistic:                     83.20
+Date:                Fri, 17 Jul 2026   Prob (F-statistic):           1.24e-27
+Time:                        00:56:25   Log-Likelihood:                -790.22
+No. Observations:                 223   AIC:                             1586.
+Df Residuals:                     220   BIC:                             1597.
+Df Model:                           2                                         
+Covariance Type:                  HAC                                         
+==============================================================================
+                 coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------
+const          5.2637      1.167      4.511      0.000       2.977       7.551
+logGPR_l1      0.8270      1.198      0.690      0.490      -1.521       3.175
+rvol_l1        0.6482      0.051     12.773      0.000       0.549       0.748
+==============================================================================
+Omnibus:                      197.994   Durbin-Watson:                   2.149
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):             3918.415
+Skew:                           3.406   Prob(JB):                         0.00
+Kurtosis:                      22.373   Cond. No.                         56.2
+==============================================================================
+
+Notes:
+[1] Standard Errors are heteroscedasticity and autocorrelation robust (HAC) using 6 lags and without small sample correction
+
+(3) PREDICTIVE  NIFTY ret_t ~ India-GPR_{t-1}
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:                    ret   R-squared:                       0.000
+Model:                            OLS   Adj. R-squared:                 -0.004
+Method:                 Least Squares   F-statistic:                   0.06347
+Date:                Fri, 17 Jul 2026   Prob (F-statistic):              0.801
+Time:                        00:56:25   Log-Likelihood:                -713.20
+No. Observations:                 223   AIC:                             1430.
+Df Residuals:                     221   BIC:                             1437.
+Df Model:                           1                                         
+Covariance Type:                  HAC                                         
+==============================================================================
+                 coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------
+const          0.4560      0.648      0.704      0.482      -0.814       1.727
+logGPR_l1      0.1790      0.711      0.252      0.801      -1.214       1.572
+==============================================================================
+Omnibus:                       64.516   Durbin-Watson:                   1.999
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):              351.536
+Skew:                          -0.990   Prob(JB):                     4.62e-77
+Kurtosis:                       8.824   Cond. No.                         3.63
+==============================================================================
+
+Notes:
+[1] Standard Errors are heteroscedasticity and autocorrelation robust (HAC) using 6 lags and without small sample correction
+
+(4) HORSE RACE  NIFTY vol_t ~ vol_{t-1} + India-GPR_{t-1} + GLOBAL-GPR_{t-1}
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:                   rvol   R-squared:                       0.453
+Model:                            OLS   Adj. R-squared:                  0.445
+Method:                 Least Squares   F-statistic:                     54.55
+Date:                Fri, 17 Jul 2026   Prob (F-statistic):           2.25e-26
+Time:                        00:56:25   Log-Likelihood:                -787.12
+No. Observations:                 223   AIC:                             1582.
+Df Residuals:                     219   BIC:                             1596.
+Df Model:                           3                                         
+Covariance Type:                  HAC                                         
+==============================================================================
+                 coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------
+const         30.9288      9.606      3.220      0.001      12.100      49.757
+rvol_l1        0.5898      0.051     11.662      0.000       0.491       0.689
+logGPR_l1      1.5980      1.278      1.250      0.211      -0.908       4.104
+logGPRg_l1    -5.4000      2.088     -2.586      0.010      -9.493      -1.307
+==============================================================================
+Omnibus:                      194.148   Durbin-Watson:                   2.084
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):             3636.150
+Skew:                           3.330   Prob(JB):                         0.00
+Kurtosis:                      21.627   Cond. No.                         404.
+==============================================================================
+
+Notes:
+[1] Standard Errors are heteroscedasticity and autocorrelation robust (HAC) using 6 lags and without small sample correction

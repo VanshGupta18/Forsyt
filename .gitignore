@@ -7,3 +7,9 @@ testing.py
 news.db
 .venv/
 *.pyc
+
+# nifty-50 branch additions
+venv/
+.DS_Store
+*.xls
+analysis/output/*.csv
