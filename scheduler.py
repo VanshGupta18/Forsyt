@@ -9,7 +9,7 @@ import signal
 import sys
 from datetime import datetime
 from scraper import Data
-from db import insert_articles, get_total_count, get_stats, cleanup_old_articles
+from db import insert_articles, get_total_count, get_stats, cleanup_old_articles, log_scrape_run
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,7 +35,21 @@ def run_scrape():
             return 0
 
         logger.info(f"Scraped {len(articles)} articles from all sources")
-        inserted = insert_articles(articles)
+        inserted, stats = insert_articles(articles)
+
+        run_at = datetime.utcnow()
+        log_scrape_run(stats, run_at)
+
+        logger.info("Per-source dedup breakdown (fetched / new / duplicate):")
+        for source in sorted(stats):
+            s = stats[source]
+            fetched = s["new"] + s["duplicate"]
+            dup_rate = (s["duplicate"] / fetched * 100) if fetched else 0.0
+            logger.info(
+                f"  {source:6s}: {fetched:>4d} fetched, {s['new']:>4d} new, "
+                f"{s['duplicate']:>4d} duplicate ({dup_rate:.0f}% unchanged)"
+            )
+
         elapsed = time.time() - start
         total = get_total_count()
 

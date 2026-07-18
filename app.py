@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from utils import read_data_db
-from db import get_stats, get_total_count, insert_articles, cleanup_old_articles
+from db import get_stats, get_total_count, insert_articles, cleanup_old_articles, log_scrape_run, get_scrape_runs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,9 +85,29 @@ class Stats(Resource):
         }
 
 
+class DedupStats(Resource):
+    """Per-run, per-source fetched/new/duplicate counts — shows how much of
+    each RSS feed is unchanged between scrape cycles."""
+
+    def get(self, source=None):
+        runs = get_scrape_runs(source=source, limit=100)
+        return [
+            {
+                "run_at": r["run_at"].isoformat() if hasattr(r["run_at"], "isoformat") else r["run_at"],
+                "source": r["source"],
+                "fetched": r["fetched_count"],
+                "new": r["new_count"],
+                "duplicate": r["duplicate_count"],
+                "duplicate_rate": round(r["duplicate_count"] / r["fetched_count"] * 100, 1) if r["fetched_count"] else 0.0,
+            }
+            for r in runs
+        ]
+
+
 api.add_resource(News, "/news", "/news/", "/news/<string:source>")
 api.add_resource(Health, "/health", "/health/")
 api.add_resource(Stats, "/stats", "/stats/")
+api.add_resource(DedupStats, "/stats/dedup", "/stats/dedup/", "/stats/dedup/<string:source>")
 
 
 # ============================================================
@@ -117,7 +137,9 @@ def background_scraper():
             # Scrape all sources
             articles = Data.collect(source="all")
             if articles:
-                inserted = insert_articles(articles)
+                inserted, stats = insert_articles(articles)
+                log_scrape_run(stats, datetime.utcnow())
+
                 elapsed = time.time() - start
                 total = get_total_count()
                 logger.info(f"Scrape complete in {elapsed:.1f}s — {inserted} new articles, {total} total")
