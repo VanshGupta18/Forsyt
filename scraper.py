@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import feedparser
 from datetime import datetime
 import re
+import time
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +29,31 @@ def safe_get(url, timeout=15):
     except Exception as e:
         logger.warning(f"Failed to fetch {url}: {e}")
         return None
+
+
+def parse_feed(url, retries=2, backoff=3):
+    """Parse an RSS feed with a browser User-Agent and retry on transient failures.
+
+    feedparser's default User-Agent gets rate-limited/blocked by some sites more
+    readily than a browser UA (seen intermittently on Live Hindustan from shared
+    GitHub Actions runner IPs), and a single network hiccup would otherwise drop
+    that source's articles for the whole run.
+    """
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            feed = feedparser.parse(url, request_headers=HEADERS)
+            if feed.entries:
+                return feed
+            last_exc = feed.bozo_exception if feed.bozo else None
+        except Exception as e:
+            last_exc = e
+
+        if attempt < retries:
+            time.sleep(backoff)
+
+    logger.warning(f"parse_feed: no entries from {url} after {retries + 1} attempts: {last_exc}")
+    return feedparser.parse(url, request_headers=HEADERS)
 
 
 def parse_rss_time(entry):
@@ -89,7 +115,7 @@ class IndiaToday:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(IndiaToday.RSS_URL)
+        feed = parse_feed(IndiaToday.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -159,7 +185,7 @@ class TheHindu:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(TheHindu.RSS_URL)
+        feed = parse_feed(TheHindu.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -259,7 +285,7 @@ class TimesOfIndiaNews:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(TimesOfIndiaNews.RSS_URL)
+        feed = parse_feed(TimesOfIndiaNews.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -299,7 +325,7 @@ class NDTVNEWS:
         The RSS provides title, link, summary, and publish time.
         """
         data = []
-        feed = feedparser.parse(NDTVNEWS.RSS_URL)
+        feed = parse_feed(NDTVNEWS.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -389,7 +415,7 @@ class TheIndianExpress:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(TheIndianExpress.RSS_URL)
+        feed = parse_feed(TheIndianExpress.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -461,7 +487,7 @@ class AmarUjala:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(AmarUjala.RSS_URL)
+        feed = parse_feed(AmarUjala.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -532,7 +558,7 @@ class BBCHindi:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(BBCHindi.RSS_URL)
+        feed = parse_feed(BBCHindi.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -609,7 +635,7 @@ class OneIndiaHindi:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(OneIndiaHindi.RSS_URL)
+        feed = parse_feed(OneIndiaHindi.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -683,7 +709,7 @@ class LiveHindustan:
     @staticmethod
     def generate_dataset():
         data = []
-        feed = feedparser.parse(LiveHindustan.RSS_URL)
+        feed = parse_feed(LiveHindustan.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
@@ -722,7 +748,7 @@ class News18Hindi:
         We extract content directly from the RSS feed instead.
         """
         data = []
-        feed = feedparser.parse(News18Hindi.RSS_URL)
+        feed = parse_feed(News18Hindi.RSS_URL)
         for entry in feed.entries:
             try:
                 title = entry.get("title", "").strip()
