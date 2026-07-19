@@ -146,7 +146,10 @@ class IndiaToday:
 
 
 class TheHindu:
-    RSS_URL = "https://www.thehindu.com/latest-news/feeder/default.rss"
+    # "latest-news" feeder is stale/frozen on The Hindu's side (returns mostly
+    # 2023-dated entries) despite the name; "news" feeder is a genuinely live,
+    # fast-rotating feed (~30 new items/hour).
+    RSS_URL = "https://www.thehindu.com/news/feeder/default.rss"
 
     @staticmethod
     def get_content(url):
