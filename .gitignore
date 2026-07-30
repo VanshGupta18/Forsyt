@@ -1,17 +1,27 @@
 # runtime / generated (data only — outputs are tracked)
 nifty-50/output/tables/*.csv
+gpr_index/data/
+gpr_index/logs/
+logs/
 
 # python / os junk
 __pycache__/
-*.pyc
+*.py[cod]
 .DS_Store
+._*
 *.xls
 
 # project secrets / local config
+config.txt
 .env
+data.pkl
+testing.py
+news.db
 .claude/
 
 # editor / venv
 .idea/
+.cursor/
 .venv/
 venv/
+CLAUDE.md
