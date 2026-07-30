@@ -73,7 +73,7 @@ for ax, c in zip(axes, irf.columns):
     ax.fill_between(irf.index, lo[c], hi[c], color="#b3202c", alpha=.18)
     ax.axhline(0, color="k", lw=.6); ax.set_title(c); ax.set_xlabel("months")
 fig.suptitle("Module A1 — response to a 1 s.d. GPR shock (recursive VAR, 90% bands)", y=1.04)
-fig.tight_layout(); fig.savefig("analysis/figures/D1_macro_var.png", bbox_inches="tight")
+fig.tight_layout(); fig.savefig("output/figures/D1_macro_var.png", bbox_inches="tight")
 plt.close(fig)
 
 # ==================================================================== MD A2
@@ -104,10 +104,10 @@ for ax, (label, px) in zip(axes, [("NIFTY 50", nifty), ("S&P 500", spx)]):
     ax.set_title(f"{label}: effect of GPR by return quantile")
     ax.set_xlabel("quantile of forward 21d return"); ax.set_ylabel("beta on GPR shock")
 fig.suptitle("Module A2 — if GPR is a tail risk, the left side sits below the right", y=1.05)
-fig.tight_layout(); fig.savefig("analysis/figures/D2_downside.png", bbox_inches="tight")
+fig.tight_layout(); fig.savefig("output/figures/D2_downside.png", bbox_inches="tight")
 plt.close(fig)
 
-print("\nsaved analysis/figures/D1_macro_var.png, D2_downside.png")
+print("\nsaved output/figures/D1_macro_var.png, D2_downside.png")
 print("""
 FORSYT PLUG-IN
 --------------

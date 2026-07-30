@@ -9,13 +9,16 @@ files_to_download = {
 
 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
+os.makedirs("data", exist_ok=True)
+
 for filename, url in files_to_download.items():
+    path = os.path.join("data", filename)
     print(f"Downloading {filename} from {url}...")
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req) as response:
-            with open(filename, 'wb') as out_file:
+            with open(path, 'wb') as out_file:
                 out_file.write(response.read())
-        print(f"Successfully downloaded {filename}. Size: {os.path.getsize(filename)} bytes")
+        print(f"Successfully downloaded {filename}. Size: {os.path.getsize(path)} bytes")
     except Exception as e:
         print(f"Failed to download {filename}: {e}")

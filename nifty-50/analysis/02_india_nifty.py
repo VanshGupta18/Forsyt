@@ -50,7 +50,7 @@ for ym, lab in IN_EVENTS.items():
                     arrowprops=dict(arrowstyle="-", lw=.5, color="grey"))
 ax.set_title("Figure B1 — AI-GPR Country Geopolitical Risk: INDIA")
 ax.set_ylabel("India-GPR index"); ax.set_xlim(pd.Timestamp("1990-01-01"), india.index.max())
-fig.tight_layout(); fig.savefig("analysis/figures/B1_india_gpr.png"); plt.close(fig)
+fig.tight_layout(); fig.savefig("output/figures/B1_india_gpr.png"); plt.close(fig)
 
 # ---------------------------------------------------------------- merge (Nifty era)
 df = pd.concat([np.log(india).rename("logGPR"),
@@ -69,7 +69,7 @@ ax2.plot(df.index, np.exp(df["logGPR"]), color="#1f6f3d", lw=1.0, alpha=.7,
          label="India-GPR")
 ax2.set_ylabel("India-GPR index", color="#1f6f3d")
 ax1.set_title("Figure B2 — India geopolitical risk vs NIFTY 50 volatility")
-fig.tight_layout(); fig.savefig("analysis/figures/B2_india_vs_nifty.png"); plt.close(fig)
+fig.tight_layout(); fig.savefig("output/figures/B2_india_vs_nifty.png"); plt.close(fig)
 
 # ---------------------------------------------------------------- regressions
 def hac(y, X, L=6):
@@ -128,7 +128,7 @@ for k, name in enumerate(order):
 fig.suptitle("Figure B3 — NIFTY response to a 1 s.d. India-GPR shock (90% bands)", y=1.03)
 # NOTE: the forecast block below is IN-SAMPLE only; see 03_backtest.py for a
 # true walk-forward out-of-sample evaluation (India-GPR adds no OOS skill).
-fig.tight_layout(); fig.savefig("analysis/figures/B3_india_irf.png",
+fig.tight_layout(); fig.savefig("output/figures/B3_india_irf.png",
                                 bbox_inches="tight"); plt.close(fig)
 print(f"\nVAR: peak NIFTY-vol response to India-GPR shock = "
       f"{resp[:, 2].max():+.2f} ann.% at month {resp[:, 2].argmax()}")
@@ -144,7 +144,7 @@ ax.plot(d.index, d["vol_fitted"], color="#c1121f", lw=1.2, ls="--",
 ax.legend(); ax.set_ylabel("ann. %")
 ax.set_title("Figure B4 — NIFTY 50 volatility vs India-GPR model (IN-SAMPLE fit, "
              "not a forecast — see Fig C1)")
-fig.tight_layout(); fig.savefig("analysis/figures/B4_forecast_fit.png"); plt.close(fig)
+fig.tight_layout(); fig.savefig("output/figures/B4_forecast_fit.png"); plt.close(fig)
 
 # one-step conditional prediction for the month after the sample
 last = df.iloc[-1]
@@ -155,11 +155,11 @@ print(f"\nLatest month {df.index[-1]:%Y-%m}: India-GPR={np.exp(last['logGPR']):.
 print(f"Model 1-month-ahead NIFTY volatility forecast: {pred_next:.1f}% ann.")
 
 # save regression summary + fitted series
-with open("analysis/output/india_regressions.txt", "w") as f:
+with open("output/tables/india_regressions.txt", "w") as f:
     f.write("(1) CONTEMPORANEOUS  NIFTY vol ~ India-GPR\n" + str(m1.summary()) + "\n\n")
     f.write("(2) PREDICTIVE  NIFTY vol_t ~ India-GPR_{t-1} + vol_{t-1}\n" + str(m2.summary()) + "\n\n")
     f.write("(3) PREDICTIVE  NIFTY ret_t ~ India-GPR_{t-1}\n" + str(m3.summary()) + "\n\n")
     f.write("(4) HORSE RACE  NIFTY vol_t ~ vol_{t-1} + India-GPR_{t-1} + GLOBAL-GPR_{t-1}\n"
             + str(m4.summary()) + "\n")
-d[["rvol", "vol_fitted", "logGPR"]].to_csv("analysis/output/india_vol_fit.csv")
-print("saved figures B1-B4 and analysis/output/india_regressions.txt")
+d[["rvol", "vol_fitted", "logGPR"]].to_csv("output/tables/india_vol_fit.csv")
+print("saved figures B1-B4 and output/tables/india_regressions.txt")

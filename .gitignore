@@ -1,9 +1,17 @@
+# runtime / generated (data only — outputs are tracked)
+nifty-50/output/tables/*.csv
+
+# python / os junk
 __pycache__/
-.idea/
-.env
-.venv/
-venv/
 *.pyc
 .DS_Store
 *.xls
-analysis/output/*.csv
+
+# project secrets / local config
+.env
+.claude/
+
+# editor / venv
+.idea/
+.venv/
+venv/

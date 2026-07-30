@@ -153,9 +153,9 @@ ax.plot(bt.index, bt["HAR+GPRin"], color="#c1121f", lw=1.0, ls="--",
         label="HAR + India-GPR (OOS)")
 ax.legend(); ax.set_ylabel("ann. %")
 ax.set_title("Figure C1 — TRUE out-of-sample walk-forward NIFTY vol forecasts")
-fig.tight_layout(); fig.savefig("analysis/figures/C1_backtest.png"); plt.close(fig)
+fig.tight_layout(); fig.savefig("output/figures/C1_backtest.png"); plt.close(fig)
 
-tab.to_csv("analysis/output/backtest_metrics.csv")
-bt.to_csv("analysis/output/backtest_predictions.csv")
+tab.to_csv("output/tables/backtest_metrics.csv")
+bt.to_csv("output/tables/backtest_predictions.csv")
 print("\nsaved figures/C1_backtest.png, output/backtest_metrics.csv, "
       "output/backtest_predictions.csv")

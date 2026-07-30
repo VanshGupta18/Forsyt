@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-DATA = "analysis/data"
+DATA = "data"
 
 
 def load_price(name):
@@ -32,13 +32,13 @@ def monthly_from_daily_price(price):
 
 
 def load_gpr_monthly():
-    df = pd.read_csv("ai_gpr_data_monthly.csv")
+    df = pd.read_csv(f"{DATA}/ai_gpr_data_monthly.csv")
     df["Date"] = pd.to_datetime(df["Date"])
     return df.set_index("Date")
 
 
 def load_country_monthly():
-    df = pd.read_csv("ai_gpr_country_monthly.csv")
+    df = pd.read_csv(f"{DATA}/ai_gpr_country_monthly.csv")
     df["Date"] = pd.to_datetime(df["Date"])
     return df.set_index("Date")
 

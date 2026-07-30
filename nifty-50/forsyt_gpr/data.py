@@ -20,7 +20,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-DATA = "analysis/data"
+DATA = "data"
 REQUIRED = "gpr"
 
 
@@ -69,20 +69,20 @@ def validate_gpr_frame(gf: pd.DataFrame) -> None:
 # --------------------------------------------------------------- loaders
 def load_aigpr_daily() -> pd.DataFrame:
     """Caldara/Iacoviello AI-GPR, daily, in canonical form. GPRT/GPRA included."""
-    df = pd.read_csv("ai_gpr_data_daily.csv", parse_dates=["Date"]).set_index("Date")
+    df = pd.read_csv(f"{DATA}/ai_gpr_data_daily.csv", parse_dates=["Date"]).set_index("Date")
     return as_gpr_frame(df, gpr="GPR_AI", threats="THREATS_GPR_AI",
                         acts="ACTS_GPR_AI", oil="GPR_OIL")
 
 
 def load_aigpr_monthly() -> pd.DataFrame:
-    df = pd.read_csv("ai_gpr_data_monthly.csv", parse_dates=["Date"]).set_index("Date")
+    df = pd.read_csv(f"{DATA}/ai_gpr_data_monthly.csv", parse_dates=["Date"]).set_index("Date")
     return as_gpr_frame(df, gpr="GPR_AI", threats="THREATS_GPR_AI",
                         acts="ACTS_GPR_AI", oil="GPR_OIL")
 
 
 def load_country_gpr_monthly(country="India") -> pd.DataFrame:
     """Country GPR (GPRHC) with network roles. MONTHLY ONLY -- see README note."""
-    df = pd.read_csv("ai_gpr_country_monthly.csv", parse_dates=["Date"]).set_index("Date")
+    df = pd.read_csv(f"{DATA}/ai_gpr_country_monthly.csv", parse_dates=["Date"]).set_index("Date")
     cols = {f"{country}_all": "gpr"}
     for r in ["initiator", "respondent", "spillover"]:
         if f"{country}_{r}" in df.columns:
@@ -93,7 +93,7 @@ def load_country_gpr_monthly(country="India") -> pd.DataFrame:
 
 
 def load_price(name: str) -> pd.Series:
-    """Cached daily close series (see analysis/data/)."""
+    """Cached daily close series (see data/)."""
     df = pd.read_csv(f"{DATA}/{name}.csv")
     df = df.rename(columns={df.columns[0]: "Date"})
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")

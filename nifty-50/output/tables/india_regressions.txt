@@ -4,8 +4,8 @@
 Dep. Variable:                   rvol   R-squared:                       0.025
 Model:                            OLS   Adj. R-squared:                  0.021
 Method:                 Least Squares   F-statistic:                     2.045
-Date:                Fri, 17 Jul 2026   Prob (F-statistic):              0.154
-Time:                        00:56:25   Log-Likelihood:                -851.46
+Date:                Fri, 31 Jul 2026   Prob (F-statistic):              0.154
+Time:                        04:11:43   Log-Likelihood:                -851.46
 No. Observations:                 223   AIC:                             1707.
 Df Residuals:                     221   BIC:                             1714.
 Df Model:                           1                                         
@@ -31,8 +31,8 @@ Notes:
 Dep. Variable:                   rvol   R-squared:                       0.437
 Model:                            OLS   Adj. R-squared:                  0.432
 Method:                 Least Squares   F-statistic:                     83.20
-Date:                Fri, 17 Jul 2026   Prob (F-statistic):           1.24e-27
-Time:                        00:56:25   Log-Likelihood:                -790.22
+Date:                Fri, 31 Jul 2026   Prob (F-statistic):           1.24e-27
+Time:                        04:11:43   Log-Likelihood:                -790.22
 No. Observations:                 223   AIC:                             1586.
 Df Residuals:                     220   BIC:                             1597.
 Df Model:                           2                                         
@@ -59,8 +59,8 @@ Notes:
 Dep. Variable:                    ret   R-squared:                       0.000
 Model:                            OLS   Adj. R-squared:                 -0.004
 Method:                 Least Squares   F-statistic:                   0.06347
-Date:                Fri, 17 Jul 2026   Prob (F-statistic):              0.801
-Time:                        00:56:25   Log-Likelihood:                -713.20
+Date:                Fri, 31 Jul 2026   Prob (F-statistic):              0.801
+Time:                        04:11:43   Log-Likelihood:                -713.20
 No. Observations:                 223   AIC:                             1430.
 Df Residuals:                     221   BIC:                             1437.
 Df Model:                           1                                         
@@ -86,8 +86,8 @@ Notes:
 Dep. Variable:                   rvol   R-squared:                       0.453
 Model:                            OLS   Adj. R-squared:                  0.445
 Method:                 Least Squares   F-statistic:                     54.55
-Date:                Fri, 17 Jul 2026   Prob (F-statistic):           2.25e-26
-Time:                        00:56:25   Log-Likelihood:                -787.12
+Date:                Fri, 31 Jul 2026   Prob (F-statistic):           2.25e-26
+Time:                        04:11:43   Log-Likelihood:                -787.12
 No. Observations:                 223   AIC:                             1582.
 Df Residuals:                     219   BIC:                             1596.
 Df Model:                           3                                         
