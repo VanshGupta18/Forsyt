@@ -1,0 +1,10 @@
+metric,series,value,days
+autocorr_lag90_sparse,gpr_daily_index.csv,0.0057,348
+autocorr_lag90_continuous,gpr_daily_index_continuous.csv,0.0841,365
+articles_mean,observed,121461.0,348
+articles_std,observed,32991.0,348
+articles_min,observed,56608.0,348
+articles_max,observed,164783.0,348
+gkg_missing_days,gap,19.0,19
+observed_days,coverage,348.0,365
+expected_days,coverage,365.0,365

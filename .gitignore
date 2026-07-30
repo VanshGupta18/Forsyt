@@ -1,9 +1,23 @@
+# runtime / generated (data only — outputs are tracked)
+gpr_index/data/
+gpr_index/logs/
+logs/
+.venv/
+
+# python / os junk
 __pycache__/
-.idea/
+*.py[cod]
+.DS_Store
+._*
+
+# project secrets / local config
 config.txt
 .env
 data.pkl
 testing.py
 news.db
-.venv/
-*.pyc
+
+# editor
+.idea/
+.cursor/
+CLAUDE.md
