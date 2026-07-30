@@ -10,6 +10,14 @@ __pycache__/
 .DS_Store
 ._*
 
+# project secrets / local config
+config.txt
+.env
+data.pkl
+testing.py
+news.db
+
 # editor
+.idea/
 .cursor/
 CLAUDE.md
