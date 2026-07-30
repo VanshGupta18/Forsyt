@@ -1,23 +1,15 @@
-*
-*
-!*/
-!.gitignore
-!requirements.txt
+# runtime / generated (data only — outputs are tracked)
+gpr_index/data/
+gpr_index/logs/
+logs/
+.venv/
 
-# Allow only these code folders
-!extraction/
-!extraction/**
-!gpr_index/
-!gpr_index/**
-!ingestion/
-!ingestion/**
-!scripts/
-!scripts/**
+# python / os junk
+__pycache__/
+*.py[cod]
+.DS_Store
+._*
 
-# Ignore caches inside allowed folders
-**/__pycache__/
-**/*.py[cod]
-**/.pytest_cache/
-**/.mypy_cache/
-**/.ruff_cache/
-**/.ipynb_checkpoints/
+# editor
+.cursor/
+CLAUDE.md
