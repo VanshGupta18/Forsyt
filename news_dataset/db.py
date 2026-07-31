@@ -114,6 +114,20 @@ if USE_POSTGRES:
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_geo_cycle_stats_run_at ON geo_cycle_stats(run_at);")
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS geo_seen_links (
+                link TEXT PRIMARY KEY,
+                source_code TEXT NOT NULL,
+                tier INTEGER NOT NULL,
+                published_at TIMESTAMPTZ,
+                first_seen_at TIMESTAMPTZ NOT NULL
+            );
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_geo_seen_links_observed_at "
+            "ON geo_seen_links ((COALESCE(published_at, first_seen_at)));"
+        )
+
         conn.commit()
         cur.close()
         conn.close()
@@ -208,13 +222,73 @@ if USE_POSTGRES:
         conn.close()
         return [dict(row) for row in rows]
 
+    def record_geo_seen_links(rows, seen_at):
+        """Idempotently record every valid URL observed in RSS feeds."""
+        if not rows:
+            return
+        values = [
+            (
+                row["link"], row["source_code"], row["tier"],
+                row.get("published_at"), seen_at,
+            )
+            for row in rows
+        ]
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            psycopg2.extras.execute_values(
+                cur,
+                """INSERT INTO geo_seen_links
+                       (link, source_code, tier, published_at, first_seen_at)
+                   VALUES %s
+                   ON CONFLICT (link) DO NOTHING""",
+                values,
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def count_geo_seen_articles(start, end):
+        """Count distinct observed URLs in the half-open datetime range."""
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT COUNT(*) FROM geo_seen_links
+               WHERE COALESCE(published_at, first_seen_at) >= %s
+                 AND COALESCE(published_at, first_seen_at) < %s""",
+            (start, end),
+        )
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return count
+
+    def get_gpr_articles(start, end):
+        """Return the URL-level, NLP-complete GPR population in a date range."""
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """SELECT * FROM articles
+               WHERE tier IS NOT NULL
+                 AND nlp_extracted_at IS NOT NULL
+                 AND COALESCE(published_at, scraped_at) >= %s
+                 AND COALESCE(published_at, scraped_at) < %s
+               ORDER BY COALESCE(published_at, scraped_at) ASC, id ASC""",
+            (start, end),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [dict(row) for row in rows]
+
     def get_articles_pending_nlp(
         limit, model_version, start=None, end=None, reprocess=False
     ):
-        """Fetch canonical geo articles needing NLP extraction."""
+        """Fetch URL-unique geo articles needing NLP extraction."""
         conn = get_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        clauses = ["tier IS NOT NULL", "duplicate_of IS NULL"]
+        clauses = ["tier IS NOT NULL"]
         params = []
         if not reprocess:
             clauses.append(
@@ -391,6 +465,17 @@ else:
             );
 
             CREATE INDEX IF NOT EXISTS idx_geo_cycle_stats_run_at ON geo_cycle_stats(run_at);
+
+            CREATE TABLE IF NOT EXISTS geo_seen_links (
+                link TEXT PRIMARY KEY,
+                source_code TEXT NOT NULL,
+                tier INTEGER NOT NULL,
+                published_at TIMESTAMP,
+                first_seen_at TIMESTAMP NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_geo_seen_links_observed_at
+                ON geo_seen_links(COALESCE(published_at, first_seen_at));
         """)
 
         # ---- Geopolitical ingestion pipeline: extra columns on the shared articles table ----
@@ -496,12 +581,62 @@ else:
         conn.close()
         return [dict(row) for row in rows]
 
+    def record_geo_seen_links(rows, seen_at):
+        """Idempotently record every valid URL observed in RSS feeds."""
+        if not rows:
+            return
+        values = [
+            (
+                row["link"], row["source_code"], row["tier"],
+                row.get("published_at"), seen_at,
+            )
+            for row in rows
+        ]
+        conn = get_connection()
+        try:
+            conn.executemany(
+                """INSERT OR IGNORE INTO geo_seen_links
+                       (link, source_code, tier, published_at, first_seen_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                values,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def count_geo_seen_articles(start, end):
+        """Count distinct observed URLs in the half-open datetime range."""
+        conn = get_connection()
+        count = conn.execute(
+            """SELECT COUNT(*) FROM geo_seen_links
+               WHERE COALESCE(published_at, first_seen_at) >= ?
+                 AND COALESCE(published_at, first_seen_at) < ?""",
+            (start, end),
+        ).fetchone()[0]
+        conn.close()
+        return count
+
+    def get_gpr_articles(start, end):
+        """Return the URL-level, NLP-complete GPR population in a date range."""
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT * FROM articles
+               WHERE tier IS NOT NULL
+                 AND nlp_extracted_at IS NOT NULL
+                 AND COALESCE(published_at, scraped_at) >= ?
+                 AND COALESCE(published_at, scraped_at) < ?
+               ORDER BY COALESCE(published_at, scraped_at) ASC, id ASC""",
+            (start, end),
+        ).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
     def get_articles_pending_nlp(
         limit, model_version, start=None, end=None, reprocess=False
     ):
-        """Fetch canonical geo articles needing NLP extraction."""
+        """Fetch URL-unique geo articles needing NLP extraction."""
         conn = get_connection()
-        clauses = ["tier IS NOT NULL", "duplicate_of IS NULL"]
+        clauses = ["tier IS NOT NULL"]
         params = []
         if not reprocess:
             clauses.append(

@@ -6,6 +6,7 @@ import argparse
 import math
 import sys
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -48,9 +49,10 @@ def _score_articles() -> Callable[[pd.DataFrame], pd.DataFrame]:
 
 
 def _load_articles(limit: int) -> list[dict[str, Any]]:
-    from news_dataset.db import get_geo_articles
+    from news_dataset.db import get_gpr_articles
 
-    return get_geo_articles(dedup_only=True, limit=limit)
+    articles = get_gpr_articles(datetime.min, datetime.max)
+    return articles[-limit:]
 
 
 def _extract(
@@ -249,7 +251,7 @@ def _sweep(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, default=500, help="canonical articles (default: 500)")
+    parser.add_argument("--limit", type=int, default=500, help="GPR articles (default: 500)")
     parser.add_argument("--sweep", action="store_true", help="sweep theme similarity thresholds")
     parser.add_argument("--sweep-min", type=float, default=0.34)
     parser.add_argument("--sweep-max", type=float, default=0.50)
@@ -269,8 +271,8 @@ def main() -> int:
 
     articles = _load_articles(args.limit)
     if not articles:
-        parser.error("no canonical geopolitical articles found")
-    print(f"Loaded {len(articles):,} canonical articles (limit {args.limit:,}).")
+        parser.error("no NLP-complete GPR articles found")
+    print(f"Loaded {len(articles):,} GPR articles (limit {args.limit:,}).")
 
     frame, similarities = _extract(articles, keep_similarities=args.sweep)
     score_articles = _score_articles()

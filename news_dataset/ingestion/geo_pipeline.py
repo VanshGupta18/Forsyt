@@ -124,19 +124,21 @@ def _entry_published_dt(entry):
 
 
 def fetch_feed(feed_cfg, tier):
-    """Fetch one RSS feed and return (candidates, fetched_count, error).
+    """Fetch one RSS feed and return (candidates, seen, fetched_count, error).
 
     candidates: list of article dicts (schema fields except id/duplicate_of),
-    already keyword-filtered for tier 2. error is None on success.
+    already keyword-filtered for tier 2. seen contains every valid RSS entry
+    before filtering. error is None on success.
     """
     source_code = feed_cfg["source_code"]
     candidates = []
+    seen = []
     try:
         feed = parse_feed(feed_cfg["url"])
         entries = feed.entries or []
     except Exception as e:
         logger.warning(f"geo_pipeline: failed to fetch {source_code}: {e}")
-        return [], 0, str(e)
+        return [], [], 0, str(e)
 
     fetched_count = len(entries)
 
@@ -147,6 +149,14 @@ def fetch_feed(feed_cfg, tier):
             if not title or not link:
                 continue
 
+            published_dt = _entry_published_dt(entry)
+            seen.append({
+                "link": link,
+                "source_code": source_code,
+                "tier": tier,
+                "published_at": published_dt,
+            })
+
             description = _entry_description(entry)
             matched = []
 
@@ -155,7 +165,6 @@ def fetch_feed(feed_cfg, tier):
                 if not matched:
                     continue
 
-            published_dt = _entry_published_dt(entry)
             rss_time = parse_rss_time(entry)
 
             candidates.append({
@@ -174,11 +183,11 @@ def fetch_feed(feed_cfg, tier):
             logger.warning(f"geo_pipeline: error processing entry from {source_code}: {e}")
             continue
 
-    return candidates, fetched_count, None
+    return candidates, seen, fetched_count, None
 
 
 def fetch_tier(tier):
-    """Fetch all feeds in a tier. Returns dict source_code -> (candidates, fetched_count, error)."""
+    """Return source_code -> (candidates, seen, fetched_count, error)."""
     feeds = TIER1_FEEDS if tier == 1 else TIER2_FEEDS
     results = {}
     for feed_cfg in feeds:
