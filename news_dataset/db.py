@@ -80,6 +80,13 @@ if USE_POSTGRES:
         cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS matched_keywords TEXT;")
         cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS duplicate_of INTEGER REFERENCES articles(id);")
         cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS published_at TIMESTAMP;")
+        cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_themes TEXT;")
+        cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_tone_neg REAL;")
+        cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_tone_polarity REAL;")
+        cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_gcam TEXT;")
+        cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_locations TEXT;")
+        cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_model_version TEXT;")
+        cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_extracted_at TIMESTAMP;")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_tier ON articles(tier);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_duplicate_of ON articles(duplicate_of);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);")
@@ -200,6 +207,63 @@ if USE_POSTGRES:
         cur.close()
         conn.close()
         return [dict(row) for row in rows]
+
+    def get_articles_pending_nlp(
+        limit, model_version, start=None, end=None, reprocess=False
+    ):
+        """Fetch canonical geo articles needing NLP extraction."""
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        clauses = ["tier IS NOT NULL", "duplicate_of IS NULL"]
+        params = []
+        if not reprocess:
+            clauses.append(
+                "(nlp_extracted_at IS NULL OR nlp_model_version IS NULL "
+                "OR nlp_model_version <> %s)"
+            )
+            params.append(model_version)
+        if start is not None:
+            clauses.append("published_at >= %s")
+            params.append(start)
+        if end is not None:
+            clauses.append("published_at < %s")
+            params.append(end)
+        params.append(limit)
+        cur.execute(
+            f"""SELECT id, title, content, published_at FROM articles
+                WHERE {' AND '.join(clauses)}
+                ORDER BY published_at IS NULL, published_at ASC, id ASC
+                LIMIT %s""",
+            params,
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def update_article_nlp(article_id, fields):
+        """Update one article's validated NLP fields."""
+        allowed = {
+            "nlp_themes", "nlp_tone_neg", "nlp_tone_polarity", "nlp_gcam",
+            "nlp_locations", "nlp_model_version", "nlp_extracted_at",
+        }
+        invalid = set(fields) - allowed
+        if invalid:
+            raise ValueError(f"Unsupported NLP fields: {sorted(invalid)}")
+        if not fields:
+            return
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            assignments = ", ".join(f"{name} = %s" for name in fields)
+            cur.execute(
+                f"UPDATE articles SET {assignments} WHERE id = %s",
+                [*fields.values(), article_id],
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
 
     def upsert_geo_feed_health(source_code, success, error=None, now=None):
         conn = get_connection()
@@ -338,6 +402,13 @@ else:
             ("matched_keywords", "TEXT"),
             ("duplicate_of", "INTEGER REFERENCES articles(id)"),
             ("published_at", "TIMESTAMP"),
+            ("nlp_themes", "TEXT"),
+            ("nlp_tone_neg", "REAL"),
+            ("nlp_tone_polarity", "REAL"),
+            ("nlp_gcam", "TEXT"),
+            ("nlp_locations", "TEXT"),
+            ("nlp_model_version", "TEXT"),
+            ("nlp_extracted_at", "TIMESTAMP"),
         ]:
             if col_name not in existing_cols:
                 conn.execute(f"ALTER TABLE articles ADD COLUMN {col_name} {col_def}")
@@ -424,6 +495,58 @@ else:
         ).fetchall()
         conn.close()
         return [dict(row) for row in rows]
+
+    def get_articles_pending_nlp(
+        limit, model_version, start=None, end=None, reprocess=False
+    ):
+        """Fetch canonical geo articles needing NLP extraction."""
+        conn = get_connection()
+        clauses = ["tier IS NOT NULL", "duplicate_of IS NULL"]
+        params = []
+        if not reprocess:
+            clauses.append(
+                "(nlp_extracted_at IS NULL OR nlp_model_version IS NULL "
+                "OR nlp_model_version <> ?)"
+            )
+            params.append(model_version)
+        if start is not None:
+            clauses.append("published_at >= ?")
+            params.append(start)
+        if end is not None:
+            clauses.append("published_at < ?")
+            params.append(end)
+        params.append(limit)
+        rows = conn.execute(
+            f"""SELECT id, title, content, published_at FROM articles
+                WHERE {' AND '.join(clauses)}
+                ORDER BY published_at IS NULL, published_at ASC, id ASC
+                LIMIT ?""",
+            params,
+        ).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def update_article_nlp(article_id, fields):
+        """Update one article's validated NLP fields."""
+        allowed = {
+            "nlp_themes", "nlp_tone_neg", "nlp_tone_polarity", "nlp_gcam",
+            "nlp_locations", "nlp_model_version", "nlp_extracted_at",
+        }
+        invalid = set(fields) - allowed
+        if invalid:
+            raise ValueError(f"Unsupported NLP fields: {sorted(invalid)}")
+        if not fields:
+            return
+        conn = get_connection()
+        try:
+            assignments = ", ".join(f"{name} = ?" for name in fields)
+            conn.execute(
+                f"UPDATE articles SET {assignments} WHERE id = ?",
+                [*fields.values(), article_id],
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     def upsert_geo_feed_health(source_code, success, error=None, now=None):
         conn = get_connection()
