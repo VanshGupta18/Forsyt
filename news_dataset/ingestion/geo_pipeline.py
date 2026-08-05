@@ -19,7 +19,12 @@ from difflib import SequenceMatcher
 
 from bs4 import BeautifulSoup
 
-from ingestion.feed_utils import parse_feed, parse_rss_time  # reuse browser-UA + retry fetch logic
+try:
+    from news_dataset.ingestion.feed_utils import parse_feed, parse_rss_time
+except ModuleNotFoundError as exc:
+    if exc.name != "news_dataset":
+        raise
+    from ingestion.feed_utils import parse_feed, parse_rss_time
 
 logger = logging.getLogger(__name__)
 

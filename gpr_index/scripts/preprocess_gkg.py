@@ -37,8 +37,9 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
-from scripts.paths import GKG_PROCESSED_DIR, GKG_RAW_DIR
- = [1, 3, 4, 8, 10, 15, 17]
+from .paths import GKG_PROCESSED_DIR, GKG_RAW_DIR
+
+GKG_USECOLS = [1, 3, 4, 8, 10, 15, 17]
 GKG_NAMES = [
     "SQLDATE", "SourceCommonName", "DocumentIdentifier",
     "V2Themes", "V2Locations", "V2Tone_raw", "GCAM",

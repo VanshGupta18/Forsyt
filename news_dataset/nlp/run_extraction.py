@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from news_dataset.db import get_articles_pending_nlp, update_article_nlp
 from news_dataset.nlp.locations import extract_locations
@@ -25,11 +25,19 @@ def _day(value):
 
 def _date_bounds(args):
     if args.date:
-        start = datetime.combine(args.date, time.min)
+        start = datetime.combine(args.date, time.min, tzinfo=timezone.utc)
         return start, start + timedelta(days=1)
-    start = datetime.combine(args.start, time.min) if args.start else None
+    start = (
+        datetime.combine(args.start, time.min, tzinfo=timezone.utc)
+        if args.start
+        else None
+    )
     end = (
-        datetime.combine(args.end + timedelta(days=1), time.min)
+        datetime.combine(
+            args.end + timedelta(days=1),
+            time.min,
+            tzinfo=timezone.utc,
+        )
         if args.end
         else None
     )
@@ -60,7 +68,7 @@ def run(limit=500, start=None, end=None, reprocess=False):
                     "nlp_gcam": extract_gcam(text),
                     "nlp_locations": extract_locations(title, body),
                     "nlp_model_version": NLP_MODEL_VERSION,
-                    "nlp_extracted_at": datetime.utcnow(),
+                    "nlp_extracted_at": datetime.now(timezone.utc),
                 },
             )
             updated += 1

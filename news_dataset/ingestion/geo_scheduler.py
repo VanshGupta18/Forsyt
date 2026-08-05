@@ -14,14 +14,26 @@ import signal
 import logging
 from datetime import datetime, timedelta, timezone
 
-from ingestion.geo_pipeline import (
-    TIER1_FEEDS, TIER2_FEEDS, FEEDS_BY_CODE, TIER_INTERVALS,
-    fetch_tier, find_duplicate, DEDUP_WINDOW,
-)
-from db import (
-    insert_geo_article, get_recent_geo_articles, upsert_geo_feed_health,
-    get_geo_feed_health, log_geo_cycle_stats, record_geo_seen_links,
-)
+try:
+    from news_dataset.ingestion.geo_pipeline import (
+        TIER1_FEEDS, TIER2_FEEDS, FEEDS_BY_CODE, TIER_INTERVALS,
+        fetch_tier, find_duplicate, DEDUP_WINDOW,
+    )
+    from news_dataset.db import (
+        insert_geo_article, get_recent_geo_articles, upsert_geo_feed_health,
+        get_geo_feed_health, log_geo_cycle_stats, record_geo_seen_links,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != "news_dataset":
+        raise
+    from ingestion.geo_pipeline import (
+        TIER1_FEEDS, TIER2_FEEDS, FEEDS_BY_CODE, TIER_INTERVALS,
+        fetch_tier, find_duplicate, DEDUP_WINDOW,
+    )
+    from db import (
+        insert_geo_article, get_recent_geo_articles, upsert_geo_feed_health,
+        get_geo_feed_health, log_geo_cycle_stats, record_geo_seen_links,
+    )
 
 logging.basicConfig(
     level=logging.INFO,

@@ -10,6 +10,7 @@ OUTPUT_DIR = MODULE_ROOT / "outputs"
 
 GKG_RAW_DIR = DATA_DIR / "gkg_raw"
 GKG_PROCESSED_DIR = DATA_DIR / "gkg_processed"
+INDIA_PROCESSED_DIR = DATA_DIR / "india_processed"
 VALIDATION_DIR = OUTPUT_DIR / "validation"
 PLOTS_DIR = OUTPUT_DIR / "plots"
 

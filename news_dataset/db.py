@@ -264,6 +264,22 @@ if USE_POSTGRES:
         conn.close()
         return count
 
+    def count_geo_ingested_articles(start, end):
+        """Count URL-unique tiered articles in the half-open datetime range."""
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT COUNT(DISTINCT link) FROM articles
+               WHERE tier IS NOT NULL
+                 AND COALESCE(published_at, scraped_at) >= %s
+                 AND COALESCE(published_at, scraped_at) < %s""",
+            (start, end),
+        )
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return count
+
     def get_gpr_articles(start, end):
         """Return the URL-level, NLP-complete GPR population in a date range."""
         conn = get_connection()
@@ -272,6 +288,12 @@ if USE_POSTGRES:
             """SELECT * FROM articles
                WHERE tier IS NOT NULL
                  AND nlp_extracted_at IS NOT NULL
+                 AND nlp_themes IS NOT NULL
+                 AND nlp_tone_neg IS NOT NULL
+                 AND nlp_tone_polarity IS NOT NULL
+                 AND nlp_gcam IS NOT NULL
+                 AND nlp_locations IS NOT NULL
+                 AND nlp_model_version IS NOT NULL
                  AND COALESCE(published_at, scraped_at) >= %s
                  AND COALESCE(published_at, scraped_at) < %s
                ORDER BY COALESCE(published_at, scraped_at) ASC, id ASC""",
@@ -292,21 +314,24 @@ if USE_POSTGRES:
         params = []
         if not reprocess:
             clauses.append(
-                "(nlp_extracted_at IS NULL OR nlp_model_version IS NULL "
+                "(nlp_extracted_at IS NULL OR nlp_themes IS NULL "
+                "OR nlp_tone_neg IS NULL OR nlp_tone_polarity IS NULL "
+                "OR nlp_gcam IS NULL OR nlp_locations IS NULL "
+                "OR nlp_model_version IS NULL "
                 "OR nlp_model_version <> %s)"
             )
             params.append(model_version)
         if start is not None:
-            clauses.append("published_at >= %s")
+            clauses.append("COALESCE(published_at, scraped_at) >= %s")
             params.append(start)
         if end is not None:
-            clauses.append("published_at < %s")
+            clauses.append("COALESCE(published_at, scraped_at) < %s")
             params.append(end)
         params.append(limit)
         cur.execute(
             f"""SELECT id, title, content, published_at FROM articles
                 WHERE {' AND '.join(clauses)}
-                ORDER BY published_at IS NULL, published_at ASC, id ASC
+                ORDER BY COALESCE(published_at, scraped_at) ASC, id ASC
                 LIMIT %s""",
             params,
         )
@@ -616,6 +641,19 @@ else:
         conn.close()
         return count
 
+    def count_geo_ingested_articles(start, end):
+        """Count URL-unique tiered articles in the half-open datetime range."""
+        conn = get_connection()
+        count = conn.execute(
+            """SELECT COUNT(DISTINCT link) FROM articles
+               WHERE tier IS NOT NULL
+                 AND COALESCE(published_at, scraped_at) >= ?
+                 AND COALESCE(published_at, scraped_at) < ?""",
+            (start, end),
+        ).fetchone()[0]
+        conn.close()
+        return count
+
     def get_gpr_articles(start, end):
         """Return the URL-level, NLP-complete GPR population in a date range."""
         conn = get_connection()
@@ -623,6 +661,12 @@ else:
             """SELECT * FROM articles
                WHERE tier IS NOT NULL
                  AND nlp_extracted_at IS NOT NULL
+                 AND nlp_themes IS NOT NULL
+                 AND nlp_tone_neg IS NOT NULL
+                 AND nlp_tone_polarity IS NOT NULL
+                 AND nlp_gcam IS NOT NULL
+                 AND nlp_locations IS NOT NULL
+                 AND nlp_model_version IS NOT NULL
                  AND COALESCE(published_at, scraped_at) >= ?
                  AND COALESCE(published_at, scraped_at) < ?
                ORDER BY COALESCE(published_at, scraped_at) ASC, id ASC""",
@@ -640,21 +684,24 @@ else:
         params = []
         if not reprocess:
             clauses.append(
-                "(nlp_extracted_at IS NULL OR nlp_model_version IS NULL "
+                "(nlp_extracted_at IS NULL OR nlp_themes IS NULL "
+                "OR nlp_tone_neg IS NULL OR nlp_tone_polarity IS NULL "
+                "OR nlp_gcam IS NULL OR nlp_locations IS NULL "
+                "OR nlp_model_version IS NULL "
                 "OR nlp_model_version <> ?)"
             )
             params.append(model_version)
         if start is not None:
-            clauses.append("published_at >= ?")
+            clauses.append("COALESCE(published_at, scraped_at) >= ?")
             params.append(start)
         if end is not None:
-            clauses.append("published_at < ?")
+            clauses.append("COALESCE(published_at, scraped_at) < ?")
             params.append(end)
         params.append(limit)
         rows = conn.execute(
             f"""SELECT id, title, content, published_at FROM articles
                 WHERE {' AND '.join(clauses)}
-                ORDER BY published_at IS NULL, published_at ASC, id ASC
+                ORDER BY COALESCE(published_at, scraped_at) ASC, id ASC
                 LIMIT ?""",
             params,
         ).fetchall()

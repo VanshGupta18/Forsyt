@@ -31,7 +31,7 @@ from typing import List, Literal
 
 import pandas as pd
 
-from scripts.paths import CALDARA_DAILY_CANDIDATES, OUTPUT_DIR
+from .paths import CALDARA_DAILY_CANDIDATES, OUTPUT_DIR
 
 FILL_METHODS = ("forward", "linear", "caldara")
 

@@ -35,7 +35,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from scripts.paths import GKG_PROCESSED_DIR, OUTPUT_DIR
+from .paths import GKG_PROCESSED_DIR, OUTPUT_DIR
 
 # Three-tier geopolitical theme taxonomy (Iacoviello & Tong 2026 / Caldara 2022)
 # ---------------------------------------------------------------------------
@@ -448,7 +448,7 @@ def _run_incremental(
           f"Total series: {len(daily_df)} days.")
 
     if fill_gaps:
-        from scripts.fill_gpr_gaps import run as _fill_gaps  # noqa: PLC0415
+        from .fill_gpr_gaps import run as _fill_gaps  # noqa: PLC0415
         _fill_gaps(output_dir=output_dir, start_date=start_date, end_date=end_date, method=fill_method)
 
 
@@ -600,7 +600,7 @@ def run(
 
     # Gap-fill continuous series (on by default)
     if fill_gaps:
-        from scripts.fill_gpr_gaps import run as _fill_gaps
+        from .fill_gpr_gaps import run as _fill_gaps
         print("\n[GPR] Running gap-fill ...")
         _fill_gaps(output_dir=output_dir, start_date=start_date, end_date=end_date, method=fill_method)
 
@@ -648,7 +648,7 @@ def reprocess_index(
     )
     monthly_df.to_csv(output_dir / "gpr_monthly_index.csv", index=False)
 
-    from scripts.fill_gpr_gaps import run as _fill_gaps
+    from .fill_gpr_gaps import run as _fill_gaps
     _fill_gaps(output_dir=output_dir, start_date=start_date, end_date=end_date, method=fill_method)
 
     print(f"[REPROCESS] Done. Max GPR={daily_df['gpr_index'].max():.1f}  Pos.share={daily_df['positive_share'].mean()*100:.1f}%")
