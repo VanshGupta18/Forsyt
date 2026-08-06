@@ -1,0 +1,13 @@
+corridor,parent_correlation,threshold,pass
+cape_of_good_hope,0.05233331812135935,0.95,YES
+danish_straits_baltic,0.13959917558762938,0.95,YES
+imec,0.1799434705930509,0.95,YES
+india_bangladesh_petrapole,0.05161121049884936,0.95,YES
+india_china_lac,0.043879205800339695,0.95,YES
+india_nepal_raxaul,0.14115318712908467,0.95,YES
+india_pakistan_attari,0.16358277733754426,0.95,YES
+instc_chabahar,0.15636889529816347,0.95,YES
+red_sea_suez,0.08627556048989483,0.95,YES
+strait_of_hormuz,0.12001744351998882,0.95,YES
+strait_of_malacca,0.05448336959640886,0.95,YES
+taiwan_south_china_sea,0.06968915786732359,0.95,YES

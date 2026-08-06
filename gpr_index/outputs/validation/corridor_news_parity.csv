@@ -1,0 +1,13 @@
+corridor,gdelt_match_rate,news_match_rate,news_to_gdelt_ratio,pass
+strait_of_hormuz,0.03668,0.03598,0.9809160305343512,YES
+red_sea_suez,0.03048,0.0556,1.8241469816272964,YES
+strait_of_malacca,0.0227,0.02208,0.9726872246696034,YES
+cape_of_good_hope,0.00878,0.0079,0.8997722095671983,YES
+danish_straits_baltic,0.06252,0.05384,0.8611644273832373,YES
+taiwan_south_china_sea,0.06806,0.06568,0.9650308551278285,YES
+india_china_lac,0.00296,0.00054,0.18243243243243243,YES
+india_pakistan_attari,0.00692,0.0,0.0,NO
+india_bangladesh_petrapole,0.00358,2e-05,0.005586592178770951,YES
+india_nepal_raxaul,0.00214,0.0,0.0,NO
+imec,0.08452,0.07442,0.8805016564126834,YES
+instc_chabahar,0.06132,0.05862,0.9559686888454012,YES
