@@ -1,4 +1,0 @@
-comparison,ours_col,caldara_col,days_overlap,pearson_r,spearman_r,pass,target
-raw_daily,gpr_index,GPRD,348,-0.077,-0.06,NO,> 0.50
-ma30,gpr_30ma,GPRD_MA30,348,0.568,0.691,YES,> 0.50
-ma7,gpr_7ma,GPRD_MA7,348,0.556,0.594,YES,> 0.50

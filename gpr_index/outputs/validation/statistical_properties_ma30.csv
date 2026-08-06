@@ -1,5 +1,0 @@
-metric,value,target,pass,series
-std,19.582,35–70,NO,gpr_30ma
-skewness,0.5448,> 0.5,YES,gpr_30ma
-p99,151.7748,200–400,NO,gpr_30ma
-autocorr_lag90,-0.2839,> 0.50,NO,gpr_30ma
