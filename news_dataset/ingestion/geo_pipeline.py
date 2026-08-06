@@ -12,14 +12,19 @@ later instances with duplicate_of=<canonical id>, so they can be excluded
 from "final dataset" reads while remaining in the table for auditability.
 """
 
+import html
 import re
+import sys
 import logging
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
+from pathlib import Path
 
-from bs4 import BeautifulSoup
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-from ingestion.feed_utils import parse_feed, parse_rss_time  # reuse browser-UA + retry fetch logic
+from news_dataset.ingestion.feed_utils import parse_feed, parse_rss_time
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +35,13 @@ logger = logging.getLogger(__name__)
 TIER1_FEEDS = [
     {"source": "StratNews Global", "source_code": "SNG", "url": "https://stratnewsglobal.com/feed/"},
     {"source": "Bharat Shakti", "source_code": "BS", "url": "https://bharatshakti.in/feed/"},
-    {"source": "Gateway House", "source_code": "GH", "url": "https://www.gatewayhouse.in/feed/"},
+    {"source": "Gateway House", "source_code": "GH",
+     "url": "https://www.gatewayhouse.in/feed/",
+     "urls": [
+         "https://www.gatewayhouse.in/feed/",
+         "https://www.gatewayhouse.in/feed/rss/",
+         "https://gatewayhouse.in/feed/",
+     ]},
     {"source": "ThePrint Defence", "source_code": "TPD", "url": "https://theprint.in/category/defence/feed/"},
 ]
 
@@ -100,7 +111,8 @@ def match_keywords(text):
 def _clean_html(text):
     if not text:
         return ""
-    return BeautifulSoup(text, "lxml").get_text(strip=True)
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", text))
+    return re.sub(r"\s+", " ", plain).strip()
 
 
 def _entry_description(entry):
@@ -124,21 +136,38 @@ def _entry_published_dt(entry):
 
 
 def fetch_feed(feed_cfg, tier):
-    """Fetch one RSS feed and return (candidates, fetched_count, error).
+    """Fetch one RSS feed and return (candidates, seen, fetched_count, error).
 
     candidates: list of article dicts (schema fields except id/duplicate_of),
-    already keyword-filtered for tier 2. error is None on success.
+    already keyword-filtered for tier 2. seen contains every valid RSS entry
+    before filtering. error is None on success.
     """
     source_code = feed_cfg["source_code"]
     candidates = []
-    try:
-        feed = parse_feed(feed_cfg["url"])
-        entries = feed.entries or []
-    except Exception as e:
-        logger.warning(f"geo_pipeline: failed to fetch {source_code}: {e}")
-        return [], 0, str(e)
+    seen = []
+    urls = feed_cfg.get("urls") or [feed_cfg["url"]]
+    feed = None
+    fetched_count = 0
+    last_error = None
+    for url in urls:
+        try:
+            feed = parse_feed(url)
+            entries = feed.entries or []
+            if entries:
+                fetched_count = len(entries)
+                break
+            last_error = feed.bozo_exception if feed.bozo else "no entries"
+        except Exception as e:
+            last_error = str(e)
+            logger.debug("geo_pipeline: %s feed %s failed: %s", source_code, url, e)
+    else:
+        logger.info(
+            "geo_pipeline: no entries from %s after trying %d feed URL(s): %s",
+            source_code, len(urls), last_error,
+        )
+        return [], [], 0, str(last_error) if last_error else "no entries"
 
-    fetched_count = len(entries)
+    entries = feed.entries or []
 
     for entry in entries:
         try:
@@ -146,6 +175,14 @@ def fetch_feed(feed_cfg, tier):
             link = entry.get("link", "").strip()
             if not title or not link:
                 continue
+
+            published_dt = _entry_published_dt(entry)
+            seen.append({
+                "link": link,
+                "source_code": source_code,
+                "tier": tier,
+                "published_at": published_dt,
+            })
 
             description = _entry_description(entry)
             matched = []
@@ -155,7 +192,6 @@ def fetch_feed(feed_cfg, tier):
                 if not matched:
                     continue
 
-            published_dt = _entry_published_dt(entry)
             rss_time = parse_rss_time(entry)
 
             candidates.append({
@@ -174,11 +210,11 @@ def fetch_feed(feed_cfg, tier):
             logger.warning(f"geo_pipeline: error processing entry from {source_code}: {e}")
             continue
 
-    return candidates, fetched_count, None
+    return candidates, seen, fetched_count, None
 
 
 def fetch_tier(tier):
-    """Fetch all feeds in a tier. Returns dict source_code -> (candidates, fetched_count, error)."""
+    """Return source_code -> (candidates, seen, fetched_count, error)."""
     feeds = TIER1_FEEDS if tier == 1 else TIER2_FEEDS
     results = {}
     for feed_cfg in feeds:

@@ -45,8 +45,11 @@ def parse_feed(url, retries=2, backoff=3):
         if attempt < retries:
             time.sleep(backoff)
 
-    logger.warning(f"parse_feed: no entries from {url} after {retries + 1} attempts: {last_exc}")
-    return feedparser.parse(url, request_headers=HEADERS)
+    logger.warning(
+        "parse_feed: no entries from %s after %d attempts: %s",
+        url, retries + 1, last_exc,
+    )
+    return feedparser.parse("", request_headers=HEADERS)
 
 
 def parse_rss_time(entry):

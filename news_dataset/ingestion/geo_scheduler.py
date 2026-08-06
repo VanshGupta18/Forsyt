@@ -9,18 +9,24 @@ the same stateless-invocation pattern scheduler.py/GitHub Actions already use
 for the main scraper.
 """
 
-import time
 import signal
+import sys
+import time
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from ingestion.geo_pipeline import (
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from news_dataset.ingestion.geo_pipeline import (
     TIER1_FEEDS, TIER2_FEEDS, FEEDS_BY_CODE, TIER_INTERVALS,
     fetch_tier, find_duplicate, DEDUP_WINDOW,
 )
-from db import (
+from news_dataset.db import (
     insert_geo_article, get_recent_geo_articles, upsert_geo_feed_health,
-    get_geo_feed_health, log_geo_cycle_stats, get_geo_articles,
+    get_geo_feed_health, log_geo_cycle_stats, record_geo_seen_links,
 )
 
 logging.basicConfig(
@@ -81,16 +87,20 @@ def run_cycle(force_tiers=None):
 
     per_source_stats = {}
     all_candidates = []
+    all_seen = []
 
     for tier in due_tiers:
         results = fetch_tier(tier)
-        for source_code, (candidates, fetched_count, error) in results.items():
+        for source_code, (candidates, seen, fetched_count, error) in results.items():
             upsert_geo_feed_health(source_code, success=(error is None), error=error, now=now)
             discarded = fetched_count - len(candidates)
             per_source_stats[source_code] = {
                 "tier": tier, "fetched": fetched_count, "ingested": 0, "discarded": discarded,
             }
             all_candidates.extend(candidates)
+            all_seen.extend(seen)
+
+    record_geo_seen_links(all_seen, now)
 
     # Earliest-first so the first occurrence of a story becomes canonical.
     all_candidates.sort(key=lambda c: c["published_at"] or now)

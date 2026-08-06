@@ -32,19 +32,17 @@ This is the execution driver. It manages state and triggers `geo_pipeline.py`.
 - **`run_continuous()`**: A while-loop wrapper for running locally. Sleeps for `POLL_TICK` (60s) between checking if a tier is due.
 
 ## 4. `db.py`
-The storage abstraction layer. Automatically toggles between PostgreSQL (production) and SQLite (local dev) based on the `DATABASE_URL` environment variable.
-- **`init_db()`**: Bootstraps the `articles`, `geo_feed_health`, and `geo_cycle_stats` tables. Includes necessary indexes on `tier`, `scraped_at`, and `duplicate_of` to keep queries fast.
-- **`insert_geo_article(article)`**: Writes the structured dictionary into the SQL table. Uses `ON CONFLICT DO NOTHING` (or `INSERT OR IGNORE`) on the `link` column to ensure strict URL uniqueness.
-- **`get_geo_articles(...)`**: Retrieves the dataset. By default, it uses `duplicate_of IS NULL` to filter out fuzzy duplicates, serving only canonical unique events to the API.
-- **Health & Stats Loggers**: `upsert_geo_feed_health` and `log_geo_cycle_stats` maintain the telemetry needed by the scheduler to know when to fetch next.
+PostgreSQL-only storage. Requires `DATABASE_URL` at import time.
+- **`init_db()`**: Bootstraps the `articles`, `geo_feed_health`, `geo_cycle_stats`, and `geo_seen_links` tables.
+- **`insert_geo_article(article)`**: Writes the structured dictionary into SQL with `ON CONFLICT (link) DO NOTHING`.
+- **`get_geo_articles(...)`**: Retrieves the dataset. By default uses `duplicate_of IS NULL` for canonical events.
+- **Health & Stats Loggers**: `upsert_geo_feed_health` and `log_geo_cycle_stats` maintain scheduler telemetry.
 
-## 5. `api/server.py` & `api/utils.py`
-The data exposure layer.
-- **`api/server.py`**: A Flask app with `flask_restful`. Defines three endpoints:
-  - `/news/<tier>`: Serves the dataset as JSON.
-  - `/health`: Exposes total article counts and DB status.
-  - `/stats`: Exposes the telemetry data (recent cycle yields, feed failure rates).
-- **`api/utils.py`**: Acts as a bridge, cleanly importing `get_geo_articles` from `db.py` to decouple the Flask routing from the raw SQL queries.
+## 5. `api/server.py`
+Plain Flask routes exposing the dataset:
+- `/news` and `/news/<tier>`: article JSON
+- `/health`: total article count and DB status
+- `/stats`: recent cycle yields and feed failure rates
 
 ## 6. `.github/workflows/scrape.yml`
 The automation engine.

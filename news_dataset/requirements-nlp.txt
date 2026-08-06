@@ -1,0 +1,6 @@
+sentence-transformers
+transformers
+torch
+pandas
+numpy
+pyarrow

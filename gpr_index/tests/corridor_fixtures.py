@@ -1,0 +1,148 @@
+"""Shared corridor tagging fixtures for calibration and unit tests."""
+
+from __future__ import annotations
+
+from typing import Any
+
+LABELED_CORRIDOR_ARTICLES: tuple[dict[str, Any], ...] = (
+    {
+        "label": "Hormuz explicit",
+        "title": "Tanker traffic disrupted near Strait of Hormuz",
+        "body": "Shipping firms reroute vessels away from the Hormuz Strait.",
+        "expected": {"strait_of_hormuz"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Red Sea / Houthi",
+        "title": "Houthi attacks target Red Sea shipping",
+        "body": "Freight insurers raise premiums after Bab el-Mandeb incidents.",
+        "expected": {"red_sea_suez"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Suez",
+        "title": "Suez Canal delays ripple through supply chains",
+        "body": "Carriers report longer transit times through the Suez route.",
+        "expected": {"red_sea_suez"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Malacca",
+        "title": "Naval patrols increase in Strait of Malacca",
+        "body": "Malaysia and Singapore coordinate Malacca Strait security.",
+        "expected": {"strait_of_malacca"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Cape route",
+        "title": "Ships reroute via Cape of Good Hope",
+        "body": "The Cape Route adds weeks to Europe-bound cargo.",
+        "expected": {"cape_of_good_hope"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Danish Straits",
+        "title": "Russian crude flows through Danish Straits",
+        "body": "Tankers transit the Oresund on Baltic Sea routes.",
+        "expected": {"danish_straits_baltic"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Taiwan Strait",
+        "title": "Tensions rise in Taiwan Strait",
+        "body": "Warships monitor the South China Sea shipping lanes.",
+        "expected": {"taiwan_south_china_sea"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Ladakh LAC",
+        "title": "Indian troops reinforce Ladakh positions",
+        "body": "Galwan Valley remains tense after fresh patrol clashes.",
+        "expected": {"india_china_lac"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Attari-Wagah",
+        "title": "Trade halted at Attari-Wagah border",
+        "body": "Truck movement stops at the Wagah Border crossing.",
+        "expected": {"india_pakistan_attari"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Petrapole",
+        "title": "Queues grow at Petrapole land port",
+        "body": "Benapole customs delays hit Bangladesh trade trucks.",
+        "expected": {"india_bangladesh_petrapole"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Raxaul-Birgunj",
+        "title": "Nepal trade moves through Raxaul corridor",
+        "body": "Birgunj customs clearances slow after monsoon damage.",
+        "expected": {"india_nepal_raxaul"},
+        "forbidden": set(),
+    },
+    {
+        "label": "IMEC",
+        "title": "India revives IMEC corridor talks",
+        "body": "The India-Middle East-Europe Economic Corridor remains stalled.",
+        "expected": {"imec"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Chabahar / INSTC",
+        "title": "Chabahar port central to INSTC plans",
+        "body": "The International North-South Transport Corridor depends on Chabahar Port.",
+        "expected": {"instc_chabahar"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Iran without Hormuz name",
+        "title": "Iran nuclear talks resume in Vienna",
+        "body": "Tehran negotiators meet IAEA officials over enrichment limits.",
+        "expected": {"strait_of_hormuz"},
+        "forbidden": set(),
+    },
+    {
+        "label": "India-wide no LAC",
+        "title": "India announces quarterly GDP figures",
+        "body": "Finance ministry releases growth data for major states.",
+        "expected": set(),
+        "forbidden": {"india_china_lac", "india_pakistan_attari"},
+    },
+    {
+        "label": "Pakistan country only",
+        "title": "Pakistan seeks IMF support",
+        "body": "Islamabad negotiates a new bailout package.",
+        "expected": set(),
+        "forbidden": {"india_pakistan_attari"},
+    },
+    {
+        "label": "Bangladesh country only",
+        "title": "Bangladesh inflation cools slightly",
+        "body": "Dhaka reports easing food prices in urban markets.",
+        "expected": set(),
+        "forbidden": {"india_bangladesh_petrapole"},
+    },
+    {
+        "label": "China country only",
+        "title": "China exports beat forecasts",
+        "body": "Beijing data show stronger manufacturing shipments.",
+        "expected": set(),
+        "forbidden": {"india_china_lac"},
+    },
+    {
+        "label": "Multi maritime",
+        "title": "Middle East shipping crisis widens",
+        "body": "Attacks in the Red Sea and near Hormuz disrupt Suez traffic.",
+        "expected": {"strait_of_hormuz", "red_sea_suez"},
+        "forbidden": set(),
+    },
+    {
+        "label": "Nepal country only",
+        "title": "Nepal parliament approves budget",
+        "body": "Kathmandu lawmakers pass infrastructure spending plans.",
+        "expected": set(),
+        "forbidden": {"india_nepal_raxaul"},
+    },
+)
