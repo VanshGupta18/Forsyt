@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from news_dataset.db import get_articles_pending_nlp, update_article_nlp
 from news_dataset.nlp.locations import extract_locations
-from news_dataset.nlp.tag_cache import EXTRACTOR_VERSION
+from news_dataset.nlp.version import EXTRACTOR_VERSION
 from news_dataset.nlp.themes import extract_themes
 from news_dataset.nlp.tone import extract_gcam, extract_tone
 

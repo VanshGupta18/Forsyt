@@ -9,31 +9,25 @@ the same stateless-invocation pattern scheduler.py/GitHub Actions already use
 for the main scraper.
 """
 
-import time
 import signal
+import sys
+import time
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-try:
-    from news_dataset.ingestion.geo_pipeline import (
-        TIER1_FEEDS, TIER2_FEEDS, FEEDS_BY_CODE, TIER_INTERVALS,
-        fetch_tier, find_duplicate, DEDUP_WINDOW,
-    )
-    from news_dataset.db import (
-        insert_geo_article, get_recent_geo_articles, upsert_geo_feed_health,
-        get_geo_feed_health, log_geo_cycle_stats, record_geo_seen_links,
-    )
-except ModuleNotFoundError as exc:
-    if exc.name != "news_dataset":
-        raise
-    from ingestion.geo_pipeline import (
-        TIER1_FEEDS, TIER2_FEEDS, FEEDS_BY_CODE, TIER_INTERVALS,
-        fetch_tier, find_duplicate, DEDUP_WINDOW,
-    )
-    from db import (
-        insert_geo_article, get_recent_geo_articles, upsert_geo_feed_health,
-        get_geo_feed_health, log_geo_cycle_stats, record_geo_seen_links,
-    )
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from news_dataset.ingestion.geo_pipeline import (
+    TIER1_FEEDS, TIER2_FEEDS, FEEDS_BY_CODE, TIER_INTERVALS,
+    fetch_tier, find_duplicate, DEDUP_WINDOW,
+)
+from news_dataset.db import (
+    insert_geo_article, get_recent_geo_articles, upsert_geo_feed_health,
+    get_geo_feed_health, log_geo_cycle_stats, record_geo_seen_links,
+)
 
 logging.basicConfig(
     level=logging.INFO,

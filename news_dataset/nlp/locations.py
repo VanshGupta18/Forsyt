@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from gpr_index.scripts.corridors import CORRIDOR_PLACES
+
 # FIPS 10-4 codes are intentional: CH=China, BG=Bangladesh, CE=Sri Lanka,
 # JA=Japan and RP=Philippines. Do not replace these with ISO codes.
 COUNTRY_MAP: dict[str, tuple[str, str, float, float]] = {
@@ -118,19 +120,49 @@ _PHRASE_RE = re.compile(
     ) + r")\b",
     re.IGNORECASE,
 )
+_CORRIDOR_ALIAS_TO_PLACE = {
+    alias.lower(): canonical
+    for canonical, place in CORRIDOR_PLACES.items()
+    for alias in place["aliases"]
+}
+_CORRIDOR_PHRASE_RE = re.compile(
+    r"(?<!\w)("
+    + "|".join(
+        re.escape(alias)
+        for alias in sorted(_CORRIDOR_ALIAS_TO_PLACE, key=len, reverse=True)
+    )
+    + r")(?!\w)",
+    re.IGNORECASE,
+)
 
 
 def _country_block(code: str, name: str, lat: float, lon: float) -> str:
     return f"1#{name}#{code}#{code}#{lat}#{lon}#0"
 
 
+def _place_block(name: str) -> str:
+    place = CORRIDOR_PLACES[name]
+    return (
+        f"4#{name}#{place['countrycode']}#{place['adm1']}#"
+        f"{place['lat']}#{place['lon']}#0"
+    )
+
+
 def extract_locations(title: str, body: str) -> str:
-    """Return deduplicated country blocks found in title and article body."""
+    """Return deduplicated country and corridor-place V2Locations blocks."""
+    text = f"{title or ''} {body or ''}"
     found = {
         COUNTRY_MAP[match.group(1).lower()]
-        for match in _PHRASE_RE.finditer(f"{title or ''} {body or ''}")
+        for match in _PHRASE_RE.finditer(text)
     }
-    return ";".join(
+    countries = [
         _country_block(code, name, lat, lon)
         for code, name, lat, lon in sorted(found)
+    ]
+    places = sorted(
+        {
+            _CORRIDOR_ALIAS_TO_PLACE[match.group(1).lower()]
+            for match in _CORRIDOR_PHRASE_RE.finditer(text)
+        }
     )
+    return ";".join(countries + [_place_block(name) for name in places])

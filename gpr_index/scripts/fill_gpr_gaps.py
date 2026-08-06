@@ -107,7 +107,11 @@ def fill_daily_gaps(
     elif method == "caldara":
         cal = _load_caldara_daily()
         if cal is None:
-            print("[GAPS] WARN: Caldara daily file not found — falling back to linear")
+            tried = ", ".join(str(path) for path in CALDARA_DAILY_CANDIDATES)
+            print(
+                f"[GAPS] NOTE: Caldara daily file not found; tried: {tried}. "
+                "Using linear interpolation."
+            )
             for col in INDEX_COLS:
                 combined[col] = combined[col].interpolate(method="linear")
         else:

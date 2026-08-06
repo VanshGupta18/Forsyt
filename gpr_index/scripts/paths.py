@@ -14,11 +14,15 @@ INDIA_PROCESSED_DIR = DATA_DIR / "india_processed"
 VALIDATION_DIR = OUTPUT_DIR / "validation"
 PLOTS_DIR = OUTPUT_DIR / "plots"
 
+CALDARA_MONTHLY = DATA_DIR / "caldara_gpr_monthly.xls"
+CALDARA_DAILY = DATA_DIR / "caldara_gpr_daily.xls"
 CALDARA_MONTHLY_CANDIDATES = [
-    DATA_DIR / "caldara_gpr_monthly.xls",
+    CALDARA_MONTHLY,
     DATA_DIR / "data_gpr_export (1).xls",
+    DATA_DIR / "benchmarks" / "caldara_gpr_monthly.xls",
 ]
 CALDARA_DAILY_CANDIDATES = [
-    DATA_DIR / "caldara_gpr_daily.xls",
+    CALDARA_DAILY,
     DATA_DIR / "data_gpr_daily_recent.xls",
+    DATA_DIR / "benchmarks" / "caldara_gpr_daily.xls",
 ]

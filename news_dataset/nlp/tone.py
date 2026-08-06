@@ -48,9 +48,8 @@ _GCAM_LEXICONS = {
     }),
 }
 
-# A dimension reaches 1.0 when its terms occupy 5% of the article. This keeps
-# short RSS summaries on the 0-1 GCAM scale while preserving graded density.
-_GCAM_REFERENCE_DENSITY = 0.05
+# Short RSS summaries need a slightly lower reference density to reach GDELT GCAM levels.
+_GCAM_REFERENCE_DENSITY = 0.04
 
 
 def _words(text: str) -> list[str]:

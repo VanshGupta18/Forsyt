@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from news_dataset.nlp.locations import extract_locations
 from news_dataset.nlp.themes import (
     SIMILARITY_THRESHOLD,
     TIER1_CODES,
@@ -22,6 +23,7 @@ from news_dataset.nlp.themes import (
     themes_at_threshold,
 )
 from news_dataset.nlp.tone import extract_gcam, extract_tone
+from gpr_index.tests.corridor_fixtures import LABELED_CORRIDOR_ARTICLES
 
 TARGETS = {
     "theme_score median": (0.30, 0.40, 0.3333),
@@ -30,22 +32,52 @@ TARGETS = {
     "gcam_score mean": (0.14, 0.20, 0.18),
     "score share in (0, 0.20]": (0.0, 0.02, 0.0),
 }
+MIN_CALIBRATION_ARTICLES = 100
 TIERS = {
     "tier1": frozenset(TIER1_CODES),
     "tier2": frozenset(TIER2_CODES),
     "tier3": frozenset(TIER3_CODES),
 }
+# Corridors that rarely appear in Indian geo RSS summaries; zero matches here
+# are expected rather than a plumbing failure.
+LOW_COVERAGE_CORRIDORS = frozenset({
+    "danish_straits_baltic",
+    "cape_of_good_hope",
+    "imec",
+    "instc_chabahar",
+    "india_china_lac",
+    "india_pakistan_attari",
+    "india_bangladesh_petrapole",
+    "india_nepal_raxaul",
+})
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _ensure_repo_root() -> None:
+    root = str(_repo_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
 
 
 def _score_articles() -> Callable[[pd.DataFrame], pd.DataFrame]:
     """Import the validated scorer with its expected top-level scripts package."""
-    gpr_root = Path(__file__).resolve().parents[2] / "gpr_index"
+    gpr_root = _repo_root() / "gpr_index"
     root = str(gpr_root)
     if root not in sys.path:
         sys.path.insert(0, root)
     from scripts.gkg_gpr_pipeline import score_articles
 
     return score_articles
+
+
+def _corridor_tagger() -> tuple[Any, dict[str, Any]]:
+    _ensure_repo_root()
+    from gpr_index.scripts.corridors import CORRIDORS, tag_corridors
+
+    return tag_corridors, CORRIDORS
 
 
 def _load_articles(limit: int) -> list[dict[str, Any]]:
@@ -73,6 +105,7 @@ def _extract(
             "tone_neg": tone_neg,
             "tone_polarity": tone_polarity,
             "GCAM": extract_gcam(text),
+            "V2Locations": extract_locations(title, body),
         })
         if similarities is not None:
             all_similarities.append(similarities)
@@ -96,9 +129,14 @@ def _in_range(value: float, low: float, high: float) -> bool:
     return math.isfinite(value) and low <= value <= high
 
 
-def _print_metrics(scored: pd.DataFrame) -> None:
+def _print_metrics(scored: pd.DataFrame, *, advisory: bool) -> None:
     actual = _actual_metrics(scored)
     print("\n--- Calibration metrics (component metrics use gpr_score > 0) ---")
+    if advisory:
+        print(
+            f"NOTE: sample has fewer than {MIN_CALIBRATION_ARTICLES} articles; "
+            "metric PASS/FAIL is advisory only."
+        )
     print(f"{'metric':34} {'actual':>9} {'GDELT':>9} {'pass range':>13}  result")
     for name, value in actual.items():
         low, high, reference = TARGETS[name]
@@ -109,9 +147,15 @@ def _print_metrics(scored: pd.DataFrame) -> None:
         passed = math.isfinite(value) and (
             value < high if is_share else low <= value <= high
         )
+        if passed:
+            label = "PASS"
+        elif advisory:
+            label = "ADVISORY"
+        else:
+            label = "FAIL"
         print(
             f"{name:34} {shown:>9} {gdelt:>9} {target:>13}  "
-            f"{'PASS' if passed else 'FAIL'}"
+            f"{label}"
         )
 
 
@@ -133,17 +177,18 @@ def _theme_article_counts(themes: pd.Series) -> tuple[int, Counter[str]]:
     return any_articles, tier_articles
 
 
-def _warn_if_low_theme_coverage(count: int, total: int) -> None:
+def _warn_if_low_theme_coverage(count: int, total: int, *, advisory: bool = False) -> None:
     share = count / total if total else 0.0
     if count < 30 or share < 0.10:
+        label = "NOTE" if advisory else "WARNING"
         print(
-            "WARNING: fewer than 30 theme-positive articles survive or "
+            f"{label}: fewer than 30 theme-positive articles survive or "
             "theme-positive share is below 10%; this sample cannot justify "
             "a production threshold change."
         )
 
 
-def _print_theme_hits(themes: pd.Series) -> None:
+def _print_theme_hits(themes: pd.Series, *, advisory: bool = False) -> None:
     total = len(themes)
     counts: Counter[tuple[str, str]] = Counter()
     any_articles, tier_articles = _theme_article_counts(themes)
@@ -157,7 +202,7 @@ def _print_theme_hits(themes: pd.Series) -> None:
     for tier in TIERS:
         print(f"{tier:6} {tier_articles[tier]:5}/{total:<5} {tier_articles[tier] / total:7.2%}")
     print(f"{'any':6} {any_articles:5}/{total:<5} {any_articles / total:7.2%}")
-    _warn_if_low_theme_coverage(any_articles, total)
+    _warn_if_low_theme_coverage(any_articles, total, advisory=advisory)
     print("\n--- Top matched theme codes ---")
     if not counts:
         print("none")
@@ -241,12 +286,121 @@ def _sweep(
             f"(theme-positive={best[3]}/{total}, {best[3] / total:.2%}; "
             f"theme median={best[1]:.4f}, mean={best[2]:.4f})"
         )
-        _warn_if_low_theme_coverage(best[3], total)
+        _warn_if_low_theme_coverage(best[3], total, advisory=len(frame) < MIN_CALIBRATION_ARTICLES)
     else:
         print("No coverage-aware candidate: no threshold passed both shape ranges.")
     print(f"Production threshold remains unchanged at {SIMILARITY_THRESHOLD:.3f}.")
-    if len(frame) < 100:
-        print("WARNING: sample is too small to support a production threshold change.")
+    if len(frame) < MIN_CALIBRATION_ARTICLES:
+        print(
+            f"NOTE: sample has fewer than {MIN_CALIBRATION_ARTICLES} articles; "
+            "too small to support a production threshold change."
+        )
+
+
+def _has_type4_block(v2locations: str) -> bool:
+    return any(
+        entry.startswith("4#")
+        for entry in str(v2locations or "").split(";")
+        if entry
+    )
+
+
+def _print_corridor_coverage(frame: pd.DataFrame, *, advisory: bool) -> None:
+    tag_corridors, corridors = _corridor_tagger()
+    total = len(frame)
+    if total == 0:
+        print("\n--- Corridor coverage ---")
+        print("no articles to evaluate")
+        return
+
+    matches: Counter[str] = Counter()
+    type4_articles = 0
+    for v2locations in frame["V2Locations"].fillna("").astype(str):
+        if _has_type4_block(v2locations):
+            type4_articles += 1
+        for corridor_id in tag_corridors(v2locations):
+            matches[corridor_id] += 1
+
+    print("\n--- Corridor coverage (tag_corridors on extracted V2Locations) ---")
+    if advisory:
+        print(
+            "NOTE: short RSS samples under-represent land-border place names; "
+            "zero matches there are expected until full text lands."
+        )
+    print(f"{'corridor':40} {'matches':>8} {'share':>8}")
+    zero_corridors: list[str] = []
+    for corridor_id, spec in sorted(corridors.items(), key=lambda item: item[1]["name"]):
+        count = matches[corridor_id]
+        print(f"{spec['name']:40} {count:8d} {count / total:8.2%}")
+        if count == 0:
+            zero_corridors.append(corridor_id)
+
+    type4_share = type4_articles / total
+    print(
+        f"\nArticles with at least one type=4 place block: "
+        f"{type4_articles}/{total} ({type4_share:.2%})"
+    )
+    if type4_articles == 0:
+        print("FAIL: no type=4 place blocks emitted; corridor plumbing is broken.")
+    elif type4_share < 0.01 and not advisory:
+        print(
+            "WARNING: type=4 recall is very low on this sample; "
+            "expected with 30-60 word RSS summaries until full text lands."
+        )
+    elif type4_share < 0.01:
+        print(
+            f"NOTE: type=4 recall is {type4_share:.2%} on this small sample; "
+            "expected to rise with longer text."
+        )
+
+    unexpected_zeros = sorted(set(zero_corridors) - LOW_COVERAGE_CORRIDORS)
+    if unexpected_zeros and not advisory:
+        print(
+            "FAIL: corridors with zero matches that should have plausible "
+            "coverage in Indian geo news:"
+        )
+        for corridor_id in unexpected_zeros:
+            print(f"  - {corridors[corridor_id]['name']} ({corridor_id})")
+    elif unexpected_zeros:
+        print(
+            "ADVISORY: zero-match corridors on a small sample "
+            "(not a plumbing failure):"
+        )
+        for corridor_id in unexpected_zeros:
+            print(f"  - {corridors[corridor_id]['name']} ({corridor_id})")
+    elif zero_corridors:
+        print(
+            "Zero-match corridors are limited to the expected low-coverage set: "
+            + ", ".join(sorted(zero_corridors))
+        )
+    else:
+        print("PASS: every corridor matched at least one article.")
+
+
+def _print_labeled_corridor_checks() -> None:
+    tag_corridors, _ = _corridor_tagger()
+    print("\n--- Hand-labelled corridor-obvious articles ---")
+    failures = 0
+    for case in LABELED_CORRIDOR_ARTICLES:
+        v2locations = extract_locations(case["title"], case["body"])
+        actual = set(tag_corridors(v2locations))
+        missing = case["expected"] - actual
+        forbidden = case["forbidden"] & actual
+        passed = not missing and not forbidden
+        status = "PASS" if passed else "FAIL"
+        if not passed:
+            failures += 1
+        print(f"{status} {case['label']}")
+        if missing:
+            print(f"      missing: {', '.join(sorted(missing))}")
+        if forbidden:
+            print(f"      forbidden: {', '.join(sorted(forbidden))}")
+        if not v2locations and (case["expected"] or case["forbidden"]):
+            print("      note: empty V2Locations")
+    if failures:
+        print(f"FAIL: {failures}/{len(LABELED_CORRIDOR_ARTICLES)} labelled cases failed.")
+    else:
+        print(f"PASS: all {len(LABELED_CORRIDOR_ARTICLES)} labelled cases matched expectations.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -272,13 +426,21 @@ def main() -> int:
     articles = _load_articles(args.limit)
     if not articles:
         parser.error("no NLP-complete GPR articles found")
+    advisory = len(articles) < MIN_CALIBRATION_ARTICLES
     print(f"Loaded {len(articles):,} GPR articles (limit {args.limit:,}).")
+    if advisory:
+        print(
+            f"NOTE: fewer than {MIN_CALIBRATION_ARTICLES} NLP-complete articles; "
+            "running in advisory mode."
+        )
 
     frame, similarities = _extract(articles, keep_similarities=args.sweep)
     score_articles = _score_articles()
     scored = score_articles(frame)
-    _print_metrics(scored)
-    _print_theme_hits(frame["V2Themes"])
+    _print_metrics(scored, advisory=advisory)
+    _print_theme_hits(frame["V2Themes"], advisory=advisory)
+    _print_corridor_coverage(frame, advisory=advisory)
+    _print_labeled_corridor_checks()
     if args.sweep:
         _sweep(
             frame,

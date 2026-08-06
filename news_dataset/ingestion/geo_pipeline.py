@@ -12,19 +12,19 @@ later instances with duplicate_of=<canonical id>, so they can be excluded
 from "final dataset" reads while remaining in the table for auditability.
 """
 
+import html
 import re
+import sys
 import logging
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
+from pathlib import Path
 
-from bs4 import BeautifulSoup
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-try:
-    from news_dataset.ingestion.feed_utils import parse_feed, parse_rss_time
-except ModuleNotFoundError as exc:
-    if exc.name != "news_dataset":
-        raise
-    from ingestion.feed_utils import parse_feed, parse_rss_time
+from news_dataset.ingestion.feed_utils import parse_feed, parse_rss_time
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,13 @@ logger = logging.getLogger(__name__)
 TIER1_FEEDS = [
     {"source": "StratNews Global", "source_code": "SNG", "url": "https://stratnewsglobal.com/feed/"},
     {"source": "Bharat Shakti", "source_code": "BS", "url": "https://bharatshakti.in/feed/"},
-    {"source": "Gateway House", "source_code": "GH", "url": "https://www.gatewayhouse.in/feed/"},
+    {"source": "Gateway House", "source_code": "GH",
+     "url": "https://www.gatewayhouse.in/feed/",
+     "urls": [
+         "https://www.gatewayhouse.in/feed/",
+         "https://www.gatewayhouse.in/feed/rss/",
+         "https://gatewayhouse.in/feed/",
+     ]},
     {"source": "ThePrint Defence", "source_code": "TPD", "url": "https://theprint.in/category/defence/feed/"},
 ]
 
@@ -105,7 +111,8 @@ def match_keywords(text):
 def _clean_html(text):
     if not text:
         return ""
-    return BeautifulSoup(text, "lxml").get_text(strip=True)
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", text))
+    return re.sub(r"\s+", " ", plain).strip()
 
 
 def _entry_description(entry):
@@ -138,14 +145,29 @@ def fetch_feed(feed_cfg, tier):
     source_code = feed_cfg["source_code"]
     candidates = []
     seen = []
-    try:
-        feed = parse_feed(feed_cfg["url"])
-        entries = feed.entries or []
-    except Exception as e:
-        logger.warning(f"geo_pipeline: failed to fetch {source_code}: {e}")
-        return [], [], 0, str(e)
+    urls = feed_cfg.get("urls") or [feed_cfg["url"]]
+    feed = None
+    fetched_count = 0
+    last_error = None
+    for url in urls:
+        try:
+            feed = parse_feed(url)
+            entries = feed.entries or []
+            if entries:
+                fetched_count = len(entries)
+                break
+            last_error = feed.bozo_exception if feed.bozo else "no entries"
+        except Exception as e:
+            last_error = str(e)
+            logger.debug("geo_pipeline: %s feed %s failed: %s", source_code, url, e)
+    else:
+        logger.info(
+            "geo_pipeline: no entries from %s after trying %d feed URL(s): %s",
+            source_code, len(urls), last_error,
+        )
+        return [], [], 0, str(last_error) if last_error else "no entries"
 
-    fetched_count = len(entries)
+    entries = feed.entries or []
 
     for entry in entries:
         try:

@@ -7,8 +7,10 @@ Pipeline:
   fill-gaps   → outputs/               (Caldara imputation for missing days)
   validate    → outputs/validation/    (10-check validation vs Caldara)
   diagnose    → sample scoring stats
+  corridor    → daily corridor threat/exposure indices
+  validate-corridors → corridor specificity, coverage, parity, and summary
   plot        → outputs/plots/
-  reprocess   → rebuild index from existing parquets
+  reprocess   → rebuild index from existing daily CSV
 
 Quickstart (2025):
   cd gpr_index
@@ -23,6 +25,7 @@ Or from repo root:  python gpr_index/main.py gpr ...
 
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -37,8 +40,14 @@ COMMANDS: dict[str, str] = {
     "fill-gaps":   "scripts.fill_gpr_gaps",
     "validate":    "scripts.validate_gpr",
     "diagnose":    "scripts.diagnose_gpr_scoring",
+    "corridor":    "scripts.corridor_index",
+    "validate-corridors": "scripts.validate_corridors",
     "plot":        "scripts.plot_gpr",
-    "reprocess":   "scripts.reprocess_gpr_index",
+    "reprocess":   "scripts.gkg_gpr_pipeline",
+}
+
+COMMAND_ENTRYPOINTS = {
+    "reprocess": "reprocess_main",
 }
 
 
@@ -50,10 +59,10 @@ def main() -> None:
             print(f"Available: {', '.join(sorted(COMMANDS))}")
         sys.exit(0 if len(sys.argv) < 2 else 1)
 
-    import importlib
-    mod = importlib.import_module(COMMANDS[sys.argv[1]])
+    command = sys.argv[1]
+    mod = importlib.import_module(COMMANDS[command])
     sys.argv = [sys.argv[0]] + sys.argv[2:]
-    mod.main()
+    getattr(mod, COMMAND_ENTRYPOINTS.get(command, "main"))()
 
 
 if __name__ == "__main__":

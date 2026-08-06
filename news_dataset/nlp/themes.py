@@ -2,28 +2,16 @@
 
 from __future__ import annotations
 
-import ast
-from pathlib import Path
 from typing import Any
+
+from gpr_index.scripts.taxonomy import TIER1_CODES, TIER2_CODES, TIER3_CODES
 
 MODEL_ID = "sentence-transformers/distiluse-base-multilingual-cased-v2"
 # Coverage-aware calibration on 234 canonical articles: 58 positive, score-shape PASS.
 SIMILARITY_THRESHOLD = 0.34
 MAX_CHARS = 4_000
 
-TIER1_CODES = [
-    "ARMEDCONFLICT", "TERROR_ATTACK", "INVASION", "COUP",
-    "ETHNIC_VIOLENCE", "GENOCIDE", "NUCLEAR_WEAPONS",
-    "CHEMICAL_WEAPONS", "BIOLOGICAL_WEAPONS",
-]
-TIER2_CODES = [
-    "TERROR", "TAX_FNCACT_MILITARY", "TAX_FNCACT_SOLDIER",
-    "TAX_FNCACT_REBEL", "TAX_FNCACT_TERRORIST", "SANCTION", "NUCLEAR",
-    "DIPLOMATIC_CRISIS", "BLOCKADE", "BORDER_DISPUTE",
-    "MARITIME_DISPUTE", "PROXY_WAR", "BALLISTIC_MISSILES",
-]
-TIER3_CODES = ["ESPIONAGE", "CYBERATTACK", "WAR_CRIME"]
-ALL_CODES = TIER1_CODES + TIER2_CODES + TIER3_CODES
+ALL_CODES = [*TIER1_CODES, *TIER2_CODES, *TIER3_CODES]
 
 CODE_DESCRIPTIONS = {
     "ARMEDCONFLICT": "armed conflict military war battle fighting troops killed airstrike",
@@ -55,44 +43,6 @@ CODE_DESCRIPTIONS = {
 
 _model: Any = None
 _prototypes: Any = None
-
-
-def _taxonomy_from_scorer() -> tuple[set[str], set[str], set[str]]:
-    """Read taxonomy literals without importing pandas/numpy from the scorer."""
-    scorer = (
-        Path(__file__).resolve().parents[2]
-        / "gpr_index"
-        / "scripts"
-        / "gkg_gpr_pipeline.py"
-    )
-    tree = ast.parse(scorer.read_text(encoding="utf-8"), filename=str(scorer))
-    found: dict[str, set[str]] = {}
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target, value = node.targets[0], node.value
-        elif isinstance(node, ast.AnnAssign):
-            target, value = node.target, node.value
-        else:
-            continue
-        if not isinstance(target, ast.Name) or target.id not in {"TIER1", "TIER2", "TIER3"}:
-            continue
-        if (
-            isinstance(value, ast.Call)
-            and isinstance(value.func, ast.Name)
-            and value.func.id == "frozenset"
-            and value.args
-        ):
-            found[target.id] = set(ast.literal_eval(value.args[0]))
-    if set(found) != {"TIER1", "TIER2", "TIER3"}:
-        raise RuntimeError("Could not verify NLP taxonomy against GPR scorer")
-    return found["TIER1"], found["TIER2"], found["TIER3"]
-
-
-assert _taxonomy_from_scorer() == (
-    set(TIER1_CODES),
-    set(TIER2_CODES),
-    set(TIER3_CODES),
-), "NLP theme taxonomy is out of sync with gkg_gpr_pipeline.py"
 
 
 def _get_model() -> Any:

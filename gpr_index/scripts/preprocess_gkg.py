@@ -37,6 +37,7 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
+from .download_gkg import select_time_slots
 from .paths import GKG_PROCESSED_DIR, GKG_RAW_DIR
 
 GKG_USECOLS = [1, 3, 4, 8, 10, 15, 17]
@@ -118,10 +119,18 @@ def load_slot_csv(csv_path: Path) -> Optional[pd.DataFrame]:
     return normalize_gkg_dataframe(df)
 
 
-def merge_day(day: dt.date, raw_dir: Path, processed_dir: Path) -> Optional[Path]:
+def merge_day(
+    day: dt.date,
+    raw_dir: Path,
+    processed_dir: Path,
+    slot_step: int = 1,
+    slot_offset: int = 0,
+) -> Optional[Path]:
     """Merge all slot CSVs for one day, dedupe, and write Parquet."""
     ymd   = day.strftime("%Y%m%d")
     slots = sorted(raw_dir.glob(f"{ymd}*.gkg.csv"))
+    selected = set(select_time_slots(slot_step, slot_offset))
+    slots = [path for path in slots if path.name[8:12] in selected]
     if not slots:
         return None
 
@@ -154,6 +163,8 @@ def run(
     end_date: str,
     raw_dir: Path,
     processed_dir: Path,
+    slot_step: int = 1,
+    slot_offset: int = 0,
 ) -> None:
     processed_dir.mkdir(parents=True, exist_ok=True)
     total_ok     = 0
@@ -170,7 +181,13 @@ def run(
             continue
 
         print(f"[{ymd}] merging ...", end=" ", flush=True)
-        result = merge_day(day, raw_dir, processed_dir)
+        result = merge_day(
+            day,
+            raw_dir,
+            processed_dir,
+            slot_step=slot_step,
+            slot_offset=slot_offset,
+        )
         if result is None:
             print("FAIL (no raw files or all empty)")
             failed_dates.append(ymd)
@@ -197,6 +214,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--end-date",       default="2025-12-31",        help="YYYY-MM-DD")
     p.add_argument("--raw-dir",        default=str(GKG_RAW_DIR),      help="Raw slot CSV directory")
     p.add_argument("--processed-dir",  default=str(GKG_PROCESSED_DIR),help="Output Parquet directory")
+    p.add_argument(
+        "--slot-step",
+        type=int,
+        default=1,
+        help="Merge every Nth slot; use 4 to test a 24-slot/day sample",
+    )
+    p.add_argument("--slot-offset", type=int, default=0)
     return p.parse_args()
 
 
@@ -207,6 +231,8 @@ def main() -> None:
         end_date=args.end_date,
         raw_dir=Path(args.raw_dir),
         processed_dir=Path(args.processed_dir),
+        slot_step=args.slot_step,
+        slot_offset=args.slot_offset,
     )
 
 

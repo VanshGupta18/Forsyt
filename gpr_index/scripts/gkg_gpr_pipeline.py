@@ -36,24 +36,11 @@ import numpy as np
 import pandas as pd
 
 from .paths import GKG_PROCESSED_DIR, OUTPUT_DIR
+from .taxonomy import TIER1_CODES, TIER2_CODES, TIER3_CODES
 
-# Three-tier geopolitical theme taxonomy (Iacoviello & Tong 2026 / Caldara 2022)
-# ---------------------------------------------------------------------------
-
-TIER1: frozenset = frozenset({          # weight 1.0 — unambiguous Geopolitical Acts only
-    "ARMEDCONFLICT", "TERROR_ATTACK", "INVASION", "COUP",
-    "ETHNIC_VIOLENCE", "GENOCIDE", "NUCLEAR_WEAPONS",
-    "CHEMICAL_WEAPONS", "BIOLOGICAL_WEAPONS",
-})
-TIER2: frozenset = frozenset({          # weight 0.6 — Geopolitical Threats
-    "TERROR", "TAX_FNCACT_MILITARY", "TAX_FNCACT_SOLDIER", "TAX_FNCACT_REBEL",
-    "TAX_FNCACT_TERRORIST", "SANCTION", "NUCLEAR", "DIPLOMATIC_CRISIS",
-    "BLOCKADE", "BORDER_DISPUTE", "MARITIME_DISPUTE", "PROXY_WAR",
-    "BALLISTIC_MISSILES",
-})
-TIER3: frozenset = frozenset({          # weight 0.3 — Geopolitical Context (minimal)
-    "ESPIONAGE", "CYBERATTACK", "WAR_CRIME",
-})
+TIER1 = frozenset(TIER1_CODES)
+TIER2 = frozenset(TIER2_CODES)
+TIER3 = frozenset(TIER3_CODES)
 
 # Score component caps and floors
 THEME_CAP    = 0.50
@@ -652,6 +639,25 @@ def reprocess_index(
     _fill_gaps(output_dir=output_dir, start_date=start_date, end_date=end_date, method=fill_method)
 
     print(f"[REPROCESS] Done. Max GPR={daily_df['gpr_index'].max():.1f}  Pos.share={daily_df['positive_share'].mean()*100:.1f}%")
+
+
+def reprocess_main() -> None:
+    parser = argparse.ArgumentParser(description="Re-normalize GPR index from saved daily CSV")
+    parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
+    parser.add_argument("--start-date", default="2025-01-01")
+    parser.add_argument("--end-date", default="2025-12-31")
+    parser.add_argument("--baseline-start", default=None)
+    parser.add_argument("--baseline-end", default=None)
+    parser.add_argument("--fill-method", default="caldara", choices=["forward", "linear", "caldara"])
+    args = parser.parse_args()
+    reprocess_index(
+        output_dir=Path(args.output_dir),
+        start_date=args.start_date,
+        end_date=args.end_date,
+        baseline_start=args.baseline_start or args.start_date,
+        baseline_end=args.baseline_end or args.end_date,
+        fill_method=args.fill_method,
+    )
 
 
 def parse_args() -> argparse.Namespace:
