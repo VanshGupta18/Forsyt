@@ -37,6 +37,7 @@ def run_daily_index(
     skip_nlp: bool = False,
     skip_gpr: bool = False,
     force_export: bool = False,
+    allow_incomplete_denominator: bool = False,
 ) -> dict:
     """Run the full daily index pipeline for one UTC calendar day."""
     start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
@@ -49,7 +50,12 @@ def run_daily_index(
         details["nlp_failed"] = failed
         db.log_pipeline_run("nlp", "ok" if failed == 0 else "partial", details)
 
-    export_path = process_day(day, INDIA_PROCESSED_DIR, force=force_export)
+    export_path = process_day(
+        day,
+        INDIA_PROCESSED_DIR,
+        force=force_export,
+        allow_incomplete_denominator=allow_incomplete_denominator,
+    )
     details["parquet"] = str(export_path) if export_path else None
     if export_path is None:
         db.log_pipeline_run("export", "skipped", details)
@@ -125,6 +131,11 @@ def main() -> int:
     parser.add_argument("--skip-nlp", action="store_true")
     parser.add_argument("--skip-gpr", action="store_true")
     parser.add_argument("--force-export", action="store_true")
+    parser.add_argument(
+        "--allow-incomplete-denominator",
+        action="store_true",
+        help="pass through to parquet export for incomplete geo_seen_links history",
+    )
     args = parser.parse_args()
     day = args.date or (date.today() - timedelta(days=1))
     try:
@@ -134,6 +145,7 @@ def main() -> int:
             skip_nlp=args.skip_nlp,
             skip_gpr=args.skip_gpr,
             force_export=args.force_export,
+            allow_incomplete_denominator=args.allow_incomplete_denominator,
         )
         print(f"[daily_index] {day.isoformat()} ok: {details}")
         return 0
