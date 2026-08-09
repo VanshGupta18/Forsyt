@@ -56,9 +56,9 @@
 
 ## Overview
 
-**Forsyt** is an end-to-end AI-powered geopolitical intelligence platform designed specifically for the Indian economic ecosystem. It transforms unstructured global and Indian news into structured, quantified geopolitical risk insights — directly mapped to Indian financial markets, trade corridors, and investment portfolios.
+**Forsyt** is a daily India geopolitical risk intelligence platform. It transforms unstructured Indian news into structured risk insights: a **daily GPR index**, **12 trade-corridor scores**, a **tagged event feed**, and a **dual-signal dashboard** (geo risk + NIFTY vol side-by-side — honest, not "GPR predicts NIFTY").
 
-At its core, Forsyt builds and maintains the **India AI-GPR Index** — a daily, normalized geopolitical risk score for India — validated against the academic Caldara-Iacoviello GPR benchmark. This index powers four downstream intelligence modules: a **News Intelligence System**, a **Portfolio Risk Advisor**, a **Supply Chain Risk Screener**, and a **Macro Forecasting Engine** — all backed by Explainable AI (SHAP) to provide transparent, auditable reasoning for every prediction.
+At its core, Forsyt builds the **India GPR Index** from 9 Indian news sources, validated against the Caldara-Iacoviello benchmark. The product surface is the **unified API + dashboard** — see [`docs/PRODUCT.md`](docs/PRODUCT.md) for the full product definition.
 
 > **Capstone Project** — BE Third Year, Computer Science & Engineering, Thapar Institute of Engineering & Technology, Patiala | CPG No. 300 | March–December 2026
 
@@ -84,29 +84,24 @@ With **170 million+ active Demat accounts** in India as of 2024 — a 3.6× incr
 
 ### Core Capabilities
 
-- **Automated News Aggregation** — Monitors 15–20 Indian news sources (RSS + web scraping) continuously, collecting 300–500 India-relevant articles daily
-- **NLP Event Extraction** — Transformer-based NLP pipeline extracts structured geopolitical events (type, severity, India exposure, actors, locations, sectors) from raw articles
-- **India AI-GPR Index** — Daily normalized geopolitical risk score (z-score, 2020–present) validated against Caldara-Iacoviello academic benchmark
-- **Historical Backtesting** — Validated against 17 major Indian geopolitical events (26/11, Galwan, Pulwama, Farmers' Protests, etc.)
+- **Automated News Aggregation** — Monitors 9 Indian news sources (RSS) continuously
+- **NLP Event Extraction** — Themes, tone, locations tagged on every article
+- **India GPR Index** — Daily normalized geopolitical risk score validated against Caldara-Iacoviello
+- **Corridor Risk Board** — 12 trade routes (Hormuz, LAC, Malacca, Red Sea…)
+- **Dual-Signal Dashboard** — Geo GPR regime + NIFTY vol (`market_only`) + joint stress score
+- **Historical Event Overlays** — Galwan, Pulwama, 26/11 markers on GPR charts
 
-### Intelligence Modules
+### Product Surface (shipped)
 
-- **📰 News Intelligence System** — Converts raw news into structured, searchable geopolitical event database with severity and sector tagging
-- **💼 Portfolio Risk Advisor** — Quantifies portfolio-level geopolitical exposure by sector weighting; identifies silent risk concentrations
-- **🚢 Supply Chain Risk Screener** — Assesses risk across 8–12 major Indian trade corridors (China-India, Taiwan-India, Gulf routes, maritime lanes)
-- **📈 Macro Forecasting Engine** — ML models (XGBoost + optional LSTM) predict Nifty 50 volatility regimes (HIGH_VOL vs NORMAL) using GPR + market features
+- **📰 Event Feed** — Searchable tagged news via `/api/events/feed`
+- **🚢 Corridor Monitor** — Daily corridor scores via `/api/corridors`
+- **📊 Dual-Signal Panel** — `/api/market/dual-signal` (geo + market vol side-by-side)
+- **🖥️ Dashboard MVP** — 4 screens at `/` (home, chart, corridors, events)
 
-### Explainable AI (XAI) Throughout
+### Research / Future (not product hero)
 
-- **SHAP Integration** — Every prediction includes a SHAP breakdown showing which factors drove the output
-- **Multi-Level Explanations** — Quick summary → Feature chart → Deep-dive waterfall plot
-- **Natural Language Justifications** — SHAP values converted to plain-English explanations on the dashboard
-- **Confidence Scoring** — Every extracted event and ML prediction carries a calibrated confidence score
-
-### Platform
-
-- **Interactive Dashboard** — Responsive web interface with real-time GPR charts, corridor maps, portfolio calculator, and XAI visualizations
-- **Production Pipeline** — Automated daily cron execution, PostgreSQL storage, error handling, alerting, and monitoring
+- Academic validation (VAR, OOS backtest) in `nifty-50/research/` — internal QA only
+- Portfolio advisor and SHAP waterfall — planned, not in capstone demo
 
 ---
 
@@ -272,11 +267,11 @@ Three application-specific ML models backed by a unified SHAP explainability fra
 - Input: portfolio holdings (ticker + weight)
 - Output: total GPR exposure score + SHAP-based sector decomposition
 
-**Application 3 — Nifty 50 Volatility Regime Prediction:**
-- Binary classification: HIGH_VOL vs NORMAL
-- Train: 2020–2022 | Test: 2023–2026
-- Target: F1 ≥ 0.60, ROC-AUC ≥ 0.65
-- SHAP: identifies top drivers of each regime prediction
+**Application 3 — Dual-Signal Market Context (product):**
+- Geopolitical: daily India GPR regime from Forsyt news pipeline
+- Market: NIFTY 5-day vol forecast using `market_only` features (no GPR in forecast)
+- Joint stress: transparent 60% geo + 40% vol percentile composite
+- Historical analog: what NIFTY did on past days with similar GPR levels
 
 ---
 
@@ -355,20 +350,15 @@ brew install python@3.10
 # Download from https://www.python.org/downloads/
 ```
 
-**Install PostgreSQL (if not installed):**
-```bash
-# Ubuntu/Debian
-sudo apt install postgresql postgresql-contrib -y
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
+**PostgreSQL (Supabase — required):**
 
-# macOS
-brew install postgresql@15
-brew services start postgresql@15
+Forsyt uses a hosted Supabase Postgres database. You do not need a local PostgreSQL install.
 
-# Windows
-# Download from https://www.postgresql.org/download/windows/
-```
+1. Create a project at [supabase.com](https://supabase.com)
+2. Copy the **Transaction pooler** URI (port `6543`) from Project Settings → Database
+3. Paste it into `news_dataset/.env` as `DATABASE_URL`
+
+Tables are created automatically on first import of `news_dataset.db`.
 
 ---
 
@@ -428,53 +418,20 @@ python scripts/download_models.py
 **Step 1 — Copy the Example Environment File**
 
 ```bash
-cp .env.example .env
+cp news_dataset/.env.example news_dataset/.env
 ```
 
 **Step 2 — Fill in Required Values**
 
-Open `.env` in your editor and configure the following:
+Open `news_dataset/.env` and set your Supabase connection string:
 
 ```env
-# ─── DATABASE ────────────────────────────────────────────────────────────────
-DATABASE_URL=postgresql://forsyt_user:your_password@localhost:5432/forsyt_db
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_NAME=forsyt_db
-DATABASE_USER=forsyt_user
-DATABASE_PASSWORD=your_secure_password
+# ─── DATABASE (Supabase) ─────────────────────────────────────────────────────
+DATABASE_URL=postgresql://postgres.xxxx:password@aws-0-region.pooler.supabase.com:6543/postgres
 
-# ─── NLP / AI MODELS ─────────────────────────────────────────────────────────
-# If using a paid API for LLM-assisted extraction (optional)
-OPENAI_API_KEY=your_openai_key_here          # Optional: leave blank for open-source only
-HUGGINGFACE_TOKEN=your_hf_token_here         # Optional: required for gated models
-
-# ─── MARKET DATA ─────────────────────────────────────────────────────────────
-# yfinance does not require a key, but you can specify a Yahoo Finance proxy if needed
-YFINANCE_PROXY=                              # Optional
-
-# ─── PIPELINE CONFIGURATION ──────────────────────────────────────────────────
-PIPELINE_SCHEDULE_HOURS=6                    # How often to run ingestion (hours)
-MAX_ARTICLES_PER_RUN=600                     # Max articles to fetch per run
-MIN_ARTICLE_LENGTH=100                       # Minimum word count to process
-
-# ─── ALERT CONFIGURATION ─────────────────────────────────────────────────────
-ALERT_EMAIL=your_email@example.com           # Email for pipeline failure alerts
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your_smtp_user@gmail.com
-SMTP_PASSWORD=your_smtp_app_password
-
-# ─── LOGGING ─────────────────────────────────────────────────────────────────
-LOG_LEVEL=INFO                               # DEBUG / INFO / WARNING / ERROR
-LOG_DIR=./logs
-
-# ─── DASHBOARD ───────────────────────────────────────────────────────────────
-REACT_APP_API_BASE_URL=http://localhost:8000
-DASHBOARD_PORT=3000
-
-# ─── DEPLOYMENT ──────────────────────────────────────────────────────────────
-ENVIRONMENT=development                      # development / staging / production
+# ─── PIPELINE ────────────────────────────────────────────────────────────────
+SCRAPE_INTERVAL=86400
+FLASK_ENV=production
 ```
 
 > **Security Note:** Never commit your `.env` file. It is already listed in `.gitignore`.
@@ -483,52 +440,15 @@ ENVIRONMENT=development                      # development / staging / productio
 
 ### Database Setup
 
-**Step 1 — Create PostgreSQL User and Database**
+Forsyt stores all news and indices in **Supabase Postgres**. Tables (`articles`, `gpr_daily`, `corridor_daily`, etc.) are created automatically when you first run any module that imports `news_dataset.db`.
+
+No local PostgreSQL server or migration script is required. Set `DATABASE_URL` in `news_dataset/.env` and start the API:
 
 ```bash
-# Access PostgreSQL shell
-sudo -u postgres psql
-
-# Inside psql
-CREATE USER forsyt_user WITH PASSWORD 'your_secure_password';
-CREATE DATABASE forsyt_db OWNER forsyt_user;
-GRANT ALL PRIVILEGES ON DATABASE forsyt_db TO forsyt_user;
-\q
+python -m news_dataset.api.server
 ```
 
-**Step 2 — Run Database Migrations**
-
-```bash
-python scripts/init_database.py
-```
-
-This creates all required tables:
-
-| Table | Description |
-|-------|-------------|
-| `raw_articles` | Raw fetched articles from all sources |
-| `structured_events` | NLP-extracted geopolitical events |
-| `gpr_index` | Daily India AI-GPR scores (2020–present) |
-| `corridor_risk` | Daily corridor risk scores per trade route |
-| `sector_sensitivity` | Historical sector sensitivity weights |
-| `ml_predictions` | Stored ML model outputs with SHAP values |
-| `pipeline_logs` | Execution logs and error records |
-
-**Step 3 — Verify Setup**
-
-```bash
-python scripts/verify_setup.py
-```
-
-Expected output:
-```
-✅ Database connection: OK
-✅ All tables created: OK
-✅ NLP models loaded: OK
-✅ Market data (yfinance): OK
-✅ RSS feed access (sample): OK
-Setup complete. Ready to run.
-```
+Also add `DATABASE_URL` as a GitHub Actions secret for automated scrape and daily-index workflows.
 
 ---
 
@@ -832,7 +752,21 @@ Top Drivers:
 
 ## API Reference
 
-The Forsyt backend exposes a REST API consumed by the frontend dashboard.
+The Forsyt backend exposes a REST API consumed by the dashboard (`news_dataset/api/server.py`).
+
+**Implemented product endpoints:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/gpr/current` | Latest India GPR |
+| `GET /api/gpr/history?start=&end=` | GPR time series |
+| `GET /api/corridors` | All corridor scores (latest day) |
+| `GET /api/corridors/{id}` | Single corridor history |
+| `GET /api/events/feed` | NLP-tagged articles |
+| `GET /api/market/dual-signal` | Geo + NIFTY vol + joint stress |
+| `GET /health`, `GET /stats`, `GET /news` | Legacy ops endpoints |
+
+Serve dashboard at `GET /`. Run: `cd news_dataset/api && python server.py`
 
 ### Base URL
 ```
@@ -1255,44 +1189,27 @@ forsyt/
 
 ## Validation Strategy
 
-Forsyt uses three independent validation methods to prove accuracy. Full details in `/docs/validation_report.md`.
+Forsyt uses **product KPIs** (pipeline reliability + index credibility), not ML headline scores. Research backtests live in `nifty-50/research/`.
 
-### Validation 1: Academic Benchmark Correlation
+### Product Success Metrics
 
 | Metric | Target | Method |
 |--------|--------|--------|
-| Pearson r | ≥ 0.60 | Monthly correlation vs. Caldara-Iacoviello India GPR |
-| p-value | < 0.05 | Significance test |
+| Pipeline uptime | 30 consecutive daily runs | GitHub Actions `daily_index.yml` |
+| Index freshness | GPR updated within 24h | `gpr_daily.updated_at` vs scrape time |
+| Caldara correlation | Monthly r ≥ 0.50 | `gpr_index/scripts/validate_gpr.py` |
+| Event detection | GPR spike within 3 days | Galwan, Pulwama, 26/11 manual check |
+| Corridor sanity | Top corridor matches news | Compare `/api/corridors` to event feed |
 
-```bash
-python validation/caldara_correlation.py --plot
-```
+### Research Validation (internal QA)
 
-### Validation 2: Historical Event Backtesting (17 Events)
+| Check | Location |
+|-------|----------|
+| OOS NIFTY vol backtest | `nifty-50/research/analysis/03_backtest.py` |
+| Caldara VAR reproduction | `nifty-50/research/run_application.py` |
+| Full write-up | `nifty-50/research/REPORT.md` |
 
-| Category | Events | Detection Target |
-|----------|--------|-----------------|
-| Tier 1 — Security | 26/11, Uri, Pulwama, Galwan, Art. 370 | 100% (5/5) |
-| Tier 2 — Political | Farmers Protests ×2, CAA, Manipur, Delhi Riots, COVID | ≥ 80% (5–6/7) |
-| Tier 3 — Economic | Demonetization, Afghanistan, Sri Lanka, Bangladesh, GST | ≥ 60% (3/5) |
-| **Overall** | | **≥ 80% (14/17)** |
-
-```bash
-python validation/event_backtesting.py --output backtesting_report.html
-```
-
-### Validation 3: ML Performance (Out-of-Sample 2023–2026)
-
-| Metric | Target |
-|--------|--------|
-| F1 Score | ≥ 0.60 |
-| ROC-AUC | ≥ 0.65 |
-| Precision | ≥ 0.55 |
-| Recall | ≥ 0.55 |
-
-```bash
-python ml_inference/evaluate.py --model xgboost --report
-```
+**Honest finding:** GPR does not beat market-only vol forecasts OOS — the product shows both signals side-by-side instead of overclaiming.
 
 ---
 

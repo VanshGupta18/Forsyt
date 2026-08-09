@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forsyt — India Geopolitical Risk Intelligence</title>
+  <link rel="stylesheet" href="/dashboard/style.css">
+</head>
+<body>
+  <header>
+    <h1>Forsyt</h1>
+    <p class="tagline">Daily India geopolitical risk + market context</p>
+    <nav>
+      <button class="nav-btn active" data-screen="home">Home</button>
+      <button class="nav-btn" data-screen="chart">GPR vs NIFTY</button>
+      <button class="nav-btn" data-screen="corridors">Corridors</button>
+      <button class="nav-btn" data-screen="events">Events</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="screen-home" class="screen active">
+      <div class="hero-meta">
+        <h2>India Market Intelligence</h2>
+        <span id="as-of-date">—</span>
+      </div>
+      <div class="stress-card">
+        <div class="stress-header">
+          <span>Joint Stress</span>
+          <span id="stress-regime" class="badge">—</span>
+        </div>
+        <div class="stress-bar"><div id="stress-fill"></div></div>
+        <div class="stress-score"><span id="stress-score">—</span> / 100</div>
+        <p id="stress-narrative" class="narrative"></p>
+      </div>
+      <div class="dual-panels">
+        <article class="panel geo">
+          <h3>Geopolitical</h3>
+          <div class="metric-row"><span>GPR</span><strong id="geo-gpr">—</strong></div>
+          <div class="metric-row"><span>Regime</span><strong id="geo-regime">—</strong></div>
+          <div class="metric-row"><span>7d change</span><strong id="geo-change">—</strong></div>
+          <div class="metric-row"><span>Top corridor</span><strong id="geo-corridor">—</strong></div>
+        </article>
+        <article class="panel vol">
+          <h3>NIFTY Vol (5d) <small>market_only</small></h3>
+          <div class="metric-row"><span>Forecast</span><strong id="vol-forecast">—</strong></div>
+          <div class="metric-row"><span>Regime</span><strong id="vol-regime">—</strong></div>
+          <div class="metric-row"><span>P(high vol)</span><strong id="vol-prob">—</strong></div>
+          <div class="metric-row"><span>Trailing 22d</span><strong id="vol-trailing">—</strong></div>
+        </article>
+      </div>
+      <p id="analog-line" class="analog"></p>
+      <ul id="driving-events" class="events-mini"></ul>
+      <p class="disclaimer" id="disclaimer"></p>
+    </section>
+
+    <section id="screen-chart" class="screen">
+      <h2>GPR vs NIFTY Trailing Vol</h2>
+      <canvas id="dual-chart" width="960" height="360"></canvas>
+      <div class="event-markers">
+        <span class="marker">Galwan (Jun 2020)</span>
+        <span class="marker">Pulwama (Feb 2019)</span>
+        <span class="marker">26/11 (Nov 2008)</span>
+      </div>
+    </section>
+
+    <section id="screen-corridors" class="screen">
+      <h2>Trade Corridor Risk</h2>
+      <p id="corridor-date" class="meta"></p>
+      <table id="corridor-table">
+        <thead>
+          <tr><th>Corridor</th><th>Risk</th><th>Threat</th><th>Energy</th><th>Goods</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="screen-events" class="screen">
+      <h2>Event Explorer</h2>
+      <div class="filters">
+        <input id="theme-filter" placeholder="Filter by theme (e.g. SANCTION)">
+        <button id="reload-events">Search</button>
+      </div>
+      <ul id="event-feed" class="event-feed"></ul>
+    </section>
+  </main>
+
+  <script src="/dashboard/app.js"></script>
+</body>
+</html>

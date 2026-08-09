@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,51 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_geo_seen_links_observed_at "
         "ON geo_seen_links ((COALESCE(published_at, first_seen_at)));"
     )
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS gpr_daily (
+            date DATE PRIMARY KEY,
+            gpr_index REAL NOT NULL,
+            gpr_7ma REAL,
+            gpr_30ma REAL,
+            gpr_acts_index REAL,
+            gpr_threats_index REAL,
+            total_articles INTEGER,
+            positive_share REAL,
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS corridor_daily (
+            date DATE NOT NULL,
+            corridor TEXT NOT NULL,
+            corridor_name TEXT,
+            corridor_risk REAL,
+            threat_index REAL,
+            energy_risk REAL,
+            goods_risk REAL,
+            raw_ratio REAL,
+            updated_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (date, corridor)
+        );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_corridor_daily_date ON corridor_daily(date);")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS dual_signal_daily (
+            as_of DATE PRIMARY KEY,
+            payload JSONB NOT NULL,
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id SERIAL PRIMARY KEY,
+            run_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            stage TEXT NOT NULL,
+            status TEXT NOT NULL,
+            details JSONB
+        );
+    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -379,6 +425,304 @@ def get_geo_cycle_stats(limit=100):
     cur.close()
     conn.close()
     return [dict(row) for row in rows]
+
+
+def upsert_gpr_daily(rows):
+    if not rows:
+        return 0
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        psycopg2.extras.execute_values(
+            cur,
+            """INSERT INTO gpr_daily
+                   (date, gpr_index, gpr_7ma, gpr_30ma, gpr_acts_index,
+                    gpr_threats_index, total_articles, positive_share, updated_at)
+               VALUES %s
+               ON CONFLICT (date) DO UPDATE SET
+                   gpr_index = EXCLUDED.gpr_index,
+                   gpr_7ma = EXCLUDED.gpr_7ma,
+                   gpr_30ma = EXCLUDED.gpr_30ma,
+                   gpr_acts_index = EXCLUDED.gpr_acts_index,
+                   gpr_threats_index = EXCLUDED.gpr_threats_index,
+                   total_articles = EXCLUDED.total_articles,
+                   positive_share = EXCLUDED.positive_share,
+                   updated_at = NOW()""",
+            rows,
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_gpr_current():
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT * FROM gpr_daily ORDER BY date DESC LIMIT 1"""
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_gpr_history(start=None, end=None, limit=500):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    clauses, params = [], []
+    if start:
+        clauses.append("date >= %s")
+        params.append(start)
+    if end:
+        clauses.append("date <= %s")
+        params.append(end)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+    cur.execute(
+        f"""SELECT date, gpr_index, gpr_7ma, gpr_30ma, gpr_acts_index,
+                   gpr_threats_index, total_articles, positive_share
+            FROM gpr_daily {where}
+            ORDER BY date DESC LIMIT %s""",
+        params,
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def upsert_corridor_daily(rows):
+    if not rows:
+        return 0
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        psycopg2.extras.execute_values(
+            cur,
+            """INSERT INTO corridor_daily
+                   (date, corridor, corridor_name, corridor_risk, threat_index,
+                    energy_risk, goods_risk, raw_ratio, updated_at)
+               VALUES %s
+               ON CONFLICT (date, corridor) DO UPDATE SET
+                   corridor_name = EXCLUDED.corridor_name,
+                   corridor_risk = EXCLUDED.corridor_risk,
+                   threat_index = EXCLUDED.threat_index,
+                   energy_risk = EXCLUDED.energy_risk,
+                   goods_risk = EXCLUDED.goods_risk,
+                   raw_ratio = EXCLUDED.raw_ratio,
+                   updated_at = NOW()""",
+            rows,
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_corridors_latest():
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT MAX(date) AS latest FROM corridor_daily")
+    latest = cur.fetchone()["latest"]
+    if not latest:
+        cur.close()
+        conn.close()
+        return None, []
+    cur.execute(
+        """SELECT corridor, corridor_name, corridor_risk, threat_index,
+                  energy_risk, goods_risk, raw_ratio, date
+           FROM corridor_daily WHERE date = %s
+           ORDER BY corridor_risk DESC NULLS LAST, corridor ASC""",
+        (latest,),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return latest, [dict(row) for row in rows]
+
+
+def get_corridor_history(corridor_id, start=None, end=None, limit=500):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    clauses, params = ["corridor = %s"], [corridor_id]
+    if start:
+        clauses.append("date >= %s")
+        params.append(start)
+    if end:
+        clauses.append("date <= %s")
+        params.append(end)
+    params.append(limit)
+    cur.execute(
+        f"""SELECT date, corridor, corridor_name, corridor_risk, threat_index,
+                   energy_risk, goods_risk, raw_ratio
+            FROM corridor_daily
+            WHERE {' AND '.join(clauses)}
+            ORDER BY date DESC LIMIT %s""",
+        params,
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_recent_news(
+    limit=100,
+    tier=None,
+    theme=None,
+    corridor=None,
+    start=None,
+    end=None,
+    tagged_only=False,
+):
+    """Live scraped articles from Postgres. NLP tags optional unless tagged_only."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    clauses = ["tier IS NOT NULL", "duplicate_of IS NULL"]
+    params = []
+    if tagged_only:
+        clauses.append("nlp_extracted_at IS NOT NULL")
+    if tier is not None:
+        clauses.append("tier = %s")
+        params.append(tier)
+    if theme:
+        clauses.append(
+            "(nlp_themes ILIKE %s OR title ILIKE %s OR content ILIKE %s)"
+        )
+        params.extend([f"%{theme}%"] * 3)
+    if corridor:
+        clauses.append(
+            "(nlp_locations ILIKE %s OR title ILIKE %s OR content ILIKE %s)"
+        )
+        params.extend([f"%{corridor}%"] * 3)
+    if start:
+        clauses.append("COALESCE(published_at, scraped_at) >= %s")
+        params.append(start)
+    if end:
+        clauses.append("COALESCE(published_at, scraped_at) < %s")
+        params.append(end)
+    params.append(limit)
+    cur.execute(
+        f"""SELECT id, title, source, link, published_at, scraped_at, tier,
+                   nlp_themes, nlp_locations, nlp_tone_neg, nlp_tone_polarity,
+                   confidence, matched_keywords
+            FROM articles
+            WHERE {' AND '.join(clauses)}
+            ORDER BY COALESCE(published_at, scraped_at) DESC NULLS LAST
+            LIMIT %s""",
+        params,
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_events_feed(limit=100, theme=None, corridor=None, tier=None, start=None, end=None):
+    """Product event feed: live Postgres news, NLP-tagged when available."""
+    return get_recent_news(
+        limit=limit,
+        tier=tier,
+        theme=theme,
+        corridor=corridor,
+        start=start,
+        end=end,
+        tagged_only=False,
+    )
+
+
+def get_events_feed_tagged(limit=100, theme=None, corridor=None, tier=None, start=None, end=None):
+    """NLP-complete articles only (pipeline QA)."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    clauses = [
+        "tier IS NOT NULL",
+        "duplicate_of IS NULL",
+        "nlp_extracted_at IS NOT NULL",
+    ]
+    params = []
+    if tier is not None:
+        clauses.append("tier = %s")
+        params.append(tier)
+    if theme:
+        clauses.append("nlp_themes ILIKE %s")
+        params.append(f"%{theme}%")
+    if corridor:
+        clauses.append("nlp_locations ILIKE %s")
+        params.append(f"%{corridor}%")
+    if start:
+        clauses.append("COALESCE(published_at, scraped_at) >= %s")
+        params.append(start)
+    if end:
+        clauses.append("COALESCE(published_at, scraped_at) < %s")
+        params.append(end)
+    params.append(limit)
+    cur.execute(
+        f"""SELECT id, title, source, link, published_at, tier,
+                   nlp_themes, nlp_locations, nlp_tone_neg, nlp_tone_polarity
+            FROM articles
+            WHERE {' AND '.join(clauses)}
+            ORDER BY COALESCE(published_at, scraped_at) DESC NULLS LAST
+            LIMIT %s""",
+        params,
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def upsert_dual_signal(as_of, payload):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO dual_signal_daily (as_of, payload, updated_at)
+               VALUES (%s, %s, NOW())
+               ON CONFLICT (as_of) DO UPDATE SET
+                   payload = EXCLUDED.payload,
+                   updated_at = NOW()""",
+            (as_of, json.dumps(payload)),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_dual_signal(as_of=None):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if as_of:
+        cur.execute("SELECT as_of, payload FROM dual_signal_daily WHERE as_of = %s", (as_of,))
+    else:
+        cur.execute("SELECT as_of, payload FROM dual_signal_daily ORDER BY as_of DESC LIMIT 1")
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return None
+    payload = row["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    return {"as_of": row["as_of"], **payload}
+
+
+def log_pipeline_run(stage, status, details=None):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO pipeline_runs (stage, status, details)
+           VALUES (%s, %s, %s)""",
+        (stage, status, json.dumps(details or {})),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 init_db()

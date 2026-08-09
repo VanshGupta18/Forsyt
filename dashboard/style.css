@@ -1,0 +1,159 @@
+:root {
+  --bg: #0f1419;
+  --card: #1a2332;
+  --text: #e7ecf3;
+  --muted: #8b98a8;
+  --accent: #3b82f6;
+  --geo: #b3202c;
+  --vol: #1f6f3d;
+  --watch: #d97706;
+  --calm: #059669;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+header {
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid #243044;
+  background: #121820;
+}
+
+header h1 { margin: 0; font-size: 1.5rem; }
+.tagline { margin: 0.25rem 0 1rem; color: var(--muted); }
+
+nav { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.nav-btn {
+  background: transparent;
+  border: 1px solid #334155;
+  color: var(--text);
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.nav-btn.active, .nav-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+.screen { display: none; }
+.screen.active { display: block; }
+
+.hero-meta { display: flex; justify-content: space-between; align-items: baseline; }
+.hero-meta h2 { margin: 0; }
+
+.stress-card {
+  margin: 1rem 0;
+  padding: 1.25rem;
+  background: var(--card);
+  border-radius: 12px;
+  border: 1px solid #2a3548;
+}
+
+.stress-header { display: flex; justify-content: space-between; align-items: center; }
+.badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--watch);
+}
+.badge.HIGH_STRESS { background: var(--geo); }
+.badge.CALM { background: var(--calm); }
+
+.stress-bar {
+  height: 12px;
+  background: #243044;
+  border-radius: 999px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+}
+#stress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--calm), var(--watch), var(--geo));
+  transition: width 0.4s ease;
+}
+
+.stress-score { font-size: 1.75rem; font-weight: 700; }
+.narrative, .analog, .disclaimer { color: var(--muted); }
+.disclaimer { font-size: 0.85rem; margin-top: 1rem; }
+
+.dual-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.panel {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border: 1px solid #2a3548;
+}
+.panel.geo { border-top: 3px solid var(--geo); }
+.panel.vol { border-top: 3px solid var(--vol); }
+.panel h3 { margin-top: 0; }
+.panel small { color: var(--muted); font-weight: normal; }
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #243044;
+}
+
+.events-mini { list-style: none; padding: 0; }
+.events-mini li { padding: 0.5rem 0; border-bottom: 1px solid #243044; }
+.events-mini a { color: var(--accent); text-decoration: none; }
+
+#dual-chart {
+  width: 100%;
+  max-width: 100%;
+  background: var(--card);
+  border-radius: 12px;
+  border: 1px solid #2a3548;
+}
+
+.event-markers { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; color: var(--muted); font-size: 0.85rem; }
+.marker::before { content: "▌"; color: var(--geo); margin-right: 0.25rem; }
+
+table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
+th, td { padding: 0.65rem 0.75rem; text-align: left; border-bottom: 1px solid #243044; }
+th { background: #121820; color: var(--muted); font-size: 0.85rem; }
+
+.risk-high { color: #f87171; font-weight: 700; }
+.risk-mid { color: #fbbf24; }
+.risk-low { color: #34d399; }
+
+.filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.filters input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: var(--card);
+  color: var(--text);
+}
+.filters button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.event-feed { list-style: none; padding: 0; }
+.event-feed li {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid #243044;
+}
+.event-feed .meta { color: var(--muted); font-size: 0.85rem; }
+
+.meta { color: var(--muted); }

@@ -1,0 +1,39 @@
+name: Daily India GPR Index
+
+on:
+  schedule:
+    # Once daily at 18:30 UTC (~ midnight IST) after news scrape cycles
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  daily-index:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install news pipeline dependencies
+        run: pip install -r news_dataset/requirements.txt pandas pyarrow
+
+      - name: Install NLP dependencies
+        run: pip install -r news_dataset/requirements-nlp.txt
+
+      - name: Install GPR index dependencies
+        run: pip install -r gpr_index/requirements.txt
+
+      - name: Install NIFTY modelling dependencies
+        run: pip install -r nifty-50/requirements.txt
+
+      - name: Run daily index pipeline
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m news_dataset.pipeline.daily_index

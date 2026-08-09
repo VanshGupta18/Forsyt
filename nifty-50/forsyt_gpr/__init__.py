@@ -1,14 +1,13 @@
 """Forsyt GPR modelling package.
 
-Implements the application note (application.md) against any geopolitical-risk
-index that conforms to the canonical GPR frame in `data.as_gpr_frame`.
+Product surface:
+  data         -- loaders + the pluggable GPR-frame contract
+  dual_signal  -- geo + market_only NIFTY vol + joint stress (product API)
+  features     -- GPRT/GPRA/benchmark features, market baseline block
+  vol_model    -- XGBoost forward-volatility model (market_only in product)
 
-  data       -- loaders + the pluggable GPR-frame contract
-  features   -- MD 1: GPRT/GPRA/benchmark features, market baseline block
-  vol_model  -- MD 2: XGBoost forward-volatility model, purged walk-forward
-  macro_var  -- MD A: VAR -> investment & employment impulse responses
-  downside   -- MD A: quantile regression -> downside/disaster risk
+Research modules (VAR, quantile regression) live in ../research/.
 """
-from . import data, features, vol_model, macro_var, downside  # noqa: F401
+from . import data, dual_signal, features, vol_model  # noqa: F401
 
-__all__ = ["data", "features", "vol_model", "macro_var", "downside"]
+__all__ = ["data", "dual_signal", "features", "vol_model"]

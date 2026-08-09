@@ -8,7 +8,6 @@ DATA = "data"
 def load_price(name):
     """Load a cached daily close series, robust to yfinance's header quirks."""
     df = pd.read_csv(f"{DATA}/{name}.csv")
-    # first col is the date, second is the price (header may be 'Close'/ticker)
     df = df.rename(columns={df.columns[0]: "Date"})
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df = df.dropna(subset=["Date"])
@@ -18,10 +17,6 @@ def load_price(name):
 
 
 def monthly_from_daily_price(price):
-    """From a daily price series build a month-indexed frame with:
-       ret   = monthly log return (%)
-       rvol  = realized volatility = std of daily log returns in month, annualized (%)
-    """
     lr = np.log(price).diff().dropna()
     grp = lr.groupby(lr.index.to_period("M"))
     rvol = grp.std() * np.sqrt(252) * 100

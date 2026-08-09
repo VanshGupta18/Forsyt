@@ -1,12 +1,7 @@
 """
-Runner for application.md -- exercises the three modules on real data.
+Runner for application.md -- exercises research modules on benchmark data.
 
-  Module 2 (MD 2)  : XGBoost forward-vol model, NIFTY + S&P, purged walk-forward
-  Module A1 (MD A) : VAR -> corporate investment & employment IRFs
-  Module A2 (MD A) : quantile regression -> downside/disaster risk
-
-Everything runs off the canonical GPR frame, so swapping in Forsyt's India index
-is a one-line change (see the FORSYT note at the bottom).
+Run from nifty-50/:  python research/run_application.py
 """
 import numpy as np
 import pandas as pd
@@ -14,7 +9,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from forsyt_gpr import data, vol_model, macro_var, downside
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(_ROOT))
+
+from forsyt_gpr import data, vol_model
+from macro_var import run_macro_var, summarize
+from downside import quantile_curve, tail_asymmetry
 
 plt.rcParams.update({"figure.dpi": 130, "font.size": 9})
 pd.set_option("display.width", 130)
@@ -58,14 +61,14 @@ print("=" * 78)
 neworder = data.load_fred("NEWORDER")
 payems = data.load_fred("PAYEMS")
 macro = {
-    "investment": (np.log(neworder).diff() * 100).resample("MS").last(),   # capex proxy
+    "investment": (np.log(neworder).diff() * 100).resample("MS").last(),
     "employment": (np.log(payems).diff() * 100).resample("MS").last(),
     "stock_ret":  (np.log(spx).diff().resample("MS").sum() * 100),
 }
-irf, lo, hi, res = macro_var.run_macro_var(gf, macro, horizon=24, start="1992-02-01")
+irf, lo, hi, res = run_macro_var(gf, macro, horizon=24, start="1992-02-01")
 print(f"VAR lags={res.k_ar}  n={res.nobs}")
 print("\nPeak/trough response to a 1 s.d. GPR shock (%):")
-print(macro_var.summarize(irf).round(3).to_string())
+print(summarize(irf).round(3).to_string())
 
 fig, axes = plt.subplots(1, 4, figsize=(13, 3))
 for ax, c in zip(axes, irf.columns):
@@ -84,8 +87,8 @@ print("Claim under test (MD sec.A): higher GPR => LARGER DOWNSIDE risk.")
 print("That predicts beta(0.05) strongly NEGATIVE and below beta(0.50).\n")
 for label, px in [("NIFTY 50", nifty), ("S&P 500", spx)]:
     for spec in ("shock", "level"):
-        curve = downside.quantile_curve(gf, px, horizon=21, spec=spec)
-        a = downside.tail_asymmetry(curve)
+        curve = quantile_curve(gf, px, horizon=21, spec=spec)
+        a = tail_asymmetry(curve)
         note = "CORRECT spec" if spec == "shock" else "confounded, diagnostic only"
         print(f"--- {label}  spec={spec} ({note})  n={curve.attrs['n']} ---")
         if spec == "shock":
@@ -96,7 +99,7 @@ for label, px in [("NIFTY 50", nifty), ("S&P 500", spx)]:
 
 fig, axes = plt.subplots(1, 2, figsize=(9, 3.4))
 for ax, (label, px) in zip(axes, [("NIFTY 50", nifty), ("S&P 500", spx)]):
-    c = downside.quantile_curve(gf, px, horizon=21)
+    c = quantile_curve(gf, px, horizon=21)
     ax.plot(c.index, c["beta_gpr"], "o-", color="#1f6f3d")
     ax.fill_between(c.index, c["beta_gpr"] - 1.645 * c["se"],
                     c["beta_gpr"] + 1.645 * c["se"], color="#1f6f3d", alpha=.18)
@@ -108,13 +111,3 @@ fig.tight_layout(); fig.savefig("output/figures/D2_downside.png", bbox_inches="t
 plt.close(fig)
 
 print("\nsaved output/figures/D1_macro_var.png, D2_downside.png")
-print("""
-FORSYT PLUG-IN
---------------
-    from forsyt_gpr.data import as_gpr_frame
-    raw = pd.read_sql("select day, india_gpr, threats, acts from gpr_index", con)
-    gf  = as_gpr_frame(raw.set_index("day"), gpr="india_gpr",
-                       threats="threats", acts="acts")
-    reg, clf, _ = vol_model.run_vol_experiment(gf, nifty, horizon=5)
-Every module above then runs unchanged on Forsyt's own index.
-""")

@@ -1,16 +1,5 @@
 """
-MD section A -- "spikes in the GPR index systematically foreshadow declines in
-aggregate corporate investment and national employment rates" (VAR + impulse
-response functions).
-
-Implements the Caldara & Iacoviello (2022) design: a recursive monthly VAR with
-GPR ordered FIRST (so its reduced-form innovation is the structural shock -- the
-standard assumption that geopolitical events are not caused within-month by US
-investment or payrolls), then impulse responses to a one-s.d. GPR shock.
-
-Investment proxy: FRED NEWORDER (new orders, nondefense capital goods ex
-aircraft) -- the standard MONTHLY capex proxy. Actual gross private investment
-(GPDI) is quarterly and cannot enter a monthly VAR without interpolation.
+MD section A -- VAR impulse responses (research only).
 """
 from __future__ import annotations
 import numpy as np
@@ -27,11 +16,7 @@ def to_monthly(gf: pd.DataFrame) -> pd.Series:
 def run_macro_var(gf: pd.DataFrame, macro: dict, lags: int | None = None,
                   horizon: int = 24, start: str = "1992-01-01", signif: float = 0.10,
                   repl: int = 400, seed: int = 1):
-    """Recursive VAR of [logGPR, *macro] with GPR ordered first.
-
-    `macro` maps display name -> monthly series ALREADY in the units you want
-    plotted (e.g. growth rates in %). Returns (irf_df, lower, upper, results).
-    """
+    """Recursive VAR of [logGPR, *macro] with GPR ordered first."""
     df = pd.concat([to_monthly(gf)] + [s.rename(k) for k, s in macro.items()],
                    axis=1).dropna()
     df = df.loc[start:]
@@ -42,7 +27,7 @@ def run_macro_var(gf: pd.DataFrame, macro: dict, lags: int | None = None,
     res = model.fit(lags)
 
     irf = res.irf(horizon)
-    resp = irf.orth_irfs[:, :, 0]                       # 1 s.d. shock to logGPR
+    resp = irf.orth_irfs[:, :, 0]
     lo, hi = irf.errband_mc(orth=True, repl=repl, signif=signif, seed=seed)
     irf_df = pd.DataFrame(resp, columns=order)
     irf_df.index.name = "horizon_months"
