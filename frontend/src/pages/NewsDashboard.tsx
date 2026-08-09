@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { fetchGprCurrent, fetchRecentNews, type NewsArticle } from '../lib/api'
 import Reveal from '../components/Reveal'
 import WorldMap, { type MapMarkerData, type MapSeverity } from '../components/WorldMap'
 import LiveClock from '../components/LiveClock'
@@ -45,6 +46,18 @@ export default function NewsDashboard() {
   const [activeSeverities, setActiveSeverities] = useState<Set<MapSeverity>>(
     new Set(['critical', 'moderate', 'stable']),
   )
+  const [articles, setArticles] = useState<NewsArticle[]>([])
+  const [gprIndex, setGprIndex] = useState<number | null>(null)
+  const [feedError, setFeedError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchRecentNews(12)
+      .then((payload) => setArticles(payload.articles ?? []))
+      .catch((err: Error) => setFeedError(err.message))
+    fetchGprCurrent()
+      .then((gpr) => setGprIndex(gpr.gpr_index ?? null))
+      .catch(() => undefined)
+  }, [])
 
   function toggleSeverity(s: MapSeverity) {
     setActiveSeverities((prev) => {
@@ -117,7 +130,7 @@ export default function NewsDashboard() {
       <div className="card-lift bg-[#111520] border border-[#2e4063] rounded-xl p-5 shadow-glow-blue flex items-center justify-between relative overflow-hidden group hover:border-[#3b82f6]/50 transition-colors">
       <div className="flex flex-col gap-1 z-10">
       <span className="text-xs font-semibold text-[#8b97ab] uppercase tracking-wider">Active Global Events</span>
-      <span className="text-3xl font-bold text-white">42</span>
+      <span className="text-3xl font-bold text-white">{articles.length || "—"}</span>
       </div>
       <div className="w-10 h-10 rounded-full bg-[#3b82f6]/10 flex items-center justify-center text-[#3b82f6] z-10">
       <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" strokeLinecap="round" strokeLinejoin="round"></path></svg>
@@ -305,82 +318,36 @@ export default function NewsDashboard() {
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       
-      <article className="bg-[#111520] border border-[#1f2638] rounded-xl overflow-hidden flex flex-col group hover:-translate-y-1 transition-transform duration-300">
-      <div className="h-40 w-full overflow-hidden relative">
-      <img alt="Port Infrastructure" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCeUf3WsidUUrKK5QCxnPXsljlS5ceZcknqO8xqFCf8qcF7XVyhAkyiY6WTLy370RlByW5JSfZGlNp0u5Jr8UgJCaK-FK3uV0bD_U_ETSNerTnAS0CuFyb3K33v2w7AjuPa88N9AyCn53q_d43hPYCZX47f8RMWkG8G9_XtwibHuyX8H_QYL_N9s_oovwTDC3zOgIuIsfueqaVsD2d6LJOk_MbSCpreJ_ZwsU23rQAOzJNcvW8nbboDICTDrwgR_h3Z2Nvlio8SYA1"/>
-      
-      <div className="absolute inset-0 bg-gradient-to-t from-[#111520] via-transparent to-transparent"></div>
-      </div>
-      <div className="p-5 flex-1 flex flex-col">
-      <div className="flex items-center justify-between text-xs font-medium text-[#8b97ab] uppercase tracking-wider mb-2">
-      <span>Trade &amp; Corridor</span>
-      <span>14:20 GMT</span>
-      </div>
-      <h3 className="text-base font-semibold text-white leading-snug mb-4">IMEC Corridor Negotiations Enter Critical Phase Amid Regional...</h3>
-      <div className="flex flex-wrap gap-2 mb-6">
-      <span className="px-2 py-1 text-[10px] font-bold bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/20 rounded">RISK: ELEVATED</span>
-      <span className="px-2 py-1 text-[10px] font-bold bg-[#0a0d14] text-[#8b97ab] border border-[#1f2638] rounded">SOURCE: REUTERS INTELLIGENCE</span>
-      </div>
-      <div className="mt-auto pt-4 border-t border-[#1f2638]/50 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-      <span className="w-7 h-7 rounded bg-[#10b981]/10 text-[#10b981] flex items-center justify-center text-xs font-bold border border-[#10b981]/20">85%</span>
-      <span className="text-sm font-medium text-[#e2e8f0]">Confidence</span>
-      </div>
-      <svg className="w-4 h-4 text-[#8b97ab] group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" strokeLinecap="round" strokeLinejoin="round"></path></svg>
-      </div>
-      </div>
-      </article>
-      
-      <article className="bg-[#111520] border border-[#1f2638] rounded-xl overflow-hidden flex flex-col group hover:-translate-y-1 transition-transform duration-300">
-      <div className="h-40 w-full overflow-hidden relative">
-      <img alt="Manufacturing Facility" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQFy1FyBgM5efYBMo49FyUiw4TXWJwJAsPemEVgiLdxvJQOyN68zROnY5_GRblskgg3upimqlrnTN-eXs0t2Qgcr7uM6tEXH5RpekCBBCprTNRaM9NjFNny4TWI6nSNyzxu4d_ebI8TSwUyBus06HRKLlmK5BhC5iSZ5NNG57yGwbd4GW1zFqlql44QWidXftLdlYR9WUg9_1XeTs0wQsF7uvrbEmXwp2Nxo1PGBHXY6GTzzDYdvu6haOcFFTMpEFGwNLuelzg1SBz"/>
-      <div className="absolute inset-0 bg-gradient-to-t from-[#111520] via-transparent to-transparent"></div>
-      </div>
-      <div className="p-5 flex-1 flex flex-col">
-      <div className="flex items-center justify-between text-xs font-medium text-[#8b97ab] uppercase tracking-wider mb-2">
-      <span>Macroeconomics</span>
-      <span>12:45 GMT</span>
-      </div>
-      <h3 className="text-base font-semibold text-white leading-snug mb-4">RBI Signals Stability Amid Global Semi-Conductor Supply Chain...</h3>
-      <div className="flex flex-wrap gap-2 mb-6">
-      <span className="px-2 py-1 text-[10px] font-bold bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/20 rounded">RISK: STABLE</span>
-      <span className="px-2 py-1 text-[10px] font-bold bg-[#0a0d14] text-[#8b97ab] border border-[#1f2638] rounded">SOURCE: MINT ALPHA</span>
-      </div>
-      <div className="mt-auto pt-4 border-t border-[#1f2638]/50 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-      <span className="w-7 h-7 rounded bg-[#10b981]/10 text-[#10b981] flex items-center justify-center text-xs font-bold border border-[#10b981]/20">92%</span>
-      <span className="text-sm font-medium text-[#e2e8f0]">Confidence</span>
-      </div>
-      <svg className="w-4 h-4 text-[#8b97ab] group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" strokeLinecap="round" strokeLinejoin="round"></path></svg>
-      </div>
-      </div>
-      </article>
-      
-      <article className="bg-[#111520] border border-[#1f2638] rounded-xl overflow-hidden flex flex-col group hover:-translate-y-1 transition-transform duration-300">
-      <div className="h-40 w-full overflow-hidden relative">
-      <img alt="Cyber Security Visualization" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJ3yRNNSn6PD6oBDLdczoH9rLhDrSULfg9XoJFyiZjpHmWVlAHWzsH4cMbxPKr3yRJBUa4eK59hrskntGo57uwrweFfdK2iqj3qJNXlqt-6yPpU3MFuXxR8r9FQCvzV399qAUdcgw3SP4_iDvoJSRcuR0IOK7sTOE4jzOKJ8OZhnyX3RJ1m-kCthIMvInfSjJ-jkjmzAMLBCVc8CsZbWL0r_j5Ss7zC-aWhmm5qSeux5AU_K-wN4nISzxvuNOsN0EMnWeZ26eBk0Wq"/>
-      <div className="absolute inset-0 bg-gradient-to-t from-[#111520] via-transparent to-transparent"></div>
-      </div>
-      <div className="p-5 flex-1 flex flex-col">
-      <div className="flex items-center justify-between text-xs font-medium text-[#8b97ab] uppercase tracking-wider mb-2">
-      <span>Cyber Security</span>
-      <span>10:15 GMT</span>
-      </div>
-      <h3 className="text-base font-semibold text-white leading-snug mb-4">State-Linked Threat Actors Target Critical Power...</h3>
-      <div className="flex flex-wrap gap-2 mb-6">
-      <span className="px-2 py-1 text-[10px] font-bold bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/20 rounded">RISK: HIGH</span>
-      <span className="px-2 py-1 text-[10px] font-bold bg-[#0a0d14] text-[#8b97ab] border border-[#1f2638] rounded">SOURCE: CYBER SECURITY INTEL</span>
-      </div>
-      <div className="mt-auto pt-4 border-t border-[#1f2638]/50 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-      <span className="w-7 h-7 rounded bg-[#f59e0b]/10 text-[#f59e0b] flex items-center justify-center text-xs font-bold border border-[#f59e0b]/20">76%</span>
-      <span className="text-sm font-medium text-[#e2e8f0]">Confidence</span>
-      </div>
-      <svg className="w-4 h-4 text-[#8b97ab] group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" strokeLinecap="round" strokeLinejoin="round"></path></svg>
-      </div>
-      </div>
-      </article>
-      </div>
+      {feedError && (
+        <p className="text-sm text-[#f59e0b] mb-4">API feed unavailable ({feedError}). Start Flask on :5000 or use Vite proxy.</p>
+      )}
+
+      {articles.length > 0 ? (
+        articles.map((article) => (
+          <article key={article.link || article.title} className="bg-[#111520] border border-[#1f2638] rounded-xl overflow-hidden flex flex-col group hover:-translate-y-1 transition-transform duration-300">
+            <div className="p-5 flex-1 flex flex-col">
+              <div className="flex items-center justify-between text-xs font-medium text-[#8b97ab] uppercase tracking-wider mb-2">
+                <span>{article.nlp_themes?.split(',')[0]?.trim() || 'Geopolitical'}</span>
+                <span>{(article.published_at || article.scraped_at || '').slice(11, 16) || 'Live'}</span>
+              </div>
+              <h3 className="text-base font-semibold text-white leading-snug mb-4">
+                <a href={article.link} target="_blank" rel="noopener noreferrer" className="hover:text-[#3b82f6]">
+                  {article.title}
+                </a>
+              </h3>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <span className="px-2 py-1 text-[10px] font-bold bg-[#0a0d14] text-[#8b97ab] border border-[#1f2638] rounded">
+                  {article.source || 'Source'} · tier {article.tier ?? '—'}
+                </span>
+              </div>
+              <p className="text-xs text-[#8b97ab] mt-auto">{article.nlp_themes || '(awaiting NLP tags)'}</p>
+            </div>
+          </article>
+        ))
+      ) : (
+        <p className="text-sm text-[#8b97ab] col-span-full">No articles in PostgreSQL yet — run the scrape pipeline, then reload.</p>
+      )}
+</div>
       </section>
       </Reveal>
 

@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from 'react'
 import Reveal from '../components/Reveal'
+import { corridorRiskLabel, fetchCorridors } from '../lib/api'
 import WorldMap, { type MapMarkerData } from '../components/WorldMap'
 import LiveClock from '../components/LiveClock'
 
@@ -41,6 +43,23 @@ const corridorMarkers: MapMarkerData[] = [
 ]
 
 export default function TradeCorridorDashboard() {
+  const [corridors, setCorridors] = useState<Awaited<ReturnType<typeof fetchCorridors>>['corridors']>([])
+  const [asOf, setAsOf] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchCorridors()
+      .then((payload) => {
+        setCorridors(payload.corridors ?? [])
+        setAsOf(typeof payload.date === 'string' ? payload.date : null)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  const highRiskCount = useMemo(
+    () => (corridors ?? []).filter((c) => Number(c.corridor_risk ?? 0) >= 50).length,
+    [corridors],
+  )
+
   return (
     <>
 
@@ -63,7 +82,7 @@ export default function TradeCorridorDashboard() {
       <span className="font-label-md text-label-md text-on-surface-variant uppercase">ACTIVE TRADE CORRIDORS</span>
       <span className="material-symbols-outlined text-outline" style={{fontVariationSettings: '\'FILL\' 0'}}>hub</span>
       </div>
-      <div className="font-display-lg text-display-lg">14</div>
+      <div className="font-display-lg text-display-lg">{corridors?.length || 14}</div>
       <div className="text-secondary font-label-md text-label-md flex items-center gap-1 mt-auto">
       <span className="material-symbols-outlined text-[16px]">trending_up</span> + 2 New Proposed
                       </div>
@@ -73,7 +92,7 @@ export default function TradeCorridorDashboard() {
       <span className="font-label-md text-label-md text-error uppercase">HIGH RISK SHIPPING ROUTES</span>
       <span className="material-symbols-outlined text-error" style={{fontVariationSettings: '\'FILL\' 0'}}>warning</span>
       </div>
-      <div className="font-display-lg text-display-lg">06</div>
+      <div className="font-display-lg text-display-lg">{highRiskCount || 6}</div>
       <div className="text-error font-label-md text-label-md flex items-center gap-1 mt-auto">
       <span className="material-symbols-outlined text-[16px]">arrow_upward</span> Red Sea Elevated
                       </div>
@@ -247,30 +266,19 @@ export default function TradeCorridorDashboard() {
       </tr>
       </thead>
       <tbody className="divide-y divide-white/5">
-      <tr>
-      <td className="py-3 font-semibold">Red Sea Route</td>
-      <td className="py-3 text-error">Restricted</td>
-      <td className="py-3 text-error">High</td>
-      <td className="py-3 text-error">+14 Days</td>
-      </tr>
-      <tr>
-      <td className="py-3 font-semibold">Suez Canal</td>
-      <td className="py-3 text-secondary">Operational</td>
-      <td className="py-3 text-tertiary">Medium</td>
-      <td className="py-3 text-tertiary">+2 Days</td>
-      </tr>
-      <tr>
-      <td className="py-3 font-semibold">IMEC Corridor</td>
-      <td className="py-3 text-tertiary">Developing</td>
-      <td className="py-3 text-tertiary">Medium-High</td>
-      <td className="py-3 text-on-surface-variant">N/A</td>
-      </tr>
-      <tr>
-      <td className="py-3 font-semibold">Malacca Strait</td>
-      <td className="py-3 text-secondary">Operational</td>
-      <td className="py-3 text-secondary">Low</td>
-      <td className="py-3 text-secondary">+1 Day</td>
-      </tr>
+      {(corridors?.length ? corridors : []).slice(0, 8).map((row) => {
+        const risk = Number(row.corridor_risk ?? 0)
+        const { label, className } = corridorRiskLabel(risk)
+        return (
+          <tr key={row.corridor || row.corridor_name}>
+            <td className="py-3 font-semibold">{row.corridor_name || row.corridor}</td>
+            <td className="py-3 text-secondary">Monitored</td>
+            <td className={`py-3 ${className}`}>{label} ({risk.toFixed(1)})</td>
+            <td className="py-3 text-on-surface-variant">{asOf ? `As of ${asOf}` : '—'}</td>
+          </tr>
+        )
+      })}
+
       </tbody>
       </table>
       </div>

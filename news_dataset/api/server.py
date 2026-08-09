@@ -54,9 +54,26 @@ def _serialize_rows(rows):
     return serialize_rows(rows)
 
 
+
+
 @app.get("/")
-def dashboard_home():
+def root():
+    return jsonify({
+        "service": "forsyt-api",
+        "legacy_dashboard": "/legacy",
+        "frontend_dev": "cd frontend && npm run dev",
+    })
+
+@app.get("/legacy")
+@app.get("/legacy/")
+def legacy_dashboard_home():
+    """Static product dashboard (HTML/JS); React UI lives in frontend/."""
     return send_from_directory(DASHBOARD_DIR, "index.html")
+
+
+@app.get("/legacy/<path:filename>")
+def legacy_dashboard_assets(filename: str):
+    return send_from_directory(DASHBOARD_DIR, filename)
 
 
 @app.get("/dashboard/<path:filename>")

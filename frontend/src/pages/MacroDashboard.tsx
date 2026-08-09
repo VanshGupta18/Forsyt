@@ -1,13 +1,37 @@
+import { useEffect, useState } from 'react'
 import Reveal from '../components/Reveal'
+import { fetchDualSignal, type DualSignalPayload } from '../lib/api'
 import macroChartImg from '../assets/module-macro.jpg'
 
 export default function MacroDashboard() {
+  const [dual, setDual] = useState<DualSignalPayload | null>(null)
+
+  useEffect(() => {
+    fetchDualSignal(true).then(setDual).catch(() => undefined)
+  }, [])
+
+  const geo = dual?.geopolitical
+  const vol = dual?.nifty_volatility
+  const joint = dual?.joint_stress
+
   return (
     <>
       
       
       
       
+
+      {dual && (
+        <div className="border-b border-[#3b82f6]/30 bg-[#0A101C]/80 py-3">
+          <div className="max-w-[1600px] mx-auto px-6 text-sm text-gray-300 flex flex-wrap gap-6">
+            <span>GPR: <strong className="text-white">{geo?.gpr_index ?? '—'}</strong> ({geo?.regime})</span>
+            <span>Vol forecast (5d): <strong className="text-white">{vol?.vol_forecast_5d != null ? `${vol.vol_forecast_5d}%` : '—'}</strong></span>
+            <span>Joint stress: <strong className="text-white">{joint?.stress_score ?? '—'}</strong> ({joint?.stress_regime})</span>
+            <span className="text-gray-500">{joint?.narrative}</span>
+          </div>
+        </div>
+      )}
+
       <div className="border-b border-white/5 bg-[#0A101C]/50 py-2 overflow-x-auto scrollbar-hide">
       <div className="max-w-[1600px] mx-auto px-6 flex items-center gap-8 text-xs font-medium whitespace-nowrap">
       <div className="flex items-center gap-2">
