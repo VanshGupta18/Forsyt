@@ -16,6 +16,24 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 
 logger = logging.getLogger(__name__)
 
+try:
+    from gpr_index.scripts.paths import INDIA_GPR_INDEX_START
+except ImportError:  # pragma: no cover - tests without repo root on path
+    INDIA_GPR_INDEX_START = date.fromisoformat(
+        os.environ.get("INDIA_GPR_INDEX_START", "2026-08-09")
+    )
+
+
+def _index_start(start=None):
+    """Clamp query start to the India news GPR index floor."""
+    if start is None:
+        return INDIA_GPR_INDEX_START
+    if isinstance(start, date):
+        day = start
+    else:
+        day = date.fromisoformat(str(start)[:10])
+    return max(day, INDIA_GPR_INDEX_START)
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is required (PostgreSQL only).")
@@ -503,11 +521,36 @@ def upsert_gpr_daily(rows):
         conn.close()
 
 
+def delete_gpr_daily_before(cutoff) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM gpr_daily WHERE date < %s", (cutoff,))
+    deleted = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return deleted
+
+
+def delete_corridor_daily_before(cutoff) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM corridor_daily WHERE date < %s", (cutoff,))
+    deleted = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return deleted
+
+
 def get_gpr_current():
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(
-        """SELECT * FROM gpr_daily ORDER BY date DESC LIMIT 1"""
+        """SELECT * FROM gpr_daily
+           WHERE date >= %s
+           ORDER BY date DESC LIMIT 1""",
+        (INDIA_GPR_INDEX_START,),
     )
     row = cur.fetchone()
     cur.close()
@@ -518,10 +561,7 @@ def get_gpr_current():
 def get_gpr_history(start=None, end=None, limit=500):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    clauses, params = [], []
-    if start:
-        clauses.append("date >= %s")
-        params.append(start)
+    clauses, params = ["date >= %s"], [_index_start(start)]
     if end:
         clauses.append("date <= %s")
         params.append(end)
@@ -572,7 +612,10 @@ def upsert_corridor_daily(rows):
 def get_corridors_latest():
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT MAX(date) AS latest FROM corridor_daily")
+    cur.execute(
+        "SELECT MAX(date) AS latest FROM corridor_daily WHERE date >= %s",
+        (INDIA_GPR_INDEX_START,),
+    )
     latest = cur.fetchone()["latest"]
     if not latest:
         cur.close()
@@ -594,10 +637,7 @@ def get_corridors_latest():
 def get_corridor_history(corridor_id, start=None, end=None, limit=500):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    clauses, params = ["corridor = %s"], [corridor_id]
-    if start:
-        clauses.append("date >= %s")
-        params.append(start)
+    clauses, params = ["corridor = %s", "date >= %s"], [corridor_id, _index_start(start)]
     if end:
         clauses.append("date <= %s")
         params.append(end)

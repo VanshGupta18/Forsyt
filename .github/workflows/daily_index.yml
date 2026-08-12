@@ -16,6 +16,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore india processed parquets
+        uses: actions/cache/restore@v4
+        id: parquet-cache
+        with:
+          path: gpr_index/data/india_processed
+          key: india-processed-parquets-v1
+          restore-keys: |
+            india-processed-parquets-v1
+
+      - name: Ensure parquet directory exists
+        run: mkdir -p gpr_index/data/india_processed
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -36,4 +48,14 @@ jobs:
       - name: Run daily index pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          INDIA_GPR_INDEX_START: '2026-08-09'
+          MIN_PARQUET_DAYS_FOR_GPR: '7'
+          PARQUET_BACKFILL_LOOKBACK_DAYS: '14'
         run: python -m news_dataset.pipeline.daily_index
+
+      - name: Save india processed parquets
+        uses: actions/cache/save@v4
+        if: success()
+        with:
+          path: gpr_index/data/india_processed
+          key: india-processed-parquets-v1

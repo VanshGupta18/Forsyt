@@ -12,6 +12,8 @@ from .data import forward_realized_vol, realized_vol
 
 BASELINE_GPR_MEAN = 100.0
 BASELINE_GPR_STD = 35.0
+IN_SAMPLE_BASELINE_MIN_DAYS = 2
+CALDARA_BASELINE_MIN_DAYS = 60
 ANALOG_TOLERANCE = 10.0
 ANALOG_HORIZON = 5
 
@@ -48,6 +50,17 @@ def _percentile(series: pd.Series, value: float, window: int = 252) -> float:
     return float(100.0 * (history <= value).mean())
 
 
+def _gpr_baseline(gpr: pd.Series) -> tuple[float, float, str]:
+    """Caldara-scale baseline for long history; in-sample mean/std for India index ramp."""
+    clean = gpr.dropna()
+    if len(clean) >= CALDARA_BASELINE_MIN_DAYS:
+        return BASELINE_GPR_MEAN, BASELINE_GPR_STD, "caldara"
+    if len(clean) >= IN_SAMPLE_BASELINE_MIN_DAYS:
+        std = float(clean.std())
+        return float(clean.mean()), max(std, 1.0), "in_sample"
+    return BASELINE_GPR_MEAN, BASELINE_GPR_STD, "caldara"
+
+
 def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
     """Build the geopolitical half of the dual signal."""
     data.validate_gpr_frame(gf)
@@ -56,7 +69,8 @@ def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
     gpr_today = float(gpr.iloc[-1])
     gpr_7ma = float(gpr.tail(min(7, len(gpr))).mean())
     gpr_30ma = float(gpr.tail(min(30, len(gpr))).mean())
-    z = (gpr_today - BASELINE_GPR_MEAN) / BASELINE_GPR_STD
+    baseline_mean, baseline_std, baseline_mode = _gpr_baseline(gpr)
+    z = (gpr_today - baseline_mean) / baseline_std
     change_7d_pct = 0.0
     if len(gpr) >= 8:
         prior = float(gpr.iloc[-8])
@@ -70,8 +84,10 @@ def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
         "gpr_30ma": round(gpr_30ma, 2),
         "regime": _regime_from_z(z),
         "z_score": round(z, 3),
+        "baseline_mode": baseline_mode,
+        "index_days": int(len(gpr)),
         "change_7d_pct": change_7d_pct,
-        "geo_percentile": round(_percentile(gpr, gpr_today), 1),
+        "geo_percentile": round(_percentile(gpr, gpr_today, window=len(gpr)), 1),
     }
     if "gpr_threats" in gf.columns:
         out["gpr_threats"] = round(float(gf["gpr_threats"].iloc[-1]), 2)
@@ -190,13 +206,19 @@ def historical_analog(
     tolerance: float = ANALOG_TOLERANCE,
     horizon: int = ANALOG_HORIZON,
 ) -> dict[str, Any]:
-    """What NIFTY did on past days with similar GPR levels."""
-    gpr = gf["gpr"].astype(float).reindex(nifty.index, method="ffill")
-    fwd_vol = forward_realized_vol(nifty, horizon)
-    fwd_ret = _forward_return_pct(nifty, horizon)
-    frame = pd.DataFrame({"gpr": gpr, "fwd_vol": fwd_vol, "fwd_ret": fwd_ret}).dropna()
+    """What NIFTY did on past days with similar GPR levels (native index days only)."""
+    gpr_native = gf["gpr"].astype(float)
+    fwd_vol = forward_realized_vol(nifty, horizon).reindex(gpr_native.index)
+    fwd_ret = _forward_return_pct(nifty, horizon).reindex(gpr_native.index)
+    frame = pd.DataFrame(
+        {"gpr": gpr_native, "fwd_vol": fwd_vol, "fwd_ret": fwd_ret}
+    ).dropna()
     if frame.empty:
-        return {"sample_days": 0, "query": f"GPR within ±{tolerance} of {gpr_today:.1f}"}
+        return {
+            "sample_days": 0,
+            "query": f"GPR within ±{tolerance} of {gpr_today:.1f}",
+            "note": "No overlapping NIFTY forward returns on India GPR index days yet.",
+        }
 
     mask = frame["gpr"].sub(gpr_today).abs() <= tolerance
     sample = frame.loc[mask]
@@ -208,6 +230,7 @@ def historical_analog(
     return {
         "query": f"Days when GPR was within ±{tolerance} of {gpr_today:.1f}",
         "sample_days": int(len(sample)),
+        "index_days": int(len(gpr_native)),
         "nifty_vol_median": round(float(sample["fwd_vol"].median()), 2) if len(sample) else None,
         "nifty_return_median": round(float(sample["fwd_ret"].median()), 2) if len(sample) else None,
         "notable_events": notable,
@@ -277,6 +300,7 @@ def build_dual_signal(
         "nifty_volatility": nifty_sig,
         "joint_stress": joint,
         "historical_analog": analog,
+        "index_start": gf.index.min().strftime("%Y-%m-%d") if len(gf) else None,
         "disclaimer": (
             "NIFTY vol signal uses market data only. GPR is shown separately. "
             "Not investment advice."

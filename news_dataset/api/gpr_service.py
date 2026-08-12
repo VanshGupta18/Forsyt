@@ -18,9 +18,12 @@ GPR_OUTPUT = REPO_ROOT / "gpr_index" / "outputs"
 if str(NIFTY_DIR) not in sys.path:
     sys.path.insert(0, str(NIFTY_DIR))
 
+from gpr_index.scripts.paths import INDIA_GPR_INDEX_START  # noqa: E402
 from news_dataset import db  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+_INDEX_START_TS = pd.Timestamp(INDIA_GPR_INDEX_START)
 
 
 def _serialize(value):
@@ -56,42 +59,18 @@ def _load_gpr_csv() -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     frame = pd.read_csv(path, parse_dates=["date"]).set_index("date").sort_index()
-    return frame
+    return frame[frame.index >= _INDEX_START_TS]
 
 
-def gpr_frame_from_db_or_csv() -> pd.DataFrame:
-    """Canonical GPR frame for dual-signal and charts."""
-    from forsyt_gpr.data import as_gpr_frame
-
-    rows = db.get_gpr_history(limit=5000)
-    if rows:
-        frame = pd.DataFrame(rows)
-        frame["date"] = pd.to_datetime(frame["date"])
-        frame = frame.set_index("date").sort_index()
-        return as_gpr_frame(
-            frame,
-            gpr="gpr_index",
-            threats="gpr_threats_index",
-            acts="gpr_acts_index",
-        )
-
-    csv = _load_gpr_csv()
-    if csv.empty:
-        from forsyt_gpr.data import load_aigpr_daily
-
-        return load_aigpr_daily()
-    return as_gpr_frame(
-        csv,
-        gpr="gpr_index",
-        threats="gpr_threats_index",
-        acts="gpr_acts_index",
-    )
+def _load_corridor_csv() -> pd.DataFrame:
+    path = GPR_OUTPUT / "gpr_corridor_daily.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    frame = pd.read_csv(path, parse_dates=["date"])
+    return frame[frame["date"] >= _INDEX_START_TS]
 
 
-def get_gpr_current() -> dict | None:
-    row = db.get_gpr_current()
-    if row:
-        return serialize_rows([row])[0]
+def _csv_current_payload() -> dict | None:
     csv = _load_gpr_csv()
     if csv.empty:
         return None
@@ -109,19 +88,99 @@ def get_gpr_current() -> dict | None:
     }
 
 
-def get_gpr_history(start: str | None = None, end: str | None = None, limit: int = 500) -> list[dict]:
-    rows = db.get_gpr_history(start=start, end=end, limit=limit)
-    if rows:
-        ordered = list(reversed(rows))
-        cleaned = [row for row in ordered if _valid_gpr_index(row.get("gpr_index"))]
-        if cleaned:
-            return serialize_rows(cleaned)
+def _prefer_csv_gpr(db_frame: pd.DataFrame, csv_frame: pd.DataFrame) -> bool:
+    """Prefer pipeline CSV when Postgres is missing days or still has CI 100 artifacts."""
+    if csv_frame.empty:
+        return False
+    if db_frame.empty:
+        return True
+    if csv_frame.index.max() > db_frame.index.max():
+        return True
+    overlap = db_frame.index.intersection(csv_frame.index)
+    for day in overlap:
+        db_val = float(db_frame.loc[day, "gpr"])
+        csv_val = float(csv_frame.loc[day, "gpr"])
+        if abs(db_val - csv_val) > 0.5:
+            return True
+    return False
+
+
+def gpr_frame_from_db_or_csv() -> pd.DataFrame:
+    """Canonical GPR frame for dual-signal and charts."""
+    from forsyt_gpr.data import as_gpr_frame
+
+    rows = db.get_gpr_history(limit=5000)
     csv = _load_gpr_csv()
-    if csv.empty:
-        return []
-    if "gpr_index" not in csv.columns:
+    csv_frame = (
+        as_gpr_frame(
+            csv,
+            gpr="gpr_index",
+            threats="gpr_threats_index",
+            acts="gpr_acts_index",
+        )
+        if not csv.empty
+        else pd.DataFrame()
+    )
+
+    if rows:
+        frame = pd.DataFrame(rows)
+        frame["date"] = pd.to_datetime(frame["date"])
+        frame = frame.set_index("date").sort_index()
+        db_frame = as_gpr_frame(
+            frame,
+            gpr="gpr_index",
+            threats="gpr_threats_index",
+            acts="gpr_acts_index",
+        )
+        if _prefer_csv_gpr(db_frame, csv_frame):
+            if csv_frame.empty:
+                raise ValueError(
+                    f"No India GPR index on or after {INDIA_GPR_INDEX_START.isoformat()}. "
+                    "Run daily_index and export.to_db first."
+                )
+            return csv_frame
+        return db_frame
+
+    if csv_frame.empty:
+        raise ValueError(
+            f"No India GPR index on or after {INDIA_GPR_INDEX_START.isoformat()}. "
+            "Run daily_index and export.to_db first."
+        )
+    return csv_frame
+
+
+def get_gpr_current() -> dict | None:
+    row = db.get_gpr_current()
+    csv_payload = _csv_current_payload()
+    if row and csv_payload:
+        db_date = str(row.get("date"))[:10]
+        csv_date = csv_payload["date"]
+        db_gpr = row.get("gpr_index")
+        csv_gpr = csv_payload.get("gpr_index")
+        if csv_date > db_date:
+            return csv_payload
+        if (
+            csv_date == db_date
+            and db_gpr is not None
+            and csv_gpr is not None
+            and abs(float(db_gpr) - float(csv_gpr)) > 0.5
+        ):
+            return csv_payload
+    if row:
+        return serialize_rows([row])[0]
+    return csv_payload
+
+
+def _gpr_history_from_csv(
+    start: str | None = None,
+    end: str | None = None,
+    limit: int = 500,
+) -> list[dict]:
+    csv = _load_gpr_csv()
+    if csv.empty or "gpr_index" not in csv.columns:
         return []
     csv = csv.dropna(subset=["gpr_index"])
+    csv = csv[csv.index >= _INDEX_START_TS]
     if start:
         csv = csv[csv.index >= pd.Timestamp(start)]
     if end:
@@ -143,19 +202,56 @@ def get_gpr_history(start: str | None = None, end: str | None = None, limit: int
     return out
 
 
+def get_gpr_history(start: str | None = None, end: str | None = None, limit: int = 500) -> list[dict]:
+    csv_history = _gpr_history_from_csv(start=start, end=end, limit=limit)
+    rows = db.get_gpr_history(start=start, end=end, limit=limit)
+    if rows:
+        ordered = list(reversed(rows))
+        cleaned = [row for row in ordered if _valid_gpr_index(row.get("gpr_index"))]
+        if cleaned:
+            if csv_history:
+                from forsyt_gpr.data import as_gpr_frame
+
+                db_frame = pd.DataFrame(cleaned)
+                db_frame["date"] = pd.to_datetime(db_frame["date"])
+                db_frame = as_gpr_frame(
+                    db_frame.set_index("date"),
+                    gpr="gpr_index",
+                    threats="gpr_threats_index",
+                    acts="gpr_acts_index",
+                )
+                csv = _load_gpr_csv()
+                if not csv.empty:
+                    csv_frame = as_gpr_frame(
+                        csv,
+                        gpr="gpr_index",
+                        threats="gpr_threats_index",
+                        acts="gpr_acts_index",
+                    )
+                    if _prefer_csv_gpr(db_frame, csv_frame):
+                        return csv_history
+            return serialize_rows(cleaned)
+    return csv_history
+
+
 def get_corridors() -> dict:
     try:
         latest, rows = db.get_corridors_latest()
         if rows:
-            return {"date": _serialize(latest), "corridors": serialize_rows(rows)}
+            return {
+                "date": _serialize(latest),
+                "index_start": INDIA_GPR_INDEX_START.isoformat(),
+                "corridors": serialize_rows(rows),
+            }
     except Exception:
         logger.exception("corridor db read failed; falling back to CSV")
-    path = GPR_OUTPUT / "gpr_corridor_daily.csv"
-    if not path.exists():
-        return {"date": None, "corridors": []}
-    frame = pd.read_csv(path, parse_dates=["date"])
+    frame = _load_corridor_csv()
     if frame.empty:
-        return {"date": None, "corridors": []}
+        return {
+            "date": None,
+            "index_start": INDIA_GPR_INDEX_START.isoformat(),
+            "corridors": [],
+        }
     latest_date = frame["date"].max()
     day = frame[frame["date"] == latest_date].sort_values("corridor_risk", ascending=False)
     corridors = []
@@ -171,17 +267,20 @@ def get_corridors() -> dict:
                 "date": latest_date.strftime("%Y-%m-%d"),
             }
         )
-    return {"date": latest_date.strftime("%Y-%m-%d"), "corridors": corridors}
+    return {
+        "date": latest_date.strftime("%Y-%m-%d"),
+        "index_start": INDIA_GPR_INDEX_START.isoformat(),
+        "corridors": corridors,
+    }
 
 
 def get_corridor_history(corridor_id: str, start: str | None = None, end: str | None = None) -> list[dict]:
     rows = db.get_corridor_history(corridor_id, start=start, end=end)
     if rows:
         return serialize_rows(list(reversed(rows)))
-    path = GPR_OUTPUT / "gpr_corridor_daily.csv"
-    if not path.exists():
+    frame = _load_corridor_csv()
+    if frame.empty:
         return []
-    frame = pd.read_csv(path, parse_dates=["date"])
     frame = frame[frame["corridor"] == corridor_id]
     if start:
         frame = frame[frame["date"] >= pd.Timestamp(start)]
@@ -277,14 +376,39 @@ def _normalize_dual_signal(payload: dict) -> dict:
     return payload
 
 
+def _dual_signal_cache_stale(cached: dict) -> bool:
+    geo = cached.get("geopolitical") or {}
+    as_of = geo.get("as_of") or cached.get("as_of")
+    if not as_of:
+        return True
+    try:
+        if date.fromisoformat(str(as_of)[:10]) < INDIA_GPR_INDEX_START:
+            return True
+    except ValueError:
+        return True
+    vol = cached.get("nifty_volatility") or {}
+    if vol.get("available") is False:
+        return True
+    current = get_gpr_current()
+    if not current:
+        return False
+    cur_date = str(current.get("date"))[:10]
+    cache_date = str(as_of)[:10]
+    if cur_date > cache_date:
+        return True
+    cached_gpr = geo.get("gpr_index")
+    db_gpr = current.get("gpr_index")
+    if cached_gpr is not None and db_gpr is not None:
+        if abs(float(cached_gpr) - float(db_gpr)) > 0.5:
+            return True
+    return False
+
+
 def build_dual_signal_payload(*, refresh: bool = False) -> dict:
     if not refresh:
         cached = db.get_dual_signal()
-        if cached:
-            vol = cached.get("nifty_volatility") or {}
-            # Recompute stale payloads saved before market-only vol worked.
-            if vol.get("available") is not False:
-                return _normalize_dual_signal(cached)
+        if cached and not _dual_signal_cache_stale(cached):
+            return _normalize_dual_signal(cached)
 
     from forsyt_gpr import data, dual_signal
 

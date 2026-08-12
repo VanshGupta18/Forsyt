@@ -63,3 +63,7 @@ Hourly NLP batch driver (mirrors `geo_scheduler` cadence pattern).
 - Executes `python -m news_dataset.nlp.scheduler --once`.
 
 The nightly `daily_index.yml` job still runs the full NLP → parquet → GPR pipeline for yesterday; the NLP scheduler keeps the Postgres rows fresh between those runs.
+
+## 9. `.github/workflows/daily_index.yml`
+- Restores/saves `gpr_index/data/india_processed/` via **GitHub Actions cache** (`india-processed-parquets-v1`) so each run scores **all accumulated daily parquets**, not an isolated single day (which forces GPR = 100).
+- `daily_index.py` backfills missing parquets for the last 14 days (when NLP-complete data exists) and skips GPR/`to_db` sync until enough parquet days exist since **`INDIA_GPR_INDEX_START` (2026-08-09)**.

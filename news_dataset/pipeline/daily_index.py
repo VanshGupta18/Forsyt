@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -12,16 +13,26 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from gpr_index.scripts.paths import INDIA_PROCESSED_DIR, OUTPUT_DIR  # noqa: E402
+from gpr_index.scripts.paths import INDIA_GPR_INDEX_START, INDIA_PROCESSED_DIR, OUTPUT_DIR  # noqa: E402
 
 from news_dataset import db  # noqa: E402
 from news_dataset.export.to_db import sync_all  # noqa: E402
-from news_dataset.export.to_gpr_parquet import process_day  # noqa: E402
+from news_dataset.export.to_gpr_parquet import ExportIntegrityError, process_day  # noqa: E402
 from news_dataset.nlp.run_extraction import run as run_nlp  # noqa: E402
+
+MIN_PARQUET_DAYS_FOR_GPR = int(os.environ.get("MIN_PARQUET_DAYS_FOR_GPR", "7"))
+BACKFILL_LOOKBACK_DAYS = int(os.environ.get("PARQUET_BACKFILL_LOOKBACK_DAYS", "14"))
 
 
 def _day(value: str) -> date:
     return date.fromisoformat(value)
+
+
+def _days(start: date, end: date):
+    current = start
+    while current <= end:
+        yield current
+        current += timedelta(days=1)
 
 
 def _run_cmd(args: list[str], *, cwd: Path | None = None) -> None:
@@ -30,19 +41,71 @@ def _run_cmd(args: list[str], *, cwd: Path | None = None) -> None:
         raise RuntimeError(f"command failed ({result.returncode}): {' '.join(args)}")
 
 
-def parquet_bounds(end_day: date, *, lookback_days: int = 365) -> tuple[date, date] | None:
-    """Earliest/latest dates with India parquet files up to end_day."""
+def _clamp_index_start(day: date) -> date:
+    return max(day, INDIA_GPR_INDEX_START)
+
+
+def _list_processed_files(end_day: date, *, lookback_days: int = 365):
     from gpr_index.scripts.gkg_gpr_pipeline import list_processed_files
 
-    baseline = end_day - timedelta(days=lookback_days)
-    files = list_processed_files(
+    baseline = max(
+        end_day - timedelta(days=lookback_days),
+        INDIA_GPR_INDEX_START,
+    )
+    return list_processed_files(
         INDIA_PROCESSED_DIR,
         baseline.isoformat(),
         end_day.isoformat(),
     )
+
+
+def parquet_bounds(end_day: date, *, lookback_days: int = 365) -> tuple[date, date] | None:
+    """Earliest/latest dates with India parquet files up to end_day."""
+    files = _list_processed_files(end_day, lookback_days=lookback_days)
     if not files:
         return None
-    return files[0][0].date(), files[-1][0].date()
+    start = _clamp_index_start(files[0][0].date())
+    if start > end_day:
+        return None
+    return start, files[-1][0].date()
+
+
+def processed_day_count(end_day: date, *, lookback_days: int = 365) -> int:
+    return len(_list_processed_files(end_day, lookback_days=lookback_days))
+
+
+def required_parquet_days(end_day: date) -> int:
+    """Days required before GPR scoring (ramps up to MIN_PARQUET_DAYS_FOR_GPR)."""
+    days_in_index = max(0, (end_day - INDIA_GPR_INDEX_START).days + 1)
+    return min(MIN_PARQUET_DAYS_FOR_GPR, days_in_index)
+
+
+def backfill_missing_parquets(
+    end_day: date,
+    *,
+    lookback_days: int = BACKFILL_LOOKBACK_DAYS,
+    allow_incomplete_denominator: bool = False,
+) -> list[str]:
+    """Export parquet for recent days that have data but no cached file yet."""
+    start_day = max(end_day - timedelta(days=lookback_days), INDIA_GPR_INDEX_START)
+    created: list[str] = []
+    for day in _days(start_day, end_day):
+        ymd = day.strftime("%Y%m%d")
+        path = INDIA_PROCESSED_DIR / f"india_processed_{ymd}.parquet"
+        if path.exists():
+            continue
+        try:
+            result = process_day(
+                day,
+                INDIA_PROCESSED_DIR,
+                allow_incomplete_denominator=allow_incomplete_denominator,
+            )
+        except ExportIntegrityError as exc:
+            print(f"[backfill {day.isoformat()}] skip: {exc}")
+            continue
+        if result is not None:
+            created.append(day.isoformat())
+    return created
 
 
 def run_gpr_range(start_day: date, end_day: date) -> None:
@@ -51,7 +114,8 @@ def run_gpr_range(start_day: date, end_day: date) -> None:
     Normalization needs multiple days in one batch — running one day at a time
     forces gpr_index to 100 every time (ratio / its own mean = 1).
     """
-    baseline_start = (end_day - timedelta(days=365)).isoformat()
+    start_day = _clamp_index_start(start_day)
+    baseline_start = INDIA_GPR_INDEX_START.isoformat()
     start_str = start_day.isoformat()
     end_str = end_day.isoformat()
     _run_cmd(
@@ -108,6 +172,13 @@ def run_daily_index(
     end = start + timedelta(days=1)
     details: dict = {"day": day.isoformat()}
 
+    backfilled = backfill_missing_parquets(
+        day,
+        allow_incomplete_denominator=allow_incomplete_denominator,
+    )
+    if backfilled:
+        details["backfilled_parquet_days"] = backfilled
+
     if not skip_nlp:
         updated, failed = run_nlp(limit=nlp_limit, start=start, end=end)
         details["nlp_updated"] = updated
@@ -129,15 +200,45 @@ def run_daily_index(
 
     if not skip_gpr:
         bounds = parquet_bounds(day)
+        parquet_days = processed_day_count(day)
+        details["parquet_days"] = parquet_days
+        needed = required_parquet_days(day)
+        details["parquet_days_required"] = needed
         if not bounds:
-            db.log_pipeline_run("gpr_corridor", "skipped", {"day": day.isoformat(), "reason": "no parquet"})
+            db.log_pipeline_run(
+                "gpr_corridor",
+                "skipped",
+                {"day": day.isoformat(), "reason": "no parquet"},
+            )
+        elif parquet_days < needed:
+            reason = (
+                f"only {parquet_days} parquet day(s) on disk since "
+                f"{INDIA_GPR_INDEX_START.isoformat()}; need {needed} for stable GPR normalization"
+            )
+            print(f"[daily_index] SKIP GPR: {reason}")
+            db.log_pipeline_run(
+                "gpr_corridor",
+                "skipped",
+                {"day": day.isoformat(), "reason": reason, "parquet_days": parquet_days},
+            )
         else:
             run_gpr_range(bounds[0], bounds[1])
-            db.log_pipeline_run("gpr_corridor", "ok", {"day": day.isoformat(), "range": f"{bounds[0]}..{bounds[1]}"})
-
-    counts = sync_all()
-    details.update(counts)
-    db.log_pipeline_run("to_db", "ok", details)
+            db.log_pipeline_run(
+                "gpr_corridor",
+                "ok",
+                {
+                    "day": day.isoformat(),
+                    "range": f"{bounds[0]}..{bounds[1]}",
+                    "parquet_days": parquet_days,
+                },
+            )
+            counts = sync_all()
+            details.update(counts)
+            db.log_pipeline_run("to_db", "ok", details)
+    else:
+        counts = sync_all()
+        details.update(counts)
+        db.log_pipeline_run("to_db", "ok", details)
 
     try:
         _refresh_dual_signal()

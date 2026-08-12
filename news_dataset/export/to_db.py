@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from gpr_index.scripts.paths import OUTPUT_DIR
+from gpr_index.scripts.paths import INDIA_GPR_INDEX_START, OUTPUT_DIR
 
 from news_dataset import db
 
@@ -25,6 +25,9 @@ def sync_gpr_csv(csv_path: Path | None = None) -> int:
     rows = []
     for _, row in frame.iterrows():
         if pd.isna(row.get("gpr_index")):
+            continue
+        row_date = _parse_day(row["date"])
+        if row_date < INDIA_GPR_INDEX_START:
             continue
         rows.append(
             (
@@ -49,6 +52,9 @@ def sync_corridor_csv(csv_path: Path | None = None) -> int:
     frame = pd.read_csv(path, parse_dates=["date"])
     rows = []
     for _, row in frame.iterrows():
+        row_date = _parse_day(row["date"])
+        if row_date < INDIA_GPR_INDEX_START:
+            continue
         rows.append(
             (
                 _parse_day(row["date"]),
@@ -66,9 +72,16 @@ def sync_corridor_csv(csv_path: Path | None = None) -> int:
 
 
 def sync_all(gpr_csv: Path | None = None, corridor_csv: Path | None = None) -> dict[str, int]:
+    removed_gpr = db.delete_gpr_daily_before(INDIA_GPR_INDEX_START)
+    removed_corridor = db.delete_corridor_daily_before(INDIA_GPR_INDEX_START)
     gpr_count = sync_gpr_csv(gpr_csv)
     corridor_count = sync_corridor_csv(corridor_csv)
-    return {"gpr_rows": gpr_count, "corridor_rows": corridor_count}
+    return {
+        "gpr_rows": gpr_count,
+        "corridor_rows": corridor_count,
+        "removed_gpr_before_index_start": removed_gpr,
+        "removed_corridor_before_index_start": removed_corridor,
+    }
 
 
 def main() -> int:

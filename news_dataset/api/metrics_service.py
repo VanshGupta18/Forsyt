@@ -240,8 +240,9 @@ def _compute_vol_metrics(refresh: bool = False) -> dict:
 
     try:
         from forsyt_gpr import data, vol_model
+        from news_dataset.api.gpr_service import gpr_frame_from_db_or_csv
 
-        gf = data.load_aigpr_daily()
+        gf = gpr_frame_from_db_or_csv()
         nifty = data.load_price("NIFTY")
         _, clf, _ = vol_model.run_vol_experiment(
             gf, nifty, horizon=5, min_train=750, refit_every=21, verbose=False
@@ -265,7 +266,16 @@ def _compute_vol_metrics(refresh: bool = False) -> dict:
         return payload
     except Exception as exc:
         logger.exception("vol metrics computation failed")
-        out = {**fallback, "error": str(exc)}
+        note = fallback["note"]
+        if "only" in str(exc) and "aligned rows" in str(exc):
+            from gpr_index.scripts.paths import INDIA_GPR_INDEX_START
+
+            note = (
+                f"India GPR index starts {INDIA_GPR_INDEX_START.isoformat()}; "
+                "walk-forward vol backtest needs longer aligned history. "
+                "Use published_research figures until more index days exist."
+            )
+        out = {**fallback, "error": str(exc), "note": note}
         return out
 
 
