@@ -4,7 +4,7 @@ import argparse
 import logging
 from datetime import date, datetime, time, timedelta, timezone
 
-from news_dataset.db import get_articles_pending_nlp, update_article_nlp
+from news_dataset.db import count_articles_pending_nlp, get_articles_pending_nlp, update_article_nlp
 from news_dataset.nlp.locations import extract_locations
 from news_dataset.nlp.version import EXTRACTOR_VERSION
 from news_dataset.nlp.themes import extract_themes
@@ -44,38 +44,51 @@ def _date_bounds(args):
     return start, end
 
 
-def run(limit=500, start=None, end=None, reprocess=False):
-    articles = get_articles_pending_nlp(
-        limit=limit,
-        model_version=NLP_MODEL_VERSION,
-        start=start,
-        end=end,
-        reprocess=reprocess,
-    )
-    updated = failed = 0
-    for article in articles:
-        try:
-            title = article["title"] or ""
-            body = article["content"] or ""
-            text = f"{title}\n{body}".strip()
-            tone_neg, tone_polarity = extract_tone(text)
-            update_article_nlp(
-                article["id"],
-                {
-                    "nlp_themes": ";".join(extract_themes(title, body)),
-                    "nlp_tone_neg": tone_neg,
-                    "nlp_tone_polarity": tone_polarity,
-                    "nlp_gcam": extract_gcam(text),
-                    "nlp_locations": extract_locations(title, body),
-                    "nlp_model_version": NLP_MODEL_VERSION,
-                    "nlp_extracted_at": datetime.now(timezone.utc),
-                },
-            )
-            updated += 1
-        except Exception:
-            failed += 1
-            logger.exception("NLP extraction failed for article %s", article["id"])
-    return updated, failed
+def run(limit=500, start=None, end=None, reprocess=False, until_empty=False):
+    total_updated = total_failed = 0
+    while True:
+        articles = get_articles_pending_nlp(
+            limit=limit,
+            model_version=NLP_MODEL_VERSION,
+            start=start,
+            end=end,
+            reprocess=reprocess,
+        )
+        if not articles:
+            break
+        updated = failed = 0
+        for article in articles:
+            try:
+                title = article["title"] or ""
+                body = article["content"] or ""
+                text = f"{title}\n{body}".strip()
+                tone_neg, tone_polarity = extract_tone(text)
+                update_article_nlp(
+                    article["id"],
+                    {
+                        "nlp_themes": ";".join(extract_themes(title, body)),
+                        "nlp_tone_neg": tone_neg,
+                        "nlp_tone_polarity": tone_polarity,
+                        "nlp_gcam": extract_gcam(text),
+                        "nlp_locations": extract_locations(title, body),
+                        "nlp_model_version": NLP_MODEL_VERSION,
+                        "nlp_extracted_at": datetime.now(timezone.utc),
+                    },
+                )
+                updated += 1
+            except Exception:
+                failed += 1
+                logger.exception("NLP extraction failed for article %s", article["id"])
+        total_updated += updated
+        total_failed += failed
+        logger.info("batch: %s updated, %s failed (running total %s/%s)", updated, failed, total_updated, total_failed)
+        if not until_empty:
+            break
+        pending = count_articles_pending_nlp(NLP_MODEL_VERSION, start=start, end=end, reprocess=reprocess)
+        logger.info("pending NLP articles: %s", pending)
+        if pending == 0 or updated == 0:
+            break
+    return total_updated, total_failed
 
 
 def build_parser():
@@ -83,7 +96,12 @@ def build_parser():
     parser.add_argument("--date", type=_day, help="process one UTC day (YYYY-MM-DD)")
     parser.add_argument("--start", type=_day, help="first UTC day to process")
     parser.add_argument("--end", type=_day, help="last UTC day to process, inclusive")
-    parser.add_argument("--limit", type=int, default=500, help="maximum rows (default: 500)")
+    parser.add_argument("--limit", type=int, default=500, help="maximum rows per batch (default: 500)")
+    parser.add_argument(
+        "--until-empty",
+        action="store_true",
+        help="repeat batches until no tier articles remain pending NLP",
+    )
     parser.add_argument(
         "--reprocess",
         action="store_true",
@@ -109,6 +127,7 @@ def main():
         start=start,
         end=end,
         reprocess=args.reprocess,
+        until_empty=args.until_empty,
     )
     logger.info("NLP extraction complete: %s updated, %s failed", updated, failed)
     return 1 if failed else 0

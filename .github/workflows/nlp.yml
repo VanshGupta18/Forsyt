@@ -1,0 +1,37 @@
+name: NLP Extraction
+
+on:
+  schedule:
+    # Hourly at :10 — offset from scrape cron (*/25) so rows land before NLP runs
+    - cron: '10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  nlp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: |
+            news_dataset/requirements.txt
+            news_dataset/requirements-nlp.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r news_dataset/requirements.txt
+          pip install -r news_dataset/requirements-nlp.txt
+
+      - name: Run NLP scheduler
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NLP_SCHEDULER_BATCH_SIZE: '200'
+        run: python -m news_dataset.nlp.scheduler --once

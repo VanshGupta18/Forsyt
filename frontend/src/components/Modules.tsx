@@ -6,6 +6,13 @@ import portfolioImg from '../assets/module-portfolio.jpg'
 
 const modules = [
   {
+    to: '/news',
+    title: 'News Intelligence',
+    description: 'Live geopolitical event feed from Indian news sources with NLP themes and tier filtering.',
+    icon: 'newspaper',
+    image: tradeImg,
+  },
+  {
     to: '/macroeconomics',
     title: 'Indian Macroeconomic Intelligence',
     description:

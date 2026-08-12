@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+import math
 import sys
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -17,11 +20,31 @@ if str(NIFTY_DIR) not in sys.path:
 
 from news_dataset import db  # noqa: E402
 
+logger = logging.getLogger(__name__)
+
 
 def _serialize(value):
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        value = float(value)
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return value
+
+
+def _valid_gpr_index(value) -> bool:
+    if value is None:
+        return False
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return False
+    return not (math.isnan(num) or math.isinf(num))
 
 
 def serialize_rows(rows: list[dict]) -> list[dict]:
@@ -89,10 +112,16 @@ def get_gpr_current() -> dict | None:
 def get_gpr_history(start: str | None = None, end: str | None = None, limit: int = 500) -> list[dict]:
     rows = db.get_gpr_history(start=start, end=end, limit=limit)
     if rows:
-        return serialize_rows(list(reversed(rows)))
+        ordered = list(reversed(rows))
+        cleaned = [row for row in ordered if _valid_gpr_index(row.get("gpr_index"))]
+        if cleaned:
+            return serialize_rows(cleaned)
     csv = _load_gpr_csv()
     if csv.empty:
         return []
+    if "gpr_index" not in csv.columns:
+        return []
+    csv = csv.dropna(subset=["gpr_index"])
     if start:
         csv = csv[csv.index >= pd.Timestamp(start)]
     if end:
@@ -100,21 +129,27 @@ def get_gpr_history(start: str | None = None, end: str | None = None, limit: int
     csv = csv.tail(limit)
     out = []
     for idx, row in csv.iterrows():
+        gpr = row.get("gpr_index")
+        if not _valid_gpr_index(gpr):
+            continue
         out.append(
             {
                 "date": idx.strftime("%Y-%m-%d"),
-                "gpr_index": float(row["gpr_index"]),
-                "gpr_7ma": float(row.get("gpr_7ma", row["gpr_index"])),
-                "gpr_30ma": float(row.get("gpr_30ma", row["gpr_index"])),
+                "gpr_index": float(gpr),
+                "gpr_7ma": float(row["gpr_7ma"]) if _valid_gpr_index(row.get("gpr_7ma")) else None,
+                "gpr_30ma": float(row["gpr_30ma"]) if _valid_gpr_index(row.get("gpr_30ma")) else None,
             }
         )
     return out
 
 
 def get_corridors() -> dict:
-    latest, rows = db.get_corridors_latest()
-    if rows:
-        return {"date": _serialize(latest), "corridors": serialize_rows(rows)}
+    try:
+        latest, rows = db.get_corridors_latest()
+        if rows:
+            return {"date": _serialize(latest), "corridors": serialize_rows(rows)}
+    except Exception:
+        logger.exception("corridor db read failed; falling back to CSV")
     path = GPR_OUTPUT / "gpr_corridor_daily.csv"
     if not path.exists():
         return {"date": None, "corridors": []}
@@ -183,7 +218,7 @@ def get_events_feed(limit=100, theme=None, corridor=None, tier=None, start=None,
 def get_news_stats() -> dict:
     total = db.get_total_count()
     recent = db.get_recent_news(limit=1)
-    tagged = db.get_events_feed_tagged(limit=1)
+    tagged = db.get_recent_news(limit=1, tagged_only=True)
     return {
         "total_articles": total,
         "latest_article_at": recent[0].get("published_at") or recent[0].get("scraped_at") if recent else None,
@@ -197,7 +232,8 @@ def _top_corridor() -> str | None:
     corridors = payload.get("corridors") or []
     if not corridors:
         return None
-    return corridors[0].get("corridor")
+    top = corridors[0]
+    return top.get("corridor_name") or top.get("corridor")
 
 
 def _driving_events(limit: int = 3) -> list[dict]:
@@ -211,27 +247,44 @@ def _driving_events(limit: int = 3) -> list[dict]:
                 kw = row.get("matched_keywords")
                 if isinstance(kw, str):
                     kw = json.loads(kw)
-                themes = ", ".join(kw) if isinstance(kw, list) else str(kw)
+                if isinstance(kw, list):
+                    themes = ", ".join(str(k) for k in kw if k)
+                elif isinstance(kw, dict):
+                    themes = ", ".join(f"{k}: {v}" for k, v in kw.items())
+                else:
+                    themes = str(kw)
             except Exception:
-                themes = ""
+                themes = str(row.get("matched_keywords") or "")
         out.append(
             {
                 "title": row.get("title"),
                 "source": row.get("source"),
                 "link": row.get("link"),
-                "themes": themes,
-                "locations": row.get("nlp_locations"),
+                "nlp_themes": themes,
+                "nlp_locations": row.get("nlp_locations"),
                 "published_at": _serialize(row.get("published_at") or row.get("scraped_at")),
             }
         )
     return out
 
 
+def _normalize_dual_signal(payload: dict) -> dict:
+    geo = payload.get("geopolitical") or {}
+    events = geo.get("driving_events") or []
+    for ev in events:
+        if ev.get("themes") and not ev.get("nlp_themes"):
+            ev["nlp_themes"] = ev.pop("themes")
+    return payload
+
+
 def build_dual_signal_payload(*, refresh: bool = False) -> dict:
     if not refresh:
         cached = db.get_dual_signal()
         if cached:
-            return cached
+            vol = cached.get("nifty_volatility") or {}
+            # Recompute stale payloads saved before market-only vol worked.
+            if vol.get("available") is not False:
+                return _normalize_dual_signal(cached)
 
     from forsyt_gpr import data, dual_signal
 
@@ -245,4 +298,4 @@ def build_dual_signal_payload(*, refresh: bool = False) -> dict:
     )
     as_of = payload["geopolitical"]["as_of"]
     db.upsert_dual_signal(as_of, payload)
-    return payload
+    return _normalize_dual_signal(payload)

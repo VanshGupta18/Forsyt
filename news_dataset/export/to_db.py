@@ -24,6 +24,8 @@ def sync_gpr_csv(csv_path: Path | None = None) -> int:
     frame = pd.read_csv(path, parse_dates=["date"])
     rows = []
     for _, row in frame.iterrows():
+        if pd.isna(row.get("gpr_index")):
+            continue
         rows.append(
             (
                 _parse_day(row["date"]),

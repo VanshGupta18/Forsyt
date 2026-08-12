@@ -80,23 +80,77 @@ def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
     return out
 
 
+def _trailing_vol_fallback(nifty: pd.Series, horizon: int, reason: str) -> dict[str, Any]:
+    """Naive forecast when the XGB market model cannot run."""
+    trailing = realized_vol(nifty, 22)
+    if not trailing.notna().any():
+        raise ValueError(reason)
+    trailing_val = float(trailing.dropna().iloc[-1])
+    hist = trailing.dropna().tail(252)
+    median = float(hist.median()) if not hist.empty else trailing_val
+    p75 = float(hist.quantile(0.75)) if len(hist) >= 22 else trailing_val
+    if trailing_val >= p75:
+        high_vol_prob = 0.55
+    elif trailing_val >= median:
+        high_vol_prob = 0.25
+    else:
+        high_vol_prob = 0.08
+    return_7d = None
+    if len(nifty) >= 8:
+        return_7d = round(float((nifty.iloc[-1] / nifty.iloc[-8] - 1) * 100), 2)
+    as_of = nifty.index[-1]
+    return {
+        "as_of": as_of.strftime("%Y-%m-%d"),
+        "horizon_days": horizon,
+        "high_vol_threshold": round(p75, 2),
+        "target_resolves_on": None,
+        "market_only": {
+            "vol_forecast": round(trailing_val, 2),
+            "high_vol_prob": round(high_vol_prob, 3),
+        },
+        "model": "trailing_vol",
+        "fallback_reason": reason,
+        "trailing_vol_22d": round(trailing_val, 2),
+        "return_7d_pct": return_7d,
+        "vol_percentile": round(_percentile(trailing.dropna(), trailing_val), 1),
+    }
+
+
 def nifty_vol_signal(gf: pd.DataFrame, nifty: pd.Series, horizon: int = 5) -> dict[str, Any]:
-    """Market-only NIFTY volatility signal (no GPR in the forecast)."""
-    forecast = vol_model.latest_forecast(gf, nifty, horizon=horizon)
-    market = forecast["market_only"]
+    """Market-only NIFTY volatility signal (GPR is shown separately)."""
     trailing = realized_vol(nifty, 22)
     trailing_val = float(trailing.dropna().iloc[-1]) if trailing.notna().any() else None
-    return {
+    return_7d = None
+    if len(nifty) >= 8:
+        return_7d = round(float((nifty.iloc[-1] / nifty.iloc[-8] - 1) * 100), 2)
+
+    try:
+        forecast = vol_model.latest_market_forecast(nifty, horizon=horizon)
+    except ValueError as exc:
+        forecast = _trailing_vol_fallback(nifty, horizon, str(exc))
+
+    market = forecast["market_only"]
+    vol_pct = None
+    if trailing_val is not None and trailing.notna().any():
+        vol_pct = round(_percentile(trailing.dropna(), trailing_val), 1)
+
+    out: dict[str, Any] = {
         "as_of": forecast["as_of"],
+        "available": True,
         "horizon_days": forecast["horizon_days"],
         "vol_forecast_5d": market["vol_forecast"],
         "high_vol_prob": market["high_vol_prob"],
-        "high_vol_threshold": forecast["high_vol_threshold"],
+        "high_vol_threshold": forecast.get("high_vol_threshold"),
         "target_resolves_on": forecast.get("target_resolves_on"),
         "regime": _vol_regime(market["high_vol_prob"]),
         "trailing_vol_22d": round(trailing_val, 2) if trailing_val is not None else None,
-        "model": "market_only",
+        "return_7d_pct": return_7d,
+        "vol_percentile": vol_pct,
+        "model": forecast.get("model", "market_only"),
     }
+    if forecast.get("fallback_reason"):
+        out["fallback_reason"] = forecast["fallback_reason"]
+    return out
 
 
 def joint_stress(geo: dict[str, Any], nifty: dict[str, Any]) -> dict[str, Any]:
@@ -175,14 +229,43 @@ def build_dual_signal(
 ) -> dict[str, Any]:
     """Assemble the full dual-signal payload for API/dashboard."""
     geo = geo_regime(gf)
-    nifty_sig = nifty_vol_signal(gf, nifty, horizon=horizon)
-    trailing = realized_vol(nifty, 22)
-    nifty_sig["vol_percentile"] = round(
-        _percentile(trailing.dropna(), float(trailing.dropna().iloc[-1])), 1
-    ) if trailing.notna().any() else 50.0
+    market_unavailable: str | None = None
+    try:
+        nifty_sig = nifty_vol_signal(gf, nifty, horizon=horizon)
+        trailing = realized_vol(nifty, 22)
+        nifty_sig["vol_percentile"] = round(
+            _percentile(trailing.dropna(), float(trailing.dropna().iloc[-1])), 1
+        ) if trailing.notna().any() else 50.0
+    except ValueError as exc:
+        market_unavailable = str(exc)
+        trailing = realized_vol(nifty, 22)
+        trailing_val = float(trailing.dropna().iloc[-1]) if trailing.notna().any() else None
+        return_7d = None
+        if len(nifty) >= 8:
+            return_7d = round(float((nifty.iloc[-1] / nifty.iloc[-8] - 1) * 100), 2)
+        nifty_sig = {
+            "available": False,
+            "reason": market_unavailable,
+            "model": "market_only",
+            "vol_percentile": None,
+            "trailing_vol_22d": round(trailing_val, 2) if trailing_val is not None else None,
+            "return_7d_pct": return_7d,
+        }
 
     analog = historical_analog(gf, nifty, geo["gpr_index"])
-    joint = joint_stress(geo, nifty_sig)
+    if market_unavailable:
+        joint = {
+            "stress_score": None,
+            "stress_regime": "UNAVAILABLE",
+            "geo_percentile": round(float(geo.get("geo_percentile", 50.0)), 1),
+            "vol_percentile": None,
+            "narrative": (
+                "Geopolitical signal live; NIFTY vol forecast unavailable "
+                f"({market_unavailable})."
+            ),
+        }
+    else:
+        joint = joint_stress(geo, nifty_sig)
 
     if top_corridor:
         geo["top_corridor"] = top_corridor

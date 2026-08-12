@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import date
 from pathlib import Path
 
 import psycopg2
@@ -273,6 +274,7 @@ def count_geo_ingested_articles(start, end):
     cur.execute(
         """SELECT COUNT(DISTINCT link) FROM articles
            WHERE tier IS NOT NULL
+             AND duplicate_of IS NULL
              AND COALESCE(published_at, scraped_at) >= %s
              AND COALESCE(published_at, scraped_at) < %s""",
         (start, end),
@@ -283,18 +285,68 @@ def count_geo_ingested_articles(start, end):
     return count
 
 
+_NLP_PENDING_SQL = (
+    "(nlp_extracted_at IS NULL "
+    "OR nlp_tone_neg IS NULL OR nlp_tone_polarity IS NULL "
+    "OR nlp_gcam IS NULL OR nlp_gcam = '' "
+    "OR nlp_model_version IS NULL "
+    "OR nlp_model_version <> %s)"
+)
+
+
+def count_articles_pending_nlp(model_version, start=None, end=None, reprocess=False) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    clauses = ["tier IS NOT NULL", "duplicate_of IS NULL"]
+    params: list = []
+    if not reprocess:
+        clauses.append(_NLP_PENDING_SQL)
+        params.append(model_version)
+    if start is not None:
+        clauses.append("COALESCE(published_at, scraped_at) >= %s")
+        params.append(start)
+    if end is not None:
+        clauses.append("COALESCE(published_at, scraped_at) < %s")
+        params.append(end)
+    cur.execute(
+        f"SELECT COUNT(*) FROM articles WHERE {' AND '.join(clauses)}",
+        params,
+    )
+    count = int(cur.fetchone()[0])
+    cur.close()
+    conn.close()
+    return count
+
+
+def list_tier_article_days() -> list[date]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT DISTINCT DATE(COALESCE(published_at AT TIME ZONE 'UTC', scraped_at AT TIME ZONE 'UTC'))
+           FROM articles
+           WHERE tier IS NOT NULL AND duplicate_of IS NULL
+           ORDER BY 1"""
+    )
+    days = []
+    for row in cur.fetchall():
+        val = row[0]
+        days.append(val if isinstance(val, date) else date.fromisoformat(str(val)))
+    cur.close()
+    conn.close()
+    return days
+
+
 def get_gpr_articles(start, end):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(
         """SELECT * FROM articles
            WHERE tier IS NOT NULL
+             AND duplicate_of IS NULL
              AND nlp_extracted_at IS NOT NULL
-             AND nlp_themes IS NOT NULL
              AND nlp_tone_neg IS NOT NULL
              AND nlp_tone_polarity IS NOT NULL
-             AND nlp_gcam IS NOT NULL
-             AND nlp_locations IS NOT NULL
+             AND nlp_gcam IS NOT NULL AND nlp_gcam <> ''
              AND nlp_model_version IS NOT NULL
              AND COALESCE(published_at, scraped_at) >= %s
              AND COALESCE(published_at, scraped_at) < %s
@@ -310,16 +362,10 @@ def get_gpr_articles(start, end):
 def get_articles_pending_nlp(limit, model_version, start=None, end=None, reprocess=False):
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    clauses = ["tier IS NOT NULL"]
+    clauses = ["tier IS NOT NULL", "duplicate_of IS NULL"]
     params = []
     if not reprocess:
-        clauses.append(
-            "(nlp_extracted_at IS NULL OR nlp_themes IS NULL "
-            "OR nlp_tone_neg IS NULL OR nlp_tone_polarity IS NULL "
-            "OR nlp_gcam IS NULL OR nlp_locations IS NULL "
-            "OR nlp_model_version IS NULL "
-            "OR nlp_model_version <> %s)"
-        )
+        clauses.append(_NLP_PENDING_SQL)
         params.append(model_version)
     if start is not None:
         clauses.append("COALESCE(published_at, scraped_at) >= %s")
@@ -622,60 +668,6 @@ def get_recent_news(
     return [dict(row) for row in rows]
 
 
-def get_events_feed(limit=100, theme=None, corridor=None, tier=None, start=None, end=None):
-    """Product event feed: live Postgres news, NLP-tagged when available."""
-    return get_recent_news(
-        limit=limit,
-        tier=tier,
-        theme=theme,
-        corridor=corridor,
-        start=start,
-        end=end,
-        tagged_only=False,
-    )
-
-
-def get_events_feed_tagged(limit=100, theme=None, corridor=None, tier=None, start=None, end=None):
-    """NLP-complete articles only (pipeline QA)."""
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    clauses = [
-        "tier IS NOT NULL",
-        "duplicate_of IS NULL",
-        "nlp_extracted_at IS NOT NULL",
-    ]
-    params = []
-    if tier is not None:
-        clauses.append("tier = %s")
-        params.append(tier)
-    if theme:
-        clauses.append("nlp_themes ILIKE %s")
-        params.append(f"%{theme}%")
-    if corridor:
-        clauses.append("nlp_locations ILIKE %s")
-        params.append(f"%{corridor}%")
-    if start:
-        clauses.append("COALESCE(published_at, scraped_at) >= %s")
-        params.append(start)
-    if end:
-        clauses.append("COALESCE(published_at, scraped_at) < %s")
-        params.append(end)
-    params.append(limit)
-    cur.execute(
-        f"""SELECT id, title, source, link, published_at, tier,
-                   nlp_themes, nlp_locations, nlp_tone_neg, nlp_tone_polarity
-            FROM articles
-            WHERE {' AND '.join(clauses)}
-            ORDER BY COALESCE(published_at, scraped_at) DESC NULLS LAST
-            LIMIT %s""",
-        params,
-    )
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return [dict(row) for row in rows]
-
-
 def upsert_dual_signal(as_of, payload):
     conn = get_connection()
     cur = conn.cursor()
@@ -725,4 +717,41 @@ def log_pipeline_run(stage, status, details=None):
     conn.close()
 
 
-init_db()
+def get_last_pipeline_run(stage):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT run_at, status, details FROM pipeline_runs
+           WHERE stage = %s ORDER BY run_at DESC LIMIT 1""",
+        (stage,),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return None
+    return dict(row)
+
+
+def _should_run_init_db() -> bool:
+    """Skip init in Flask debug reloader parent to avoid concurrent ALTER TABLE deadlocks."""
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        return True
+    if os.environ.get("WERKZEUG_SERVER_FD") is None:
+        return True
+    return False
+
+
+def _init_db_with_retry() -> None:
+    try:
+        init_db()
+    except psycopg2.errors.DeadlockDetected:
+        logger.warning("init_db deadlock on startup; retrying once")
+        import time
+
+        time.sleep(0.5)
+        init_db()
+
+
+if _should_run_init_db():
+    _init_db_with_retry()

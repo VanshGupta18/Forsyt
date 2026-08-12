@@ -284,14 +284,15 @@ def run(
             .fillna("")
             .astype(str)
             .map(tag_corridors)
-            .map(bool)
+            .astype(bool)
         )
+        matched_count = int(matched.sum()) if len(matched) else 0
         daily_totals.append(
             {
                 "date": date_val,
                 "total_articles": len(scored),
                 "positive_articles": int(positive.sum()),
-                "matched_positive_articles": int(matched.sum()),
+                "matched_positive_articles": matched_count,
             }
         )
         if not hits.empty:
@@ -299,7 +300,7 @@ def run(
 
         print(
             f"[{date_val:%Y%m%d}] total={len(scored):,} "
-            f"positive={int(positive.sum()):,} matched={int(matched.sum()):,} "
+            f"positive={int(positive.sum()):,} matched={matched_count:,} "
             f"hits={len(hits):,}",
             flush=True,
         )

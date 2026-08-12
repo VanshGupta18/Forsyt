@@ -19,41 +19,16 @@ const trendIcon = {
 }
 
 const fallbackKpis: Kpi[] = [
-  {
-    label: 'India GPR Index',
-    value: '—',
-    suffix: '/100',
-    footnote: 'Connect API for live GPR',
-    footnoteClass: 'text-tertiary',
-    valueClass: 'text-primary',
-    trend: 'neutral',
-  },
-  {
-    label: 'Articles Indexed',
-    value: '—',
-    footnote: 'PostgreSQL news pipeline',
-    footnoteClass: 'text-secondary',
-    valueClass: '',
-    trend: 'neutral',
-  },
-  {
-    label: 'GPR 7-Day Average',
-    value: '—',
-    suffix: '/100',
-    footnote: 'Smoothed daily index',
-    footnoteClass: 'text-on-surface-variant',
-    valueClass: 'text-primary',
-    trend: 'neutral',
-  },
-  {
-    label: 'Data As Of',
-    value: '—',
-    footnote: 'Latest GPR observation',
-    footnoteClass: 'text-on-surface-variant',
-    valueClass: 'text-primary',
-    trend: 'neutral',
-  },
+  { label: 'Forsyt GPR Index', value: '—', suffix: '', footnote: 'Connect API', footnoteClass: 'text-tertiary', valueClass: 'text-primary', trend: 'neutral' },
+  { label: 'Articles Indexed', value: '—', footnote: 'PostgreSQL', footnoteClass: 'text-secondary', valueClass: '', trend: 'neutral' },
+  { label: 'GPR 7-Day Average', value: '—', suffix: '', footnote: 'Rolling baseline', footnoteClass: 'text-on-surface-variant', valueClass: 'text-primary', trend: 'neutral' },
+  { label: 'Data As Of', value: '—', footnote: 'Latest observation', footnoteClass: 'text-on-surface-variant', valueClass: 'text-primary', trend: 'neutral' },
 ]
+
+function trendFromChange(change?: number): 'up' | 'down' | 'neutral' {
+  if (change == null || change === 0) return 'neutral'
+  return change > 0 ? 'up' : 'down'
+}
 
 export default function LiveSnapshot() {
   const [kpis, setKpis] = useState<Kpi[]>(fallbackKpis)
@@ -69,19 +44,19 @@ export default function LiveSnapshot() {
         ])
         if (cancelled) return
 
-        const gprVal = gpr?.gpr_index != null ? Math.round(gpr.gpr_index) : null
-        const ma7 = gpr?.gpr_7ma != null ? Math.round(gpr.gpr_7ma) : null
+        const gprVal = gpr?.gpr_index != null ? Math.round(gpr.gpr_index * 10) / 10 : null
+        const ma7 = gpr?.gpr_7ma != null ? Math.round(gpr.gpr_7ma * 10) / 10 : null
         const articles = health?.total_articles ?? gpr?.total_articles
+        const change7 = gpr?.gpr_7ma && gpr?.gpr_index ? gpr.gpr_index - gpr.gpr_7ma : undefined
 
         setKpis([
           {
-            label: 'India GPR Index',
+            label: 'Forsyt GPR Index',
             value: gprVal != null ? String(gprVal) : '—',
-            suffix: '/100',
-            footnote: gpr?.date ? `As of ${gpr.date}` : 'Medium-High Risk band',
+            footnote: gpr?.date ? `As of ${gpr.date}` : 'From /api/gpr/current',
             footnoteClass: 'text-tertiary',
             valueClass: 'text-primary',
-            trend: 'up',
+            trend: trendFromChange(change7),
           },
           {
             label: 'Articles Indexed',
@@ -89,12 +64,11 @@ export default function LiveSnapshot() {
             footnote: health?.status === 'healthy' ? 'Live PostgreSQL feed' : 'News pipeline',
             footnoteClass: 'text-secondary',
             valueClass: '',
-            trend: 'up',
+            trend: 'neutral',
           },
           {
             label: 'GPR 7-Day Average',
             value: ma7 != null ? String(ma7) : '—',
-            suffix: '/100',
             footnote: 'Rolling geopolitical baseline',
             footnoteClass: 'text-on-surface-variant',
             valueClass: 'text-primary',
@@ -103,7 +77,7 @@ export default function LiveSnapshot() {
           {
             label: 'Data As Of',
             value: gpr?.date ?? '—',
-            footnote: 'From /api/gpr/current',
+            footnote: 'Latest GPR observation',
             footnoteClass: 'text-on-surface-variant',
             valueClass: 'text-primary',
             trend: 'neutral',
@@ -115,9 +89,7 @@ export default function LiveSnapshot() {
     }
 
     load()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
 
   return (
@@ -134,20 +106,15 @@ export default function LiveSnapshot() {
             <div className="glass-card glass-card-hover p-6 rounded-xl inner-glow h-full">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-label-md text-on-surface-variant">{kpi.label}</p>
-                <span
-                  className={`material-symbols-outlined text-[16px] ${kpi.footnoteClass}`}
-                  aria-hidden="true"
-                >
+                <span className={`material-symbols-outlined text-[16px] ${kpi.footnoteClass}`} aria-hidden="true">
                   {trendIcon[kpi.trend]}
                 </span>
               </div>
               <div className="flex items-end justify-between">
-                <div>
-                  <span className={`text-display-lg text-[36px] font-bold tabular-nums ${kpi.valueClass}`}>
-                    {kpi.value}
-                  </span>
-                  {kpi.suffix && <span className="text-on-surface-variant">{kpi.suffix}</span>}
-                </div>
+                <span className={`text-display-lg text-[36px] font-bold tabular-nums ${kpi.valueClass}`}>
+                  {kpi.value}
+                </span>
+                {kpi.suffix && <span className="text-on-surface-variant">{kpi.suffix}</span>}
               </div>
               <p className={`font-label-md mt-4 ${kpi.footnoteClass}`}>{kpi.footnote}</p>
             </div>

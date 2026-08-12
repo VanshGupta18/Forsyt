@@ -1,6 +1,16 @@
+import { useEffect, useState } from 'react'
 import logo from '../assets/forsyt-logo.png'
+import { fetchHealth } from '../lib/api'
 
 export default function Footer() {
+  const [healthy, setHealthy] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    fetchHealth()
+      .then((h) => setHealthy(h.status === 'healthy'))
+      .catch(() => setHealthy(false))
+  }, [])
+
   return (
     <footer className="relative bg-surface-container-lowest border-t border-white/5 py-stack-lg">
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
@@ -14,9 +24,13 @@ export default function Footer() {
             © 2026 FORSYT Intelligence. Empowering sovereign decision-making.
           </p>
           <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-secondary shadow-[0_0_6px_1px_rgba(78,222,163,0.6)] animate-pulse" />
+            <span
+              className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                healthy === false ? 'bg-error' : healthy ? 'bg-secondary shadow-[0_0_6px_1px_rgba(78,222,163,0.6)]' : 'bg-gray-500'
+              }`}
+            />
             <span className="font-label-md text-[11px] text-on-surface-variant uppercase tracking-wider">
-              All systems operational
+              {healthy === null ? 'Checking API…' : healthy ? 'All systems operational' : 'API degraded — start Flask on :5000'}
             </span>
           </div>
         </div>

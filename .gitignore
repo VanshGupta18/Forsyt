@@ -20,5 +20,7 @@ news.db
 # editor
 .idea/
 .cursor/
+.claude/
 CLAUDE.md
 docs/
+report/

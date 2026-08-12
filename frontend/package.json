@@ -7,26 +7,21 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "node smoke.mjs"
   },
   "dependencies": {
-    "prop-types": "^15.8.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
-    "react-simple-maps": "^3.0.0",
-    "three": "^0.125.0",
+    "three": "^0.134.0",
     "vanta": "^0.5.24"
-  },
-  "overrides": {
-    "d3-color": "^3.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@types/react-simple-maps": "^3.0.6",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
     "playwright": "^1.62.1",

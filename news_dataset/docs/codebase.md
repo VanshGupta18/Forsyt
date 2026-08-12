@@ -50,3 +50,16 @@ The automation engine.
 - Changes the working directory to `./news_dataset`.
 - Installs `requirements.txt` with pip caching.
 - Executes `python -m ingestion.geo_scheduler --once`, which lets GitHub Actions trigger the script statelessly while the database maintains the `last_attempt` timing logic.
+
+## 7. `nlp/scheduler.py`
+Hourly NLP batch driver (mirrors `geo_scheduler` cadence pattern).
+- **`run_cycle()`**: Counts pending tier articles missing current `nlp_model_version`, runs one extraction batch via `run_extraction.run()`, logs to `pipeline_runs` (`stage=nlp_scheduler`).
+- **`--once`**: For cron — always processes one batch when pending > 0, then exits.
+- **Continuous mode** (no flags): Respects `NLP_SCHEDULER_INTERVAL_SECONDS` (default 3600) between batches.
+
+## 8. `.github/workflows/nlp.yml`
+- Runs hourly at `:10` UTC.
+- Installs `requirements.txt` + `requirements-nlp.txt` (torch + sentence-transformers).
+- Executes `python -m news_dataset.nlp.scheduler --once`.
+
+The nightly `daily_index.yml` job still runs the full NLP → parquet → GPR pipeline for yesterday; the NLP scheduler keeps the Postgres rows fresh between those runs.

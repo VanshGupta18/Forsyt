@@ -153,6 +153,48 @@ def run_vol_experiment(gf: pd.DataFrame, price: pd.Series, horizon: int = 5,
     return reg_tab, clf_tab, detail
 
 
+def latest_market_forecast(price: pd.Series, horizon: int = 5,
+                           threshold_q: float = 0.75) -> dict:
+    """Production forecast using market features only (no GPR required).
+
+    Use this for the live product while Forsyt GPR history is still short.
+    """
+    from .data import forward_realized_vol
+    from .features import market_features
+
+    y = forward_realized_vol(price, horizon)
+    Xm_all = market_features(price)
+    feat = Xm_all.dropna()
+    if feat.empty:
+        raise ValueError("no rows with complete market features")
+    mcols = list(Xm_all.columns)
+    train = feat.join(y.rename("y")).dropna()
+    asof = feat.index[-1]
+    if len(train) < 250:
+        raise ValueError(f"only {len(train)} resolved training rows (need 250+)")
+    thr = np.quantile(train["y"], threshold_q)
+
+    out = {
+        "as_of": asof.strftime("%Y-%m-%d"),
+        "horizon_days": horizon,
+        "high_vol_threshold": round(float(thr), 2),
+        "target_resolves_on": (
+            price.index[price.index.get_loc(asof) + horizon].strftime("%Y-%m-%d")
+            if price.index.get_loc(asof) + horizon < len(price) else None
+        ),
+    }
+    reg = _xgb_reg().fit(train[mcols].values, train["y"].values)
+    clf = _xgb_clf().fit(train[mcols].values, (train["y"].values > thr).astype(int))
+    xrow = feat[mcols].iloc[[-1]].values
+    market = {
+        "vol_forecast": round(float(reg.predict(xrow)[0]), 2),
+        "high_vol_prob": round(float(clf.predict_proba(xrow)[0, 1]), 3),
+    }
+    out["market_only"] = market
+    out["headline"] = market
+    return out
+
+
 def latest_forecast(gf: pd.DataFrame, price: pd.Series, horizon: int = 5,
                     threshold_q: float = 0.75, block: str = "market+gpr") -> dict:
     """PRODUCTION path: fit on all resolved history, predict the newest day.

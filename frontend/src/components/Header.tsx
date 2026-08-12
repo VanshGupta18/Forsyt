@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import logo from '../assets/forsyt-logo.png'
 
 const navLinks = [
@@ -8,11 +8,12 @@ const navLinks = [
   { to: '/macroeconomics', label: 'Indian Macroeconomics' },
   { to: '/trade-corridor', label: 'Trade & Corridor Risk' },
   { to: '/portfolio-exposure', label: 'Portfolio Exposure' },
-  { to: '/about', label: 'About' },
+  { to: '/quality', label: 'Platform Quality' },
 ]
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -38,6 +39,7 @@ export default function Header() {
           <img alt="FORSYT Logo" className="h-9 w-auto" src={logo} />
           <span className="font-display-lg text-[22px] tracking-tighter text-on-surface">FORSYT</span>
         </div>
+
         <nav className="hidden md:flex gap-8">
           {navLinks.map((link) => (
             <NavLink
@@ -56,11 +58,40 @@ export default function Header() {
             </NavLink>
           ))}
         </nav>
-        <button className="btn-primary text-on-primary-container font-label-md px-6 py-2.5 rounded-lg flex items-center gap-1.5">
-          Explore Platform
-          <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-        </button>
+
+        <div className="flex items-center gap-2">
+          <Link to="/macroeconomics" className="hidden sm:flex btn-primary text-on-primary-container font-label-md px-6 py-2.5 rounded-lg items-center gap-1.5">
+            Explore Platform
+            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+          </Link>
+          <button
+            type="button"
+            className="md:hidden p-2 text-on-surface"
+            aria-label="Open menu"
+            onClick={() => setMobileOpen((o) => !o)}
+          >
+            <span className="material-symbols-outlined">{mobileOpen ? 'close' : 'menu'}</span>
+          </button>
+        </div>
       </div>
+
+      {mobileOpen && (
+        <nav className="md:hidden border-t border-white/10 bg-surface/95 px-margin-page py-4 flex flex-col gap-3">
+          {navLinks.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              end={link.to === '/'}
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) =>
+                `py-2 text-sm ${isActive ? 'text-primary font-semibold' : 'text-on-surface-variant'}`
+              }
+            >
+              {link.label}
+            </NavLink>
+          ))}
+        </nav>
+      )}
     </header>
   )
 }

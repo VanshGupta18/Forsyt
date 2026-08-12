@@ -100,7 +100,7 @@ With **170 million+ active Demat accounts** in India as of 2024 — a 3.6× incr
 
 ### Research / Future (not product hero)
 
-- Academic validation (VAR, OOS backtest) in `nifty-50/research/` — internal QA only
+- Vol validation and dual-signal backtests in `nifty-50/forsyt_gpr/` — internal QA only
 - Portfolio advisor and SHAP waterfall — planned, not in capstone demo
 
 ---
@@ -275,9 +275,9 @@ Three application-specific ML models backed by a unified SHAP explainability fra
 
 ---
 
-### Module 5: Intelligence Dashboard (`/dashboard`)
+### Module 5: Intelligence Dashboard (`frontend/`)
 
-React.js web application with five core views:
+React web application (Vite + Tailwind) with core views:
 
 | View | Description |
 |------|-------------|
@@ -328,7 +328,7 @@ Ensure the following are installed and configured on your system before proceedi
 # Python 3.10 or higher
 python --version   # Should output Python 3.10.x or above
 
-# Node.js 18+ (for dashboard)
+# Node.js 18+ (for frontend)
 node --version     # Should output v18.x.x or above
 
 # PostgreSQL 15+
@@ -397,7 +397,7 @@ pip install -r requirements.txt
 **Step 4 — Install Frontend Dependencies**
 
 ```bash
-cd dashboard
+cd frontend
 npm install
 cd ..
 ```
@@ -600,22 +600,40 @@ python ml_inference/portfolio_risk.py --holdings portfolio_sample.json
 
 ### Running the Dashboard
 
-```bash
-# Start backend API server
-python api/server.py --port 8000
+**Backend API** (serves `/api/*`, proxies to Supabase):
 
-# In a separate terminal, start the React frontend
-cd dashboard
-npm start
+```bash
+source "$HOME/.venv/forsyt/bin/activate"
+cd "/path/to/Forsyt"
+python -m news_dataset.api.server
 ```
 
-Open your browser at: **http://localhost:3000**
+API: **http://localhost:5000** · Health: **http://localhost:5000/health**
 
-**Production build:**
+**React frontend** (Vite + Tailwind, live data via proxy to `:5000`):
+
 ```bash
-cd dashboard
+cd frontend
+npm install
+npm run dev
+```
+
+Open **http://127.0.0.1:5173**. Pages wired to the API:
+
+| Page | API |
+|------|-----|
+| Live snapshot | `/api/gpr/current`, `/health` |
+| Macro / dual-signal / GPR history | `/api/market/dual-signal`, `/api/gpr/history`, `/api/market/quotes` |
+| Trade corridors | `/api/corridors` |
+| News feed | `/api/events/feed`, `/api/news/recent` |
+
+**Production build:** copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_BASE` to your API URL.
+
+```bash
+cd frontend
+cp .env.example .env   # VITE_API_BASE=http://127.0.0.1:5000
 npm run build
-# Serve build/ with any static server or Nginx
+npm run preview
 ```
 
 ---
@@ -752,7 +770,7 @@ Top Drivers:
 
 ## API Reference
 
-The Forsyt backend exposes a REST API consumed by the dashboard (`news_dataset/api/server.py`).
+The Forsyt backend exposes a REST API consumed by the React frontend (`news_dataset/api/server.py`).
 
 **Implemented product endpoints:**
 
@@ -764,13 +782,21 @@ The Forsyt backend exposes a REST API consumed by the dashboard (`news_dataset/a
 | `GET /api/corridors/{id}` | Single corridor history |
 | `GET /api/events/feed` | NLP-tagged articles |
 | `GET /api/market/dual-signal` | Geo + NIFTY vol + joint stress |
+| `GET /api/market/quotes` | Live NIFTY, SENSEX, VIX, USD/INR, Brent (yfinance + cache) |
+| `GET /api/market/history?symbol=nifty&period=3mo` | Daily close history |
+| `GET /api/market/indicators?symbol=nifty` | Trailing vol, 7d return |
 | `GET /health`, `GET /stats`, `GET /news` | Legacy ops endpoints |
 
-Serve dashboard at `GET /`. Run: `cd news_dataset/api && python server.py`
+React UI runs separately via Vite (`frontend/`). Run API from repo root:
+
+```bash
+python -m news_dataset.api.server
+```
 
 ### Base URL
 ```
-Development:  http://localhost:8000
+Development API:  http://localhost:5000
+React dev (Vite): http://localhost:5173
 ```
 
 ---
@@ -1124,23 +1150,18 @@ forsyt/
 │   │   └── corridor_routes.py
 │   └── schemas.py                # Pydantic response schemas
 │
-├── dashboard/                    # React.js frontend
+├── frontend/                     # React.js frontend (Vite + Tailwind)
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── GPRChart.jsx
-│   │   │   ├── CorridorMap.jsx
-│   │   │   ├── PortfolioAdvisor.jsx
-│   │   │   ├── RegimeIndicator.jsx
-│   │   │   ├── EventExplorer.jsx
-│   │   │   └── SHAPExplainer.jsx
+│   │   │   ├── GprHistoryChart.tsx
+│   │   │   ├── GprHistoryChart.tsx
+│   │   │   └── LiveSnapshot.tsx
 │   │   ├── pages/
-│   │   │   ├── Home.jsx
-│   │   │   ├── Corridors.jsx
-│   │   │   ├── Portfolio.jsx
-│   │   │   ├── Macro.jsx
-│   │   │   └── Events.jsx
-│   │   └── App.jsx
-│   ├── public/
+│   │   │   ├── MacroDashboard.tsx
+│   │   │   ├── NewsDashboard.tsx
+│   │   │   └── TradeCorridorDashboard.tsx
+│   │   └── lib/
+│   │       └── api.ts
 │   └── package.json
 │
 ├── models/                       # Saved model artifacts
@@ -1189,7 +1210,7 @@ forsyt/
 
 ## Validation Strategy
 
-Forsyt uses **product KPIs** (pipeline reliability + index credibility), not ML headline scores. Research backtests live in `nifty-50/research/`.
+Forsyt uses **product KPIs** (pipeline reliability + index credibility), not ML headline scores. Vol backtests live in `nifty-50/forsyt_gpr/vol_model.py`.
 
 ### Product Success Metrics
 
@@ -1205,9 +1226,9 @@ Forsyt uses **product KPIs** (pipeline reliability + index credibility), not ML 
 
 | Check | Location |
 |-------|----------|
-| OOS NIFTY vol backtest | `nifty-50/research/analysis/03_backtest.py` |
-| Caldara VAR reproduction | `nifty-50/research/run_application.py` |
-| Full write-up | `nifty-50/research/REPORT.md` |
+| OOS NIFTY vol backtest | `nifty-50/forsyt_gpr/vol_model.py` |
+| GPR vs Caldara benchmark | `gpr_index/scripts/validate_gpr.py` |
+| Platform accuracy dashboard | `/quality` (API: `/api/metrics/accuracy`) |
 
 **Honest finding:** GPR does not beat market-only vol forecasts OOS — the product shows both signals side-by-side instead of overclaiming.
 
@@ -1236,7 +1257,7 @@ The `docker-compose.yml` starts:
 - `forsyt-db` — PostgreSQL 15
 - `forsyt-pipeline` — Data ingestion + NLP pipeline
 - `forsyt-api` — REST API server (port 8000)
-- `forsyt-dashboard` — React frontend (port 3000)
+- `frontend` — React + Vite UI (port 5173, proxies `/api` → Flask :5000)
 
 ### Option 3: Cloud Deployment (Google Cloud Run)
 

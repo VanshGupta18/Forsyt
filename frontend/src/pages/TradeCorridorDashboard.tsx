@@ -1,305 +1,221 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Reveal from '../components/Reveal'
-import { corridorRiskLabel, fetchCorridors } from '../lib/api'
-import WorldMap, { type MapMarkerData } from '../components/WorldMap'
+import ApiErrorBanner from '../components/ApiErrorBanner'
+import LoadingSkeleton from '../components/LoadingSkeleton'
+import { corridorRiskLabel, fetchCorridors, formatCorridorName } from '../lib/api'
 import LiveClock from '../components/LiveClock'
-
-const corridorMarkers: MapMarkerData[] = [
-  {
-    id: 'red-sea-route',
-    name: 'Red Sea Route',
-    coordinates: [40.0, 15.0],
-    severity: 'critical',
-    detail: 'Restricted. Vessels rerouting via Cape of Good Hope, +14 days for India-EU trade.',
-  },
-  {
-    id: 'mundra-port',
-    name: 'Mundra Port',
-    coordinates: [69.7, 22.7],
-    severity: 'moderate',
-    detail: 'Severe weather and diverted traffic causing 48h docking delays.',
-  },
-  {
-    id: 'suez-canal',
-    name: 'Suez Canal',
-    coordinates: [32.3, 30.5],
-    severity: 'moderate',
-    detail: 'Operational, medium risk. +2 days estimated delay.',
-  },
-  {
-    id: 'imec-corridor',
-    name: 'IMEC Corridor',
-    coordinates: [55.3, 25.2],
-    severity: 'moderate',
-    detail: 'Developing. Saudi Arabia & India finalizing customs protocol for rail-to-ship transition.',
-  },
-  {
-    id: 'malacca-strait',
-    name: 'Malacca Strait',
-    coordinates: [101.5, 2.5],
-    severity: 'stable',
-    detail: 'Operational, low risk. +1 day estimated delay.',
-  },
-]
 
 export default function TradeCorridorDashboard() {
   const [corridors, setCorridors] = useState<Awaited<ReturnType<typeof fetchCorridors>>['corridors']>([])
   const [asOf, setAsOf] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
+    setError(null)
     fetchCorridors()
       .then((payload) => {
         setCorridors(payload.corridors ?? [])
         setAsOf(typeof payload.date === 'string' ? payload.date : null)
       })
-      .catch(() => undefined)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
   }, [])
 
-  const highRiskCount = useMemo(
-    () => (corridors ?? []).filter((c) => Number(c.corridor_risk ?? 0) >= 50).length,
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const sorted = useMemo(
+    () => [...(corridors ?? [])].sort((a, b) => Number(b.corridor_risk ?? 0) - Number(a.corridor_risk ?? 0)),
     [corridors],
   )
 
-  return (
-    <>
+  const highRiskCount = useMemo(
+    () => sorted.filter((c) => Number(c.corridor_risk ?? 0) >= 50).length,
+    [sorted],
+  )
 
+  const topAlerts = sorted.filter((c) => Number(c.corridor_risk ?? 0) > 0).slice(0, 3)
+  const activeCorridors = sorted.filter((c) => Number(c.corridor_risk ?? 0) > 0 || Number(c.threat_index ?? 0) > 0)
 
-      <div className="pb-stack-lg px-margin-page max-w-container-max mx-auto space-y-stack-lg">
-
-      <Reveal className="space-y-2 pt-2">
-      <span className="eyebrow-badge">
-      <span className="eyebrow-dot" />
-      Live Corridor Monitoring
-      </span>
-      <h1 className="font-headline-lg text-headline-lg mb-2">Trade &amp; Corridor Risk Intelligence</h1>
-      <p className="font-body-lg text-body-lg text-on-surface-variant">Monitor global trade routes, supply chains, logistics disruptions and geopolitical corridor risks impacting India.</p>
-      </Reveal>
-
-      <Reveal>
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter">
-      <div className="card-lift glass-panel rounded-lg p-stack-md flex flex-col gap-stack-sm relative overflow-hidden">
-      <div className="flex justify-between items-start">
-      <span className="font-label-md text-label-md text-on-surface-variant uppercase">ACTIVE TRADE CORRIDORS</span>
-      <span className="material-symbols-outlined text-outline" style={{fontVariationSettings: '\'FILL\' 0'}}>hub</span>
-      </div>
-      <div className="font-display-lg text-display-lg">{corridors?.length || 14}</div>
-      <div className="text-secondary font-label-md text-label-md flex items-center gap-1 mt-auto">
-      <span className="material-symbols-outlined text-[16px]">trending_up</span> + 2 New Proposed
-                      </div>
-      </div>
-      <div className="card-lift glass-panel rounded-lg p-stack-md flex flex-col gap-stack-sm relative overflow-hidden ai-accent">
-      <div className="flex justify-between items-start">
-      <span className="font-label-md text-label-md text-error uppercase">HIGH RISK SHIPPING ROUTES</span>
-      <span className="material-symbols-outlined text-error" style={{fontVariationSettings: '\'FILL\' 0'}}>warning</span>
-      </div>
-      <div className="font-display-lg text-display-lg">{highRiskCount || 6}</div>
-      <div className="text-error font-label-md text-label-md flex items-center gap-1 mt-auto">
-      <span className="material-symbols-outlined text-[16px]">arrow_upward</span> Red Sea Elevated
-                      </div>
-      </div>
-      <div className="card-lift glass-panel rounded-lg p-stack-md flex flex-col gap-stack-sm relative overflow-hidden">
-      <div className="flex justify-between items-start">
-      <span className="font-label-md text-label-md text-tertiary uppercase">PORTS UNDER DISRUPTION</span>
-      <span className="material-symbols-outlined text-tertiary" style={{fontVariationSettings: '\'FILL\' 0'}}>anchor</span>
-      </div>
-      <div className="font-display-lg text-display-lg">09</div>
-      <div className="text-tertiary font-label-md text-label-md flex items-center gap-1 mt-auto">
-      <span className="material-symbols-outlined text-[16px]">schedule</span> Avg 4.2 Days Delay
-                      </div>
-      </div>
-      <div className="card-lift glass-panel rounded-lg p-stack-md flex flex-col gap-stack-sm relative overflow-hidden">
-      <div className="flex justify-between items-start">
-      <span className="font-label-md text-label-md text-on-surface-variant uppercase">ESTIMATED TRADE IMPACT</span>
-      <span className="material-symbols-outlined text-outline" style={{fontVariationSettings: '\'FILL\' 0'}}>bar_chart</span>
-      </div>
-      <div className="font-display-lg text-display-lg">-$1.4B</div>
-      <div className="text-on-surface-variant font-label-md text-label-md flex items-center gap-1 mt-auto">
-                          Projected Monthly Loss
-                      </div>
-      </div>
-      </section>
-      </Reveal>
-
-      <Reveal>
-      <section className="glass-panel rounded-lg p-stack-sm flex flex-wrap gap-stack-sm items-center justify-between">
-      <div className="flex gap-stack-sm flex-wrap">
-      <button className="bg-surface-variant hover:bg-surface-bright transition-colors px-4 py-2 rounded flex items-center gap-2 font-body-md text-body-md">
-                          Trade Corridor: All Corridors <span className="material-symbols-outlined text-[18px]">expand_more</span>
-      </button>
-      <button className="bg-surface-variant hover:bg-surface-bright transition-colors px-4 py-2 rounded flex items-center gap-2 font-body-md text-body-md">
-                          Transport Mode: Maritime <span className="material-symbols-outlined text-[18px]">expand_more</span>
-      </button>
-      <button className="bg-surface-variant hover:bg-surface-bright transition-colors px-4 py-2 rounded flex items-center gap-2 font-body-md text-body-md">
-                          Commodity: All Types <span className="material-symbols-outlined text-[18px]">expand_more</span>
-      </button>
-      <button className="bg-surface-variant hover:bg-surface-bright transition-colors px-4 py-2 rounded flex items-center gap-2 font-body-md text-body-md">
-                          Risk Level: Medium-High <span className="material-symbols-outlined text-[18px]">expand_more</span>
-      </button>
-      </div>
-      <button className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-2 font-body-md text-body-md px-4 py-2">
-      <span className="material-symbols-outlined text-[18px]">calendar_today</span> Last 30 Days
-                  </button>
-      </section>
-      </Reveal>
-
-      <Reveal>
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-
-      <div className="lg:col-span-2 glass-panel rounded-lg relative overflow-hidden min-h-[500px] p-stack-md flex flex-col">
-      <div className="mb-3">
-      <h2 className="font-title-lg text-title-lg">Trade &amp; Corridor Intelligence Map</h2>
-      <LiveClock />
-      </div>
-
-      <div className="flex-1 -mx-stack-md -mb-stack-md">
-      <WorldMap markers={corridorMarkers} height={460} center={[50, 20]} zoom={1.8} />
-      </div>
-      </div>
-      
-      <div className="glass-panel rounded-lg flex flex-col h-[500px]">
-      <div className="p-stack-md border-b border-white/5 flex justify-between items-center">
-      <h2 className="font-title-lg text-title-lg">Live Corridor Alerts</h2>
-      <span className="bg-surface-bright text-on-surface font-label-md text-label-md px-2 py-0.5 rounded text-[10px]">NEW</span>
-      </div>
-      <div className="p-stack-md flex-1 overflow-y-auto space-y-stack-md">
-      
-      <div className="bg-surface-container/50 border border-error/30 rounded-lg p-stack-sm flex flex-col gap-2 relative ai-accent !border-l-error">
-      <div className="flex items-center gap-2 font-label-md text-label-md text-error uppercase">
-      <span className="material-symbols-outlined text-[16px]">report</span> Critical Disruption
-                              </div>
-      <h3 className="font-body-lg text-body-lg font-semibold">Red Sea Shipping Stoppage</h3>
-      <p className="font-body-md text-body-md text-on-surface-variant text-sm">Vessels rerouting via Cape of Good Hope. Average delay +14 days for India-EU trade.</p>
-      <div className="flex justify-between items-center mt-2 font-label-md text-label-md text-on-surface-variant text-xs">
-      <span>Impact: $650M</span>
-      <span>3m ago</span>
-      </div>
-      </div>
-      
-      <div className="bg-surface-container/50 border border-tertiary/30 rounded-lg p-stack-sm flex flex-col gap-2 relative ai-accent !border-l-tertiary">
-      <div className="flex items-center gap-2 font-label-md text-label-md text-tertiary uppercase">
-      <span className="material-symbols-outlined text-[16px]">traffic</span> Port Congestion
-                              </div>
-      <h3 className="font-body-lg text-body-lg font-semibold">Mundra Port Backlog</h3>
-      <p className="font-body-md text-body-md text-on-surface-variant text-sm">Severe weather and increased diverted traffic causing 48h docking delays.</p>
-      <div className="flex justify-between items-center mt-2 font-label-md text-label-md text-on-surface-variant text-xs">
-      <span>Impact: High</span>
-      <span>1h ago</span>
-      </div>
-      </div>
-      
-      <div className="bg-surface-container/50 border border-primary/30 rounded-lg p-stack-sm flex flex-col gap-2 relative ai-accent">
-      <div className="flex items-center gap-2 font-label-md text-label-md text-primary uppercase">
-      <span className="material-symbols-outlined text-[16px]">policy</span> Corridor Update
-                              </div>
-      <h3 className="font-body-lg text-body-lg font-semibold">IMEC Regulatory Framework</h3>
-      <p className="font-body-md text-body-md text-on-surface-variant text-sm">Saudi Arabia &amp; India finalize customs protocol for rail-to-ship transition.</p>
-      </div>
-      </div>
-      </div>
-      </section>
-      </Reveal>
-
-      <Reveal>
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-
-      <div className="card-lift glass-panel rounded-lg p-stack-md flex flex-col gap-stack-md">
-      <h2 className="font-title-lg text-title-lg border-b border-white/5 pb-2">Supply Chain Exposure by Sector</h2>
-      <div className="space-y-4 mt-2">
-      <div>
-      <div className="flex justify-between font-body-md text-body-md mb-1">
-      <span className="font-semibold">Pharmaceuticals</span>
-      <span className="text-error font-label-md text-label-md">Critical Exposure (Red)</span>
-      </div>
-      <div className="h-2 w-full progress-bar-bg rounded-full overflow-hidden">
-      <div className="h-full bg-error w-[85%] rounded-full"></div>
-      </div>
-      </div>
-      <div>
-      <div className="flex justify-between font-body-md text-body-md mb-1">
-      <span className="font-semibold">Electronics</span>
-      <span className="text-tertiary font-label-md text-label-md">High Exposure (Amber)</span>
-      </div>
-      <div className="h-2 w-full progress-bar-bg rounded-full overflow-hidden">
-      <div className="h-full bg-tertiary w-[70%] rounded-full"></div>
-      </div>
-      </div>
-      <div>
-      <div className="flex justify-between font-body-md text-body-md mb-1">
-      <span className="font-semibold">Energy</span>
-      <span className="text-tertiary font-label-md text-label-md">Moderate Exposure (Yellow)</span>
-      </div>
-      <div className="h-2 w-full progress-bar-bg rounded-full overflow-hidden">
-      <div className="h-full bg-tertiary w-[50%] rounded-full opacity-80"></div>
-      </div>
-      </div>
-      <div>
-      <div className="flex justify-between font-body-md text-body-md mb-1">
-      <span className="font-semibold">Agriculture</span>
-      <span className="text-tertiary font-label-md text-label-md">Moderate Exposure (Yellow)</span>
-      </div>
-      <div className="h-2 w-full progress-bar-bg rounded-full overflow-hidden">
-      <div className="h-full bg-tertiary w-[50%] rounded-full opacity-80"></div>
-      </div>
-      </div>
-      <div>
-      <div className="flex justify-between font-body-md text-body-md mb-1">
-      <span className="font-semibold">Automobile</span>
-      <span className="text-secondary font-label-md text-label-md">Low Exposure (Green)</span>
-      </div>
-      <div className="h-2 w-full progress-bar-bg rounded-full overflow-hidden">
-      <div className="h-full bg-secondary w-[25%] rounded-full"></div>
-      </div>
-      </div>
-      </div>
-      </div>
-      
-      <div className="card-lift glass-panel rounded-lg p-stack-md flex flex-col gap-stack-md">
-      <h2 className="font-title-lg text-title-lg border-b border-white/5 pb-2">Trade Route Status</h2>
-      <div className="overflow-x-auto mt-2">
-      <table className="w-full text-left font-body-md text-body-md">
-      <thead>
-      <tr className="text-on-surface-variant border-b border-white/5">
-      <th className="pb-2 font-medium">Corridor Name</th>
-      <th className="pb-2 font-medium">Operational Status</th>
-      <th className="pb-2 font-medium">Risk Level</th>
-      <th className="pb-2 font-medium">Estimated Delay</th>
-      </tr>
-      </thead>
-      <tbody className="divide-y divide-white/5">
-      {(corridors?.length ? corridors : []).slice(0, 8).map((row) => {
+  const stressSnapshot = useMemo(
+    () =>
+      sorted.slice(0, 5).map((row) => {
         const risk = Number(row.corridor_risk ?? 0)
-        const { label, className } = corridorRiskLabel(risk)
-        return (
-          <tr key={row.corridor || row.corridor_name}>
-            <td className="py-3 font-semibold">{row.corridor_name || row.corridor}</td>
-            <td className="py-3 text-secondary">Monitored</td>
-            <td className={`py-3 ${className}`}>{label} ({risk.toFixed(1)})</td>
-            <td className="py-3 text-on-surface-variant">{asOf ? `As of ${asOf}` : '—'}</td>
-          </tr>
-        )
-      })}
+        const threat = Number(row.threat_index ?? 0)
+        const energy = Number(row.energy_risk ?? 0)
+        const goods = Number(row.goods_risk ?? 0)
+        const score = Math.max(risk, threat, energy, goods)
+        return {
+          key: row.corridor || row.corridor_name,
+          name: formatCorridorName(row.corridor, row.corridor_name),
+          score,
+          energy,
+          goods,
+          label: corridorRiskLabel(score).label,
+        }
+      }),
+    [sorted],
+  )
 
-      </tbody>
-      </table>
-      </div>
-      </div>
-      
-      <div className="card-lift glass-panel rounded-lg p-stack-md flex flex-col gap-stack-md ai-accent">
-      <h2 className="font-title-lg text-title-lg border-b border-white/5 pb-2 flex items-center gap-2">
-      <span className="material-symbols-outlined text-primary text-[20px]">smart_toy</span> AI Recommendations
-                      </h2>
-      <ul className="space-y-3 mt-2 font-body-md text-body-md list-disc list-inside text-on-surface-variant">
-      <li><span className="text-on-surface">Reroute critical shipments</span> via Cape of Good Hope.</li>
-      <li><span className="text-on-surface">Advance inventory buffer</span> for electronics components.</li>
-      <li><span className="text-on-surface">Diversify sourcing</span> for critical minerals in South America.</li>
-      <li><span className="text-on-surface">Monitor Malacca Strait</span> for potential weather delays.</li>
-      </ul>
-      </div>
-      </section>
+  return (
+    <div className="pb-stack-lg px-margin-page max-w-container-max mx-auto space-y-stack-lg">
+      <Reveal className="space-y-2 pt-2">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <span className="eyebrow-badge">
+              <span className="eyebrow-dot" />
+              Live Corridor Monitoring
+            </span>
+            <h1 className="font-headline-lg text-headline-lg mb-2">Trade &amp; Corridor Risk Intelligence</h1>
+            <p className="font-body-lg text-body-lg text-on-surface-variant">
+              Corridor scores from Forsyt news index{asOf ? ` · as of ${asOf}` : ''}.
+            </p>
+          </div>
+          <button type="button" onClick={load} disabled={loading} className="text-xs px-3 py-1.5 rounded border border-white/20 hover:bg-white/5">
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </Reveal>
-      </div>
 
+      {error && <ApiErrorBanner message={error} onRetry={load} />}
 
-    </>
+      {loading && !sorted.length && <LoadingSkeleton lines={5} />}
+
+      <Reveal>
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter">
+          <div className="card-lift glass-panel rounded-lg p-stack-md">
+            <span className="font-label-md text-label-md text-on-surface-variant uppercase">Tracked corridors</span>
+            <div className="font-display-lg text-display-lg">{loading ? '…' : sorted.length || '—'}</div>
+          </div>
+          <div className="card-lift glass-panel rounded-lg p-stack-md">
+            <span className="font-label-md text-label-md text-error uppercase">High risk (≥50)</span>
+            <div className="font-display-lg text-display-lg">{loading ? '…' : sorted.length ? highRiskCount : '—'}</div>
+          </div>
+          <div className="card-lift glass-panel rounded-lg p-stack-md">
+            <span className="font-label-md text-label-md text-tertiary uppercase">With activity</span>
+            <div className="font-display-lg text-display-lg">{loading ? '…' : activeCorridors.length}</div>
+          </div>
+          <div className="card-lift glass-panel rounded-lg p-stack-md">
+            <span className="font-label-md text-label-md text-on-surface-variant uppercase">Snapshot date</span>
+            <div className="font-display-lg text-display-lg text-base">{asOf ?? '—'}</div>
+          </div>
+        </section>
+      </Reveal>
+
+      <Reveal>
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+          <div className="lg:col-span-2 glass-panel rounded-lg p-stack-md">
+            <h2 className="font-title-lg text-title-lg mb-4">Trade Route Status</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left font-body-md text-body-md">
+                <thead>
+                  <tr className="text-on-surface-variant border-b border-white/5">
+                    <th className="pb-2 font-medium">Corridor</th>
+                    <th className="pb-2 font-medium">Risk</th>
+                    <th className="pb-2 font-medium">Threat</th>
+                    <th className="pb-2 font-medium">Energy</th>
+                    <th className="pb-2 font-medium">Goods</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {sorted.map((row) => {
+                    const risk = Number(row.corridor_risk ?? 0)
+                    const { label, className } = corridorRiskLabel(risk)
+                    const displayName = formatCorridorName(row.corridor, row.corridor_name)
+                    return (
+                      <tr key={row.corridor || row.corridor_name}>
+                        <td className="py-3 font-semibold">{displayName}</td>
+                        <td className={`py-3 ${className}`}>{label} ({risk.toFixed(1)})</td>
+                        <td className="py-3">{row.threat_index?.toFixed(1) ?? '—'}</td>
+                        <td className="py-3">{row.energy_risk?.toFixed(1) ?? '—'}</td>
+                        <td className="py-3">{row.goods_risk?.toFixed(1) ?? '—'}</td>
+                      </tr>
+                    )
+                  })}
+                  {!sorted.length && !error && !loading && (
+                    <tr><td colSpan={5} className="py-4 text-on-surface-variant">No corridor data — run <code className="text-xs">python -m news_dataset.pipeline.daily_index</code>.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="glass-panel rounded-lg flex flex-col">
+            <div className="p-stack-md border-b border-white/5 flex justify-between items-center">
+              <h2 className="font-title-lg text-title-lg">Top corridor alerts</h2>
+              <LiveClock />
+            </div>
+            <div className="p-stack-md flex-1 overflow-y-auto space-y-stack-md">
+              {(topAlerts.length ? topAlerts : sorted.slice(0, 3)).map((row) => {
+                const risk = Number(row.corridor_risk ?? 0)
+                const severity = risk >= 50 ? 'text-error' : risk >= 20 ? 'text-tertiary' : 'text-secondary'
+                const displayName = formatCorridorName(row.corridor, row.corridor_name)
+                return (
+                  <div key={row.corridor} className="bg-surface-container/50 border border-white/10 rounded-lg p-stack-sm">
+                    <div className={`font-label-md text-label-md uppercase ${severity}`}>
+                      {corridorRiskLabel(risk).label} · {risk.toFixed(1)}
+                    </div>
+                    <h3 className="font-body-lg font-semibold mt-1">{displayName}</h3>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      Threat {row.threat_index?.toFixed(1) ?? '—'} · Energy {row.energy_risk?.toFixed(1) ?? '—'} · Goods {row.goods_risk?.toFixed(1) ?? '—'}
+                    </p>
+                  </div>
+                )
+              })}
+              {!sorted.length && !error && !loading && <p className="text-sm text-on-surface-variant">No alerts yet.</p>}
+            </div>
+          </div>
+        </section>
+      </Reveal>
+
+      <Reveal>
+        <section className="glass-panel rounded-lg p-stack-md">
+          <h2 className="font-title-lg text-title-lg mb-2">Corridor stress snapshot</h2>
+          <p className="text-sm text-on-surface-variant mb-4">
+            Live energy and goods stress for top corridors from the Forsyt index{asOf ? ` (${asOf})` : ''}.
+          </p>
+          {!sorted.length && !loading && (
+            <p className="text-sm text-on-surface-variant">No corridor data available yet.</p>
+          )}
+          <div className="space-y-5 max-w-2xl">
+            {stressSnapshot.map((row) => (
+              <div key={row.key}>
+                <div className="flex justify-between text-sm mb-2 gap-2">
+                  <span className="font-medium">{row.name}</span>
+                  <span className="text-on-surface-variant shrink-0">
+                    {row.label} · {row.score.toFixed(1)}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                    <span className="w-14">Energy</span>
+                    <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${row.energy >= 50 ? 'bg-error' : row.energy >= 20 ? 'bg-tertiary' : 'bg-secondary/70'}`}
+                        style={{ width: `${Math.min(100, row.energy)}%` }}
+                      />
+                    </div>
+                    <span className="w-10 text-right">{row.energy.toFixed(1)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                    <span className="w-14">Goods</span>
+                    <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${row.goods >= 50 ? 'bg-error' : row.goods >= 20 ? 'bg-tertiary' : 'bg-secondary/70'}`}
+                        style={{ width: `${Math.min(100, row.goods)}%` }}
+                      />
+                    </div>
+                    <span className="w-10 text-right">{row.goods.toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </Reveal>
+    </div>
   )
 }

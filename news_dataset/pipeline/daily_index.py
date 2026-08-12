@@ -30,6 +30,70 @@ def _run_cmd(args: list[str], *, cwd: Path | None = None) -> None:
         raise RuntimeError(f"command failed ({result.returncode}): {' '.join(args)}")
 
 
+def parquet_bounds(end_day: date, *, lookback_days: int = 365) -> tuple[date, date] | None:
+    """Earliest/latest dates with India parquet files up to end_day."""
+    from gpr_index.scripts.gkg_gpr_pipeline import list_processed_files
+
+    baseline = end_day - timedelta(days=lookback_days)
+    files = list_processed_files(
+        INDIA_PROCESSED_DIR,
+        baseline.isoformat(),
+        end_day.isoformat(),
+    )
+    if not files:
+        return None
+    return files[0][0].date(), files[-1][0].date()
+
+
+def run_gpr_range(start_day: date, end_day: date) -> None:
+    """Score and normalize GPR + corridors across every parquet day in range.
+
+    Normalization needs multiple days in one batch — running one day at a time
+    forces gpr_index to 100 every time (ratio / its own mean = 1).
+    """
+    baseline_start = (end_day - timedelta(days=365)).isoformat()
+    start_str = start_day.isoformat()
+    end_str = end_day.isoformat()
+    _run_cmd(
+        [
+            sys.executable,
+            "gpr_index/main.py",
+            "gpr",
+            "--processed-dir",
+            str(INDIA_PROCESSED_DIR),
+            "--output-dir",
+            str(OUTPUT_DIR),
+            "--start-date",
+            start_str,
+            "--end-date",
+            end_str,
+            "--baseline-start",
+            baseline_start,
+            "--baseline-end",
+            end_str,
+        ]
+    )
+    _run_cmd(
+        [
+            sys.executable,
+            "gpr_index/main.py",
+            "corridor",
+            "--processed-dir",
+            str(INDIA_PROCESSED_DIR),
+            "--output-dir",
+            str(OUTPUT_DIR),
+            "--start-date",
+            start_str,
+            "--end-date",
+            end_str,
+            "--baseline-start",
+            baseline_start,
+            "--baseline-end",
+            end_str,
+        ]
+    )
+
+
 def run_daily_index(
     day: date,
     *,
@@ -64,43 +128,12 @@ def run_daily_index(
     db.log_pipeline_run("export", "ok", details)
 
     if not skip_gpr:
-        day_str = day.isoformat()
-        baseline_start = (day - timedelta(days=365)).isoformat()
-        _run_cmd(
-            [
-                sys.executable,
-                "gpr_index/main.py",
-                "gpr",
-                "--processed-dir",
-                str(INDIA_PROCESSED_DIR),
-                "--output-dir",
-                str(OUTPUT_DIR),
-                "--start-date",
-                day_str,
-                "--end-date",
-                day_str,
-                "--baseline-start",
-                baseline_start,
-                "--baseline-end",
-                day_str,
-            ]
-        )
-        _run_cmd(
-            [
-                sys.executable,
-                "gpr_index/main.py",
-                "corridor",
-                "--processed-dir",
-                str(INDIA_PROCESSED_DIR),
-                "--output-dir",
-                str(OUTPUT_DIR),
-                "--start-date",
-                day_str,
-                "--end-date",
-                day_str,
-            ]
-        )
-        db.log_pipeline_run("gpr_corridor", "ok", {"day": day_str})
+        bounds = parquet_bounds(day)
+        if not bounds:
+            db.log_pipeline_run("gpr_corridor", "skipped", {"day": day.isoformat(), "reason": "no parquet"})
+        else:
+            run_gpr_range(bounds[0], bounds[1])
+            db.log_pipeline_run("gpr_corridor", "ok", {"day": day.isoformat(), "range": f"{bounds[0]}..{bounds[1]}"})
 
     counts = sync_all()
     details.update(counts)

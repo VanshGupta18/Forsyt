@@ -593,9 +593,19 @@ def run(
 
     print(f"\n[GPR] Done.")
     print(f"  Days       : {len(daily_df)}")
-    print(f"  Mean GPR   : {daily_df['gpr_index'].mean():.1f}")
-    print(f"  Max GPR    : {daily_df['gpr_index'].max():.1f}  ({daily_df.loc[daily_df['gpr_index'].idxmax(),'date'].date()})")
-    print(f"  Pos. share : {daily_df['positive_share'].mean()*100:.1f}%")
+    gpr_series = daily_df["gpr_index"]
+    mean_gpr = gpr_series.mean()
+    print(f"  Mean GPR   : {mean_gpr:.1f}" if pd.notna(mean_gpr) else "  Mean GPR   : n/a")
+    if gpr_series.notna().any():
+        idx = gpr_series.idxmax()
+        print(
+            f"  Max GPR    : {gpr_series.max():.1f}  "
+            f"({daily_df.loc[idx, 'date'].date()})"
+        )
+    else:
+        print("  Max GPR    : n/a (all days unscored)")
+    pos = daily_df["positive_share"].mean()
+    print(f"  Pos. share : {pos * 100:.1f}%" if pd.notna(pos) else "  Pos. share : n/a")
     print(f"  Outputs    → {output_dir}/")
 
 

@@ -1,3 +1,6 @@
-declare module 'vanta/src/vanta.waves.js' {
-  export default function WAVES(options: Record<string, unknown>): { destroy: () => void }
+declare module 'three'
+
+declare module 'vanta/dist/vanta.waves.min.js' {
+  const VantaWaves: unknown
+  export default VantaWaves
 }

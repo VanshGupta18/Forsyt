@@ -5,6 +5,7 @@ Forsyt — unified REST API for geopolitical risk intelligence.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,7 @@ NEWS_DATASET = REPO_ROOT / "news_dataset"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -36,6 +37,12 @@ from news_dataset.api.gpr_service import (  # noqa: E402
     get_news_stats,
     serialize_rows,
 )
+from news_dataset.api.market_service import (  # noqa: E402
+    compute_indicators,
+    fetch_history,
+    fetch_quotes,
+)
+from news_dataset.api.metrics_service import build_accuracy_metrics  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,47 +51,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DASHBOARD_DIR = REPO_ROOT / "dashboard"
-
 app = Flask(__name__)
-CORS(app)
-
-
-def _serialize_rows(rows):
-    return serialize_rows(rows)
-
-
+CORS(
+    app,
+    resources={
+        r"/api/*": {"origins": "*"},
+        r"/health*": {"origins": "*"},
+        r"/stats*": {"origins": "*"},
+    },
+)
 
 
 @app.get("/")
 def root():
     return jsonify({
         "service": "forsyt-api",
-        "legacy_dashboard": "/legacy",
         "frontend_dev": "cd frontend && npm run dev",
+        "endpoints": {
+            "gpr": "/api/gpr/current",
+            "corridors": "/api/corridors",
+            "events": "/api/events/feed",
+            "dual_signal": "/api/market/dual-signal",
+            "market_quotes": "/api/market/quotes",
+            "market_history": "/api/market/history",
+            "market_indicators": "/api/market/indicators",
+            "metrics_accuracy": "/api/metrics/accuracy",
+        },
     })
-
-@app.get("/legacy")
-@app.get("/legacy/")
-def legacy_dashboard_home():
-    """Static product dashboard (HTML/JS); React UI lives in frontend/."""
-    return send_from_directory(DASHBOARD_DIR, "index.html")
-
-
-@app.get("/legacy/<path:filename>")
-def legacy_dashboard_assets(filename: str):
-    return send_from_directory(DASHBOARD_DIR, filename)
-
-
-@app.get("/dashboard/<path:filename>")
-def dashboard_assets(filename: str):
-    return send_from_directory(DASHBOARD_DIR, filename)
-
 
 @app.get("/news")
 @app.get("/news/")
 def news_all():
-    return _serialize_rows(get_geo_articles())
+    return serialize_rows(get_geo_articles())
 
 
 @app.get("/news/<tier>")
@@ -95,7 +93,7 @@ def news_by_tier(tier: str):
         return "Invalid tier format", 400
     if tier_val not in (1, 2):
         return "Tier must be 1 or 2", 400
-    return _serialize_rows(get_geo_articles(tier=tier_val))
+    return serialize_rows(get_geo_articles(tier=tier_val))
 
 
 @app.get("/health")
@@ -122,7 +120,7 @@ def stats():
     }
     return jsonify({
         "total_articles": get_total_count(),
-        "recent_cycles": _serialize_rows(get_geo_cycle_stats(limit=10)),
+        "recent_cycles": serialize_rows(get_geo_cycle_stats(limit=10)),
         "feed_health": feed_health,
     })
 
@@ -139,13 +137,25 @@ def api_gpr_current():
 def api_gpr_history():
     start = request.args.get("start")
     end = request.args.get("end")
-    limit = int(request.args.get("limit", 500))
-    return jsonify({"history": get_gpr_history(start=start, end=end, limit=limit)})
+    try:
+        limit = int(request.args.get("limit", 500))
+    except ValueError:
+        return jsonify({"error": "invalid limit", "history": []}), 400
+    try:
+        history = get_gpr_history(start=start, end=end, limit=limit)
+        return jsonify({"history": history, "count": len(history)})
+    except Exception as exc:
+        logger.exception("gpr history failed")
+        return jsonify({"error": str(exc), "history": []}), 503
 
 
 @app.get("/api/corridors")
 def api_corridors():
-    return jsonify(get_corridors())
+    try:
+        return jsonify(get_corridors())
+    except Exception as exc:
+        logger.exception("corridors failed")
+        return jsonify({"error": str(exc), "date": None, "corridors": []}), 503
 
 
 @app.get("/api/corridors/<corridor_id>")
@@ -187,6 +197,54 @@ def api_news_recent():
     })
 
 
+@app.get("/api/market/quotes")
+def api_market_quotes():
+    raw = request.args.get("symbols", "")
+    symbols = [s.strip() for s in raw.split(",") if s.strip()] or None
+    try:
+        payload = fetch_quotes(symbols)
+        status = 200 if payload.get("quotes") else 503
+        return jsonify(payload), status
+    except Exception as exc:
+        logger.exception("market quotes failed")
+        return jsonify({"error": str(exc), "quotes": [], "errors": [str(exc)]}), 503
+
+
+@app.get("/api/market/history")
+def api_market_history():
+    symbol = request.args.get("symbol", "nifty")
+    period = request.args.get("period", "3mo")
+    try:
+        return jsonify(fetch_history(symbol, period=period))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except Exception as exc:
+        logger.exception("market history failed")
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.get("/api/market/indicators")
+def api_market_indicators():
+    symbol = request.args.get("symbol", "nifty")
+    try:
+        return jsonify(compute_indicators(symbol))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except Exception as exc:
+        logger.exception("market indicators failed")
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.get("/api/metrics/accuracy")
+def api_metrics_accuracy():
+    refresh_vol = request.args.get("refresh_vol", "").lower() in {"1", "true", "yes"}
+    try:
+        return jsonify(build_accuracy_metrics(refresh_vol=refresh_vol))
+    except Exception as exc:
+        logger.exception("metrics accuracy failed")
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.get("/api/market/dual-signal")
 def api_dual_signal():
     refresh = request.args.get("refresh", "").lower() in {"1", "true", "yes"}
@@ -199,4 +257,5 @@ def api_dual_signal():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", "5001"))
+    app.run(debug=True, host="127.0.0.1", port=port)
