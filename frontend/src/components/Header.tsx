@@ -38,6 +38,10 @@ export default function Header() {
         <div className="flex items-center gap-4">
           <img alt="FORSYT Logo" className="h-9 w-auto" src={logo} />
           <span className="font-display-lg text-[22px] tracking-tighter text-on-surface">FORSYT</span>
+          <span className="hidden lg:block h-4 w-px bg-white/15" aria-hidden />
+          <span className="hidden lg:block font-label-md text-on-surface-variant/60 uppercase tracking-wider">
+            Geopolitical Intelligence
+          </span>
         </div>
 
         <nav className="hidden md:flex gap-8">

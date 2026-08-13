@@ -85,16 +85,48 @@ export type MarketIndicatorsPayload = {
   stale?: boolean
 }
 
+export type CorridorCategory = 'sea' | 'land' | 'strategic'
+export type CargoFocus = 'goods' | 'energy' | 'both'
+
+export type CorridorRow = {
+  corridor?: string
+  corridor_name?: string
+  category?: CorridorCategory
+  corridor_risk?: number
+  corridor_risk_7ma?: number
+  corridor_risk_30ma?: number
+  operational_risk?: number
+  threat_index?: number
+  energy_risk?: number
+  goods_risk?: number
+  energy_exposure?: number
+  goods_exposure?: number
+  corridor_hit_count?: number
+  gpr_sum?: number
+  score_status?: string
+  action_label?: string
+  date?: string
+}
+
 export type CorridorsPayload = {
   date?: string | null
-  corridors?: Array<{
-    corridor?: string
-    corridor_name?: string
-    corridor_risk?: number
-    threat_index?: number
-    energy_risk?: number
-    goods_risk?: number
+  index_start?: string
+  disclaimer?: string
+  metadata?: Record<string, {
+    id?: string
+    name?: string
+    category?: CorridorCategory
+    energy_exposure?: number
+    goods_exposure?: number
+    exposure_source?: string
   }>
+  corridors?: CorridorRow[]
+}
+
+export type CorridorHistoryPayload = {
+  corridor?: string
+  history?: CorridorRow[]
+  error?: string
 }
 
 export type DualSignalPayload = {
@@ -196,6 +228,33 @@ export function fetchEventsFeed(params: EventsFeedParams = {}) {
 
 export function fetchCorridors() {
   return fetchJSON<CorridorsPayload>('/api/corridors')
+}
+
+export function fetchCorridorHistory(corridorId: string, limit = 30) {
+  return fetchJSON<CorridorHistoryPayload>(`/api/corridors/${encodeURIComponent(corridorId)}?limit=${limit}`)
+}
+
+export function fetchNewsImage(link: string) {
+  const qs = new URLSearchParams({ link })
+  return fetchJSON<{ image_url: string | null }>(`/api/news/image?${qs}`).then((r) => r.image_url)
+}
+
+export function corridorTrend(history: CorridorRow[]): 'rising' | 'falling' | 'stable' {
+  if (history.length < 2) return 'stable'
+  const scores = history
+    .map((row) => Number(row.operational_risk ?? row.corridor_risk_7ma ?? row.corridor_risk ?? 0))
+    .filter(Number.isFinite)
+  if (scores.length < 2) return 'stable'
+  const latest = scores[scores.length - 1]
+  const prior = scores[scores.length - 2]
+  if (latest > prior + 2) return 'rising'
+  if (latest < prior - 2) return 'falling'
+  return 'stable'
+}
+
+export function corridorOperationalRisk(row: CorridorRow): number {
+  const value = row.operational_risk ?? row.corridor_risk_7ma ?? row.corridor_risk
+  return Number.isFinite(Number(value)) ? Number(value) : 0
 }
 
 export function fetchDualSignal(refresh = false) {

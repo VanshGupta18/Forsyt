@@ -1,49 +1,49 @@
-date,corridor,gpr_sum,corridor_hit_count,total_articles,positive_articles,matched_positive_articles,raw_ratio,threat_index,corridor_name,energy_exposure,goods_exposure,energy_risk,goods_risk,corridor_risk
-2026-08-09,cape_of_good_hope,0.0,0,219,9,3,0.0,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0
-2026-08-09,danish_straits_baltic,0.0,0,219,9,3,0.0,0.0,Danish Straits / Baltic,0.176,0.0,0.0,0.0,0.0
-2026-08-09,imec,0.0,0,219,9,3,0.0,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0
-2026-08-09,india_bangladesh_petrapole,0.0,0,219,9,3,0.0,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0
-2026-08-09,india_china_lac,0.0,0,219,9,3,0.0,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0
-2026-08-09,india_nepal_raxaul,0.0,0,219,9,3,0.0,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0
-2026-08-09,india_pakistan_attari,0.0,0,219,9,3,0.0,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0
-2026-08-09,instc_chabahar,1.605714,2,219,9,3,0.007332027397260275,155.75181173876962,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0
-2026-08-09,red_sea_suez,0.0,0,219,9,3,0.0,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0
-2026-08-09,strait_of_hormuz,1.8957140000000001,3,219,9,3,0.008656228310502284,394.9353727101164,Strait of Hormuz,0.336,0.0,100.0,0.0,100.0
-2026-08-09,strait_of_malacca,0.0,0,219,9,3,0.0,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0
-2026-08-09,taiwan_south_china_sea,0.0,0,219,9,3,0.0,0.0,Taiwan Strait / South China Sea,0.0,0.55,0.0,0.0,0.0
-2026-08-10,cape_of_good_hope,0.0,0,319,8,3,0.0,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0
-2026-08-10,danish_straits_baltic,2.0577763333333334,3,319,8,3,0.006450709508881923,237.00036582950807,Danish Straits / Baltic,0.176,0.0,41.712064385993415,0.0,41.712064385993415
-2026-08-10,imec,0.0,0,319,8,3,0.0,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0
-2026-08-10,india_bangladesh_petrapole,0.0,0,319,8,3,0.0,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0
-2026-08-10,india_china_lac,0.0,0,319,8,3,0.0,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0
-2026-08-10,india_nepal_raxaul,0.0,0,319,8,3,0.0,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0
-2026-08-10,india_pakistan_attari,0.0,0,319,8,3,0.0,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0
-2026-08-10,instc_chabahar,2.0577763333333334,3,319,8,3,0.006450709508881923,105.37769534324133,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0
-2026-08-10,red_sea_suez,0.0,0,319,8,3,0.0,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0
-2026-08-10,strait_of_hormuz,0.0,0,319,8,3,0.0,0.0,Strait of Hormuz,0.336,0.0,0.0,0.0,0.0
-2026-08-10,strait_of_malacca,0.0,0,319,8,3,0.0,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0
-2026-08-10,taiwan_south_china_sea,0.0,0,319,8,3,0.0,0.0,Taiwan Strait / South China Sea,0.0,0.55,0.0,0.0,0.0
-2026-08-11,cape_of_good_hope,0.0,0,339,6,4,0.0,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0
-2026-08-11,danish_straits_baltic,1.7699989999999999,2,339,6,4,0.005221235988200589,141.17419467045272,Danish Straits / Baltic,0.176,0.0,24.84665826199968,0.0,24.84665826199968
-2026-08-11,imec,0.0,0,339,6,4,0.0,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0
-2026-08-11,india_bangladesh_petrapole,0.0,0,339,6,4,0.0,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0
-2026-08-11,india_china_lac,0.0,0,339,6,4,0.0,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0
-2026-08-11,india_nepal_raxaul,0.0,0,339,6,4,0.0,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0
-2026-08-11,india_pakistan_attari,0.0,0,339,6,4,0.0,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0
-2026-08-11,instc_chabahar,2.2262899999999997,3,339,6,4,0.006567227138643067,118.91047251950111,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0
-2026-08-11,red_sea_suez,0.0,0,339,6,4,0.0,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0
-2026-08-11,strait_of_hormuz,0.456291,1,339,6,4,0.0013459911504424779,4.13260705940746,Strait of Hormuz,0.336,0.0,1.3885559719609069,0.0,1.3885559719609069
-2026-08-11,strait_of_malacca,0.0,0,339,6,4,0.0,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0
-2026-08-11,taiwan_south_china_sea,0.39999999999999997,1,339,6,4,0.0011799410029498525,102.12514124291032,Taiwan Strait / South China Sea,0.0,0.55,0.0,56.16882768360068,56.16882768360068
-2026-08-12,cape_of_good_hope,0.0,0,292,13,3,0.0,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0
-2026-08-12,danish_straits_baltic,0.7342820000000001,1,292,13,3,0.002514664383561644,21.8254395000392,Danish Straits / Baltic,0.176,0.0,3.8412773520068986,0.0,3.8412773520068986
-2026-08-12,imec,0.0,0,292,13,3,0.0,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0
-2026-08-12,india_bangladesh_petrapole,0.0,0,292,13,3,0.0,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0
-2026-08-12,india_china_lac,0.0,0,292,13,3,0.0,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0
-2026-08-12,india_nepal_raxaul,0.0,0,292,13,3,0.0,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0
-2026-08-12,india_pakistan_attari,0.0,0,292,13,3,0.0,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0
-2026-08-12,instc_chabahar,0.9551170000000001,2,292,13,3,0.0032709486301369865,19.96002039848797,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0
-2026-08-12,red_sea_suez,0.0,0,292,13,3,0.0,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0
-2026-08-12,strait_of_hormuz,0.22083499999999998,1,292,13,3,0.0007562842465753424,0.9320202304761891,Strait of Hormuz,0.336,0.0,0.3131587974399996,0.0,0.3131587974399996
-2026-08-12,strait_of_malacca,0.0,0,292,13,3,0.0,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0
-2026-08-12,taiwan_south_china_sea,0.5333333333333333,1,292,13,3,0.0018264840182648401,297.87485875708967,Taiwan Strait / South China Sea,0.0,0.55,0.0,100.0,100.0
+date,corridor,gpr_sum,corridor_hit_count,total_articles,positive_articles,matched_positive_articles,raw_ratio,score_status,threat_index,corridor_name,energy_exposure,goods_exposure,energy_risk,goods_risk,corridor_risk,corridor_risk_7ma,corridor_risk_30ma
+2026-08-09,cape_of_good_hope,0.0,0,219,9,3,0.0,insufficient_history,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,danish_straits_baltic,0.0,0,219,9,3,0.0,ok,0.0,Danish Straits / Baltic,0.176,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,imec,0.0,0,219,9,3,0.0,insufficient_history,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,india_bangladesh_petrapole,0.0,0,219,9,3,0.0,insufficient_history,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,india_china_lac,0.0,0,219,9,3,0.0,insufficient_history,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,india_nepal_raxaul,0.0,0,219,9,3,0.0,insufficient_history,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,india_pakistan_attari,0.0,0,219,9,3,0.0,insufficient_history,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,instc_chabahar,1.605714,2,219,9,3,0.007332027397260275,ok,100.0,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-09,red_sea_suez,0.0,0,219,9,3,0.0,insufficient_history,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0,0.0,0.0
+2026-08-09,strait_of_hormuz,1.8957140000000001,3,219,9,3,0.008656228310502284,ok,100.0,Strait of Hormuz,0.336,0.0,33.6,0.0,33.6,33.6,33.6
+2026-08-09,strait_of_malacca,0.0,0,219,9,3,0.0,insufficient_history,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0,0.0,0.0
+2026-08-09,taiwan_south_china_sea,0.0,0,219,9,3,0.0,ok,0.0,Taiwan Strait / South China Sea,0.0,0.55,0.0,0.0,0.0,0.0,0.0
+2026-08-10,cape_of_good_hope,0.0,0,319,8,3,0.0,insufficient_history,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-10,danish_straits_baltic,2.0577763333333334,3,319,8,3,0.006450709508881923,ok,100.0,Danish Straits / Baltic,0.176,0.0,17.599999999999998,0.0,17.599999999999998,8.799999999999999,8.799999999999999
+2026-08-10,imec,0.0,0,319,8,3,0.0,insufficient_history,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-10,india_bangladesh_petrapole,0.0,0,319,8,3,0.0,insufficient_history,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-10,india_china_lac,0.0,0,319,8,3,0.0,insufficient_history,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-10,india_nepal_raxaul,0.0,0,319,8,3,0.0,insufficient_history,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-10,india_pakistan_attari,0.0,0,319,8,3,0.0,insufficient_history,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-10,instc_chabahar,2.0577763333333334,3,319,8,3,0.006450709508881923,ok,100.0,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-10,red_sea_suez,0.0,0,319,8,3,0.0,insufficient_history,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0,0.0,0.0
+2026-08-10,strait_of_hormuz,0.0,0,319,8,3,0.0,ok,0.0,Strait of Hormuz,0.336,0.0,0.0,0.0,0.0,16.8,16.8
+2026-08-10,strait_of_malacca,0.0,0,319,8,3,0.0,insufficient_history,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0,0.0,0.0
+2026-08-10,taiwan_south_china_sea,0.0,0,319,8,3,0.0,ok,0.0,Taiwan Strait / South China Sea,0.0,0.55,0.0,0.0,0.0,0.0,0.0
+2026-08-11,cape_of_good_hope,0.0,0,339,6,4,0.0,insufficient_history,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-11,danish_straits_baltic,1.7699989999999999,2,339,6,4,0.005221235988200589,ok,100.0,Danish Straits / Baltic,0.176,0.0,17.599999999999998,0.0,17.599999999999998,11.733333333333333,11.733333333333333
+2026-08-11,imec,0.0,0,339,6,4,0.0,insufficient_history,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-11,india_bangladesh_petrapole,0.0,0,339,6,4,0.0,insufficient_history,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-11,india_china_lac,0.0,0,339,6,4,0.0,insufficient_history,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-11,india_nepal_raxaul,0.0,0,339,6,4,0.0,insufficient_history,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-11,india_pakistan_attari,0.0,0,339,6,4,0.0,insufficient_history,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-11,instc_chabahar,2.2262899999999997,3,339,6,4,0.006567227138643067,ok,100.0,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-11,red_sea_suez,0.0,0,339,6,4,0.0,insufficient_history,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0,0.0,0.0
+2026-08-11,strait_of_hormuz,0.456291,1,339,6,4,0.0013459911504424779,ok,22.585840102160944,Strait of Hormuz,0.336,0.0,7.588842274326078,0.0,7.588842274326078,13.729614091442025,13.729614091442025
+2026-08-11,strait_of_malacca,0.0,0,339,6,4,0.0,insufficient_history,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0,0.0,0.0
+2026-08-11,taiwan_south_china_sea,0.39999999999999997,1,339,6,4,0.0011799410029498525,ok,100.0,Taiwan Strait / South China Sea,0.0,0.55,0.0,55.00000000000001,55.00000000000001,18.333333333333336,18.333333333333336
+2026-08-12,cape_of_good_hope,0.0,0,292,13,3,0.0,insufficient_history,0.0,Cape of Good Hope,0.136,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-12,danish_straits_baltic,0.7342820000000001,1,292,13,3,0.002514664383561644,ok,47.30678477330212,Danish Straits / Baltic,0.176,0.0,8.325994120101173,0.0,8.325994120101173,10.881498530025292,10.881498530025292
+2026-08-12,imec,0.0,0,292,13,3,0.0,insufficient_history,0.0,India-Middle East-Europe Economic Corridor,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-12,india_bangladesh_petrapole,0.0,0,292,13,3,0.0,insufficient_history,0.0,India-Bangladesh (Petrapole),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-12,india_china_lac,0.0,0,292,13,3,0.0,insufficient_history,0.0,India-China LAC (Ladakh),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-12,india_nepal_raxaul,0.0,0,292,13,3,0.0,insufficient_history,0.0,India-Nepal (Raxaul-Birgunj),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-12,india_pakistan_attari,0.0,0,292,13,3,0.0,insufficient_history,0.0,India-Pakistan (Attari-Wagah),0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-12,instc_chabahar,0.9551170000000001,2,292,13,3,0.0032709486301369865,ok,38.908847187571624,INSTC / Chabahar,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-08-12,red_sea_suez,0.0,0,292,13,3,0.0,insufficient_history,0.0,Red Sea / Bab el-Mandeb / Suez,0.271,0.35,0.0,0.0,0.0,0.0,0.0
+2026-08-12,strait_of_hormuz,0.22083499999999998,1,292,13,3,0.0007562842465753424,ok,9.059645923094424,Strait of Hormuz,0.336,0.0,3.0440410301597267,0.0,3.0440410301597267,11.05822082612145,11.05822082612145
+2026-08-12,strait_of_malacca,0.0,0,292,13,3,0.0,insufficient_history,0.0,Strait of Malacca,0.0,0.55,0.0,0.0,0.0,0.0,0.0
+2026-08-12,taiwan_south_china_sea,0.5333333333333333,1,292,13,3,0.0018264840182648401,ok,100.0,Taiwan Strait / South China Sea,0.0,0.55,0.0,55.00000000000001,55.00000000000001,27.500000000000004,27.500000000000004

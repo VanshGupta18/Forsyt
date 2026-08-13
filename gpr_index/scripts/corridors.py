@@ -278,3 +278,34 @@ def tag_corridors(v2locations: str) -> list[str]:
         if matched:
             matches.append(corridor_id)
     return matches
+
+
+CORRIDOR_CATEGORIES: dict[str, str] = {
+    "strait_of_hormuz": "sea",
+    "red_sea_suez": "sea",
+    "strait_of_malacca": "sea",
+    "cape_of_good_hope": "sea",
+    "danish_straits_baltic": "sea",
+    "taiwan_south_china_sea": "sea",
+    "india_china_lac": "land",
+    "india_pakistan_attari": "land",
+    "india_bangladesh_petrapole": "land",
+    "india_nepal_raxaul": "land",
+    "imec": "strategic",
+    "instc_chabahar": "strategic",
+}
+
+
+def corridor_metadata() -> dict[str, dict]:
+    """Static corridor registry for API / dashboard (category + exposure weights)."""
+    return {
+        corridor_id: {
+            "id": corridor_id,
+            "name": spec["name"],
+            "category": CORRIDOR_CATEGORIES.get(corridor_id, "sea"),
+            "energy_exposure": spec["energy_exposure"],
+            "goods_exposure": spec["goods_exposure"],
+            "exposure_source": spec["exposure_source"],
+        }
+        for corridor_id, spec in CORRIDORS.items()
+    }

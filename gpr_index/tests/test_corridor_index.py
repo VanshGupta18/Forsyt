@@ -72,9 +72,66 @@ class CorridorAggregationTests(unittest.TestCase):
             }
         )
         result = normalize_corridor_index(rows, "2025-01-01", "2025-01-02")
-        self.assertAlmostEqual(result["threat_index"].mean(), 100.0)
+        self.assertTrue((result["threat_index"] <= 100).all())
         self.assertTrue((result["corridor_risk"] <= 100).all())
         self.assertTrue((result["corridor_risk"] == result["energy_risk"]).all())
+        self.assertIn("corridor_risk_7ma", result.columns)
+        self.assertEqual(result["score_status"].iloc[-1], "ok")
+
+    def test_zero_hit_day_yields_zero_risk(self) -> None:
+        rows = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-01", "2025-01-02", "2025-01-03"]),
+                "corridor": ["taiwan_south_china_sea"] * 3,
+                "gpr_sum": [0.5, 0.0, 0.0],
+                "corridor_hit_count": [1, 0, 0],
+                "total_articles": [100, 100, 100],
+                "positive_articles": [5, 5, 5],
+                "matched_positive_articles": [1, 0, 0],
+                "raw_ratio": [0.005, 0.0, 0.0],
+            }
+        )
+        result = normalize_corridor_index(rows, "2025-01-01", "2025-01-03")
+        quiet = result.loc[result["date"] == pd.Timestamp("2025-01-03")].iloc[0]
+        self.assertEqual(quiet["corridor_risk"], 0.0)
+
+    def test_seven_day_ma_smooths_single_day_spike(self) -> None:
+        dates = pd.date_range("2025-01-01", periods=7)
+        raw = [0.005, 0.005, 0.0, 0.0, 0.0, 0.02, 0.0]
+        hits = [1, 1, 0, 0, 0, 2, 0]
+        rows = pd.DataFrame(
+            {
+                "date": dates,
+                "corridor": ["strait_of_malacca"] * 7,
+                "gpr_sum": [v * 100 for v in raw],
+                "corridor_hit_count": hits,
+                "total_articles": [100] * 7,
+                "positive_articles": [10] * 7,
+                "matched_positive_articles": hits,
+                "raw_ratio": raw,
+            }
+        )
+        result = normalize_corridor_index(rows, "2025-01-01", "2025-01-07")
+        spike_day = result.loc[result["date"] == dates[5]].iloc[0]
+        self.assertGreater(spike_day["corridor_risk"], 0.0)
+        self.assertLess(spike_day["corridor_risk_7ma"], spike_day["corridor_risk"] + 1e-6)
+
+    def test_insufficient_history_before_min_hit_days(self) -> None:
+        rows = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-01"]),
+                "corridor": ["taiwan_south_china_sea"],
+                "gpr_sum": [0.5],
+                "corridor_hit_count": [1],
+                "total_articles": [100],
+                "positive_articles": [5],
+                "matched_positive_articles": [1],
+                "raw_ratio": [0.005],
+            }
+        )
+        result = normalize_corridor_index(rows, "2025-01-01", "2025-01-01")
+        self.assertEqual(result["score_status"].iloc[0], "insufficient_history")
+        self.assertEqual(result["corridor_risk"].iloc[0], 0.0)
 
 
 class CorridorValidationTests(unittest.TestCase):
