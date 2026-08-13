@@ -18,6 +18,8 @@ GPR_OUTPUT = REPO_ROOT / "gpr_index" / "outputs"
 if str(NIFTY_DIR) not in sys.path:
     sys.path.insert(0, str(NIFTY_DIR))
 
+from gpr_index.scripts.corridor_index import CORRIDOR_SCORE_DISCLAIMER  # noqa: E402
+from gpr_index.scripts.corridors import corridor_metadata  # noqa: E402
 from gpr_index.scripts.paths import INDIA_GPR_INDEX_START  # noqa: E402
 from news_dataset import db  # noqa: E402
 
@@ -234,15 +236,44 @@ def get_gpr_history(start: str | None = None, end: str | None = None, limit: int
     return csv_history
 
 
+def _corridor_action_label(risk: float | None, score_status: str | None = None) -> str:
+    if score_status == "insufficient_history":
+        return "Calibrating"
+    value = float(risk or 0)
+    if value >= 50:
+        return "Avoid new bookings"
+    if value >= 20:
+        return "Monitor closely"
+    return "Normal operations"
+
+
+def _enrich_corridor_row(row: dict) -> dict:
+    meta = corridor_metadata().get(str(row.get("corridor") or ""), {})
+    operational = row.get("corridor_risk_7ma")
+    if operational is None:
+        operational = row.get("corridor_risk")
+    out = {**row, **meta}
+    out["operational_risk"] = operational
+    out["action_label"] = _corridor_action_label(operational, row.get("score_status"))
+    return out
+
+
+def _corridors_payload(date_val, rows: list[dict]) -> dict:
+    enriched = [_enrich_corridor_row(dict(row)) for row in rows]
+    return {
+        "date": _serialize(date_val),
+        "index_start": INDIA_GPR_INDEX_START.isoformat(),
+        "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
+        "metadata": corridor_metadata(),
+        "corridors": serialize_rows(enriched),
+    }
+
+
 def get_corridors() -> dict:
     try:
         latest, rows = db.get_corridors_latest()
         if rows:
-            return {
-                "date": _serialize(latest),
-                "index_start": INDIA_GPR_INDEX_START.isoformat(),
-                "corridors": serialize_rows(rows),
-            }
+            return _corridors_payload(latest, rows)
     except Exception:
         logger.exception("corridor db read failed; falling back to CSV")
     frame = _load_corridor_csv()
@@ -250,6 +281,8 @@ def get_corridors() -> dict:
         return {
             "date": None,
             "index_start": INDIA_GPR_INDEX_START.isoformat(),
+            "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
+            "metadata": corridor_metadata(),
             "corridors": [],
         }
     latest_date = frame["date"].max()
@@ -257,27 +290,38 @@ def get_corridors() -> dict:
     corridors = []
     for _, row in day.iterrows():
         corridors.append(
-            {
-                "corridor": row["corridor"],
-                "corridor_name": row.get("corridor_name", row["corridor"]),
-                "corridor_risk": float(row["corridor_risk"]),
-                "threat_index": float(row.get("threat_index", 0)),
-                "energy_risk": float(row.get("energy_risk", 0)),
-                "goods_risk": float(row.get("goods_risk", 0)),
-                "date": latest_date.strftime("%Y-%m-%d"),
-            }
+            _enrich_corridor_row(
+                {
+                    "corridor": row["corridor"],
+                    "corridor_name": row.get("corridor_name", row["corridor"]),
+                    "corridor_risk": float(row["corridor_risk"]) if pd.notna(row.get("corridor_risk")) else None,
+                    "corridor_risk_7ma": float(row["corridor_risk_7ma"]) if pd.notna(row.get("corridor_risk_7ma")) else None,
+                    "corridor_risk_30ma": float(row["corridor_risk_30ma"]) if pd.notna(row.get("corridor_risk_30ma")) else None,
+                    "threat_index": float(row.get("threat_index", 0)) if pd.notna(row.get("threat_index")) else None,
+                    "energy_risk": float(row.get("energy_risk", 0)) if pd.notna(row.get("energy_risk")) else None,
+                    "goods_risk": float(row.get("goods_risk", 0)) if pd.notna(row.get("goods_risk")) else None,
+                    "corridor_hit_count": int(row["corridor_hit_count"]) if pd.notna(row.get("corridor_hit_count")) else 0,
+                    "gpr_sum": float(row["gpr_sum"]) if pd.notna(row.get("gpr_sum")) else None,
+                    "energy_exposure": float(row["energy_exposure"]) if pd.notna(row.get("energy_exposure")) else None,
+                    "goods_exposure": float(row["goods_exposure"]) if pd.notna(row.get("goods_exposure")) else None,
+                    "score_status": row.get("score_status"),
+                    "date": latest_date.strftime("%Y-%m-%d"),
+                }
+            )
         )
     return {
         "date": latest_date.strftime("%Y-%m-%d"),
         "index_start": INDIA_GPR_INDEX_START.isoformat(),
-        "corridors": corridors,
+        "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
+        "metadata": corridor_metadata(),
+        "corridors": serialize_rows(corridors),
     }
 
 
 def get_corridor_history(corridor_id: str, start: str | None = None, end: str | None = None) -> list[dict]:
     rows = db.get_corridor_history(corridor_id, start=start, end=end)
     if rows:
-        return serialize_rows(list(reversed(rows)))
+        return serialize_rows([_enrich_corridor_row(dict(row)) for row in reversed(rows)])
     frame = _load_corridor_csv()
     if frame.empty:
         return []
@@ -286,17 +330,26 @@ def get_corridor_history(corridor_id: str, start: str | None = None, end: str | 
         frame = frame[frame["date"] >= pd.Timestamp(start)]
     if end:
         frame = frame[frame["date"] <= pd.Timestamp(end)]
-    return serialize_rows(
-        [
-            {
-                "date": row["date"],
-                "corridor": row["corridor"],
-                "corridor_name": row.get("corridor_name", row["corridor"]),
-                "corridor_risk": row["corridor_risk"],
-            }
-            for _, row in frame.iterrows()
-        ]
-    )
+    out = []
+    for _, row in frame.sort_values("date").iterrows():
+        out.append(
+            _enrich_corridor_row(
+                {
+                    "date": row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"])[:10],
+                    "corridor": row["corridor"],
+                    "corridor_name": row.get("corridor_name", row["corridor"]),
+                    "corridor_risk": float(row["corridor_risk"]) if pd.notna(row.get("corridor_risk")) else None,
+                    "corridor_risk_7ma": float(row["corridor_risk_7ma"]) if pd.notna(row.get("corridor_risk_7ma")) else None,
+                    "corridor_risk_30ma": float(row["corridor_risk_30ma"]) if pd.notna(row.get("corridor_risk_30ma")) else None,
+                    "threat_index": float(row["threat_index"]) if pd.notna(row.get("threat_index")) else None,
+                    "energy_risk": float(row["energy_risk"]) if pd.notna(row.get("energy_risk")) else None,
+                    "goods_risk": float(row["goods_risk"]) if pd.notna(row.get("goods_risk")) else None,
+                    "corridor_hit_count": int(row["corridor_hit_count"]) if pd.notna(row.get("corridor_hit_count")) else 0,
+                    "score_status": row.get("score_status"),
+                }
+            )
+        )
+    return serialize_rows(out)
 
 
 def get_events_feed(limit=100, theme=None, corridor=None, tier=None, start=None, end=None, tagged_only=False) -> list[dict]:

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import HeroGlobeVideo from './HeroGlobeVideo'
+import HeroGlobe from './HeroGlobe'
 import { fetchGprCurrent, fetchHealth } from '../lib/api'
 
 export default function Hero() {
@@ -20,7 +20,7 @@ export default function Hero() {
   }, [])
 
   return (
-    <section className="relative h-[850px] flex items-center px-margin-page max-w-container-max mx-auto overflow-hidden">
+    <section id="section-01" className="relative h-[850px] flex items-center px-margin-page max-w-container-max mx-auto overflow-hidden">
       <div className="w-full lg:w-1/2 z-10 space-y-7">
         <div className="eyebrow-badge fade-in-up" style={{ animationDelay: '0ms' }}>
           <span className="eyebrow-dot" />
@@ -52,7 +52,7 @@ export default function Hero() {
 
       <div className="absolute inset-y-0 right-0 hidden lg:flex w-3/5 items-center justify-between gap-4 pr-8 pl-4">
         <div className="flex-1 flex items-center justify-center pointer-events-none min-w-0">
-          <HeroGlobeVideo className="h-[640px] w-[640px] max-w-full" />
+          <HeroGlobe className="h-[640px] w-[640px] max-w-full" />
         </div>
 
         <div className="flex flex-col gap-4 shrink-0">

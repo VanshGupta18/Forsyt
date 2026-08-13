@@ -1,0 +1,45 @@
+import macroImg from '../assets/module-macro.jpg'
+import tradeImg from '../assets/module-trade.jpg'
+import portfolioImg from '../assets/module-portfolio.jpg'
+
+export const modules = [
+  {
+    to: '/news',
+    title: 'News Intelligence',
+    description: 'Live geopolitical event feed from Indian news sources with NLP themes and tier filtering.',
+    icon: 'newspaper',
+    image: tradeImg,
+  },
+  {
+    to: '/macroeconomics',
+    title: 'Indian Macroeconomic Intelligence',
+    description:
+      'Track key macro indicators, markets and economic signals in real-time with predictive accuracy.',
+    icon: 'bar_chart',
+    image: macroImg,
+  },
+  {
+    to: '/trade-corridor',
+    title: 'Trade & Corridor Risk',
+    description:
+      'Monitor global trade routes, chokepoints, supply chains and corridor disruptions impacting India.',
+    icon: 'directions_boat',
+    image: tradeImg,
+  },
+  {
+    to: '/portfolio-exposure',
+    title: 'Portfolio Exposure & GPR Analytics',
+    description:
+      'Assess portfolio exposure using India GPR Index with scenario analysis, stress testing and sector impact.',
+    icon: 'deployed_code',
+    image: portfolioImg,
+  },
+  {
+    to: '/quality',
+    title: 'Platform Quality & Accuracy',
+    description:
+      'Validate GPR index accuracy, corridor tagging precision and NLP coverage against live benchmarks.',
+    icon: 'verified',
+    image: macroImg,
+  },
+]

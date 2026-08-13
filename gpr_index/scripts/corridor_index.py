@@ -1,22 +1,43 @@
-"""Build daily geopolitical-risk indices for India-relevant trade corridors."""
+"""Build daily geopolitical-risk indices for India-relevant trade corridors.
+
+Score semantics (supplier-facing):
+  raw_ratio       — sum of geo-positive article scores for a corridor / daily article count
+  threat_index    — raw_ratio normalized to ~100 on the corridor baseline (NOT disruption probability)
+  corridor_risk   — max(energy_risk, goods_risk) where each is threat_index × India exposure weight
+  corridor_risk_7ma — primary operational score (7-day mean of corridor_risk)
+
+A quiet news day yields 0; a single headline can spike the daily score. Use corridor_risk_7ma
+for routing decisions. score_status=insufficient_history until enough hit-days exist in baseline.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .corridors import CORRIDORS, tag_corridors
 from .gkg_gpr_pipeline import (
     CHECKPOINT_INTERVAL,
     GPR_POSITIVE_THRESHOLD,
-    _apply_index_transform,
     list_processed_files,
     score_articles,
 )
 from .paths import GKG_PROCESSED_DIR, OUTPUT_DIR
+
+CORRIDOR_TAIL_EXPONENT = float(os.environ.get("CORRIDOR_TAIL_EXPONENT", "1.5"))
+CORRIDOR_UPPER_TAIL_STRETCH = float(os.environ.get("CORRIDOR_UPPER_TAIL_STRETCH", "1.05"))
+MIN_BASELINE_HIT_DAYS = int(os.environ.get("CORRIDOR_MIN_BASELINE_HIT_DAYS", "2"))
+
+CORRIDOR_SCORE_DISCLAIMER = (
+    "corridor_risk measures relative India-news stress on a route (100 = baseline average). "
+    "corridor_risk_7ma is the supplier-facing operational score. "
+    "Not probability of shipment disruption or insurance guidance."
+)
 
 HIT_COLUMNS = ["date", "corridor", "gpr_score", "event_category", "gpr_type"]
 CHECKPOINT_DIR = "_corridor_checkpoint"
@@ -126,6 +147,18 @@ def aggregate_corridor_hits(
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+def _apply_corridor_index_transform(ratio: pd.Series) -> pd.Series:
+    """Softer tail transform than parent GPR — reduces single-article spikes during ramp-up."""
+    if ratio.empty or float(ratio.mean()) == 0.0:
+        return pd.Series(0.0, index=ratio.index)
+    rel = ratio / ratio.mean()
+    idx = rel ** CORRIDOR_TAIL_EXPONENT
+    idx = idx / idx.mean() * 100.0
+    med = idx.median()
+    idx = np.where(idx >= med, idx * CORRIDOR_UPPER_TAIL_STRETCH, idx)
+    return pd.Series(idx, index=ratio.index) / np.mean(idx) * 100.0
+
+
 def normalize_corridor_index(
     corridor_df: pd.DataFrame,
     baseline_start: str,
@@ -138,14 +171,18 @@ def normalize_corridor_index(
 
     def normalize(group: pd.DataFrame) -> pd.DataFrame:
         group = group.sort_values("date").copy()
-        baseline = group.loc[
-            group["date"].between(start, end), "raw_ratio"
-        ]
+        baseline_rows = group.loc[group["date"].between(start, end)]
+        baseline = baseline_rows["raw_ratio"]
+        hit_days = int((baseline_rows["corridor_hit_count"] > 0).sum())
         scale = float(baseline.mean()) if not baseline.empty else float(group["raw_ratio"].mean())
-        if scale > 0:
-            group["threat_index"] = _apply_index_transform(group["raw_ratio"] / scale)
-        else:
+        if hit_days < MIN_BASELINE_HIT_DAYS or scale <= 0:
+            group["score_status"] = "insufficient_history"
             group["threat_index"] = 0.0
+        else:
+            group["score_status"] = "ok"
+            group["threat_index"] = _apply_corridor_index_transform(
+                group["raw_ratio"] / scale
+            ).clip(0, 100)
         return group
 
     parts: list[pd.DataFrame] = []
@@ -164,6 +201,14 @@ def normalize_corridor_index(
     out["energy_risk"] = (out["threat_index"] * out["energy_exposure"]).clip(0, 100)
     out["goods_risk"] = (out["threat_index"] * out["goods_exposure"]).clip(0, 100)
     out["corridor_risk"] = out[["energy_risk", "goods_risk"]].max(axis=1)
+    out["corridor_risk_7ma"] = (
+        out.groupby("corridor", sort=False)["corridor_risk"]
+        .transform(lambda values: values.rolling(7, min_periods=1).mean())
+    )
+    out["corridor_risk_30ma"] = (
+        out.groupby("corridor", sort=False)["corridor_risk"]
+        .transform(lambda values: values.rolling(30, min_periods=1).mean())
+    )
     return out.sort_values(["date", "corridor"]).reset_index(drop=True)
 
 

@@ -34,7 +34,7 @@ export default function Footer() {
             </span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-8 justify-center">
+        <div className="flex flex-wrap gap-8 justify-center border-t border-white/5 pt-6">
           {['Privacy Policy', 'Terms of Service', 'Security Architecture', 'Contact Support'].map((label) => (
             <a
               key={label}
@@ -46,6 +46,14 @@ export default function Footer() {
           ))}
         </div>
       </div>
+      <div
+        aria-hidden
+        className="mt-stack-lg h-3 w-full opacity-40"
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.08) 10px, transparent 10px, transparent 20px)',
+        }}
+      />
     </footer>
   )
 }

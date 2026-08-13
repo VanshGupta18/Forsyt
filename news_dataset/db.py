@@ -149,6 +149,13 @@ def init_db():
         );
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_corridor_daily_date ON corridor_daily(date);")
+    cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS corridor_hit_count INTEGER;")
+    cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS gpr_sum REAL;")
+    cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS energy_exposure REAL;")
+    cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS goods_exposure REAL;")
+    cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS corridor_risk_7ma REAL;")
+    cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS corridor_risk_30ma REAL;")
+    cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS score_status TEXT;")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS dual_signal_daily (
             as_of DATE PRIMARY KEY,
@@ -590,7 +597,9 @@ def upsert_corridor_daily(rows):
             cur,
             """INSERT INTO corridor_daily
                    (date, corridor, corridor_name, corridor_risk, threat_index,
-                    energy_risk, goods_risk, raw_ratio, updated_at)
+                    energy_risk, goods_risk, raw_ratio, corridor_hit_count, gpr_sum,
+                    energy_exposure, goods_exposure, corridor_risk_7ma, corridor_risk_30ma,
+                    score_status, updated_at)
                VALUES %s
                ON CONFLICT (date, corridor) DO UPDATE SET
                    corridor_name = EXCLUDED.corridor_name,
@@ -599,6 +608,13 @@ def upsert_corridor_daily(rows):
                    energy_risk = EXCLUDED.energy_risk,
                    goods_risk = EXCLUDED.goods_risk,
                    raw_ratio = EXCLUDED.raw_ratio,
+                   corridor_hit_count = EXCLUDED.corridor_hit_count,
+                   gpr_sum = EXCLUDED.gpr_sum,
+                   energy_exposure = EXCLUDED.energy_exposure,
+                   goods_exposure = EXCLUDED.goods_exposure,
+                   corridor_risk_7ma = EXCLUDED.corridor_risk_7ma,
+                   corridor_risk_30ma = EXCLUDED.corridor_risk_30ma,
+                   score_status = EXCLUDED.score_status,
                    updated_at = NOW()""",
             rows,
         )
@@ -622,8 +638,10 @@ def get_corridors_latest():
         conn.close()
         return None, []
     cur.execute(
-        """SELECT corridor, corridor_name, corridor_risk, threat_index,
-                  energy_risk, goods_risk, raw_ratio, date
+        """SELECT corridor, corridor_name, corridor_risk, corridor_risk_7ma,
+                  corridor_risk_30ma, threat_index, energy_risk, goods_risk,
+                  raw_ratio, corridor_hit_count, gpr_sum, energy_exposure,
+                  goods_exposure, score_status, date
            FROM corridor_daily WHERE date = %s
            ORDER BY corridor_risk DESC NULLS LAST, corridor ASC""",
         (latest,),
@@ -643,8 +661,9 @@ def get_corridor_history(corridor_id, start=None, end=None, limit=500):
         params.append(end)
     params.append(limit)
     cur.execute(
-        f"""SELECT date, corridor, corridor_name, corridor_risk, threat_index,
-                   energy_risk, goods_risk, raw_ratio
+        f"""SELECT date, corridor, corridor_name, corridor_risk, corridor_risk_7ma,
+                   corridor_risk_30ma, threat_index, energy_risk, goods_risk, raw_ratio,
+                   corridor_hit_count, gpr_sum, energy_exposure, goods_exposure, score_status
             FROM corridor_daily
             WHERE {' AND '.join(clauses)}
             ORDER BY date DESC LIMIT %s""",

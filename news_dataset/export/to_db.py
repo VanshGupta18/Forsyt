@@ -65,6 +65,13 @@ def sync_corridor_csv(csv_path: Path | None = None) -> int:
                 float(row["energy_risk"]) if pd.notna(row.get("energy_risk")) else None,
                 float(row["goods_risk"]) if pd.notna(row.get("goods_risk")) else None,
                 float(row["raw_ratio"]) if pd.notna(row.get("raw_ratio")) else None,
+                int(row["corridor_hit_count"]) if pd.notna(row.get("corridor_hit_count")) else None,
+                float(row["gpr_sum"]) if pd.notna(row.get("gpr_sum")) else None,
+                float(row["energy_exposure"]) if pd.notna(row.get("energy_exposure")) else None,
+                float(row["goods_exposure"]) if pd.notna(row.get("goods_exposure")) else None,
+                float(row["corridor_risk_7ma"]) if pd.notna(row.get("corridor_risk_7ma")) else None,
+                float(row["corridor_risk_30ma"]) if pd.notna(row.get("corridor_risk_30ma")) else None,
+                str(row["score_status"]) if pd.notna(row.get("score_status")) else None,
                 datetime.now(timezone.utc),
             )
         )

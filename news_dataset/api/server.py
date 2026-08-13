@@ -162,10 +162,24 @@ def api_corridors():
 def api_corridor_detail(corridor_id: str):
     start = request.args.get("start")
     end = request.args.get("end")
+    try:
+        limit = int(request.args.get("limit", 500))
+    except ValueError:
+        limit = 500
     history = get_corridor_history(corridor_id, start=start, end=end)
     if not history:
         return jsonify({"error": f"no data for corridor {corridor_id}"}), 404
-    return jsonify({"corridor": corridor_id, "history": history})
+    if limit and len(history) > limit:
+        history = history[-limit:]
+    from gpr_index.scripts.corridor_index import CORRIDOR_SCORE_DISCLAIMER
+    from gpr_index.scripts.corridors import corridor_metadata
+
+    return jsonify({
+        "corridor": corridor_id,
+        "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
+        "metadata": corridor_metadata().get(corridor_id),
+        "history": history,
+    })
 
 
 @app.get("/api/events/feed")
@@ -195,6 +209,16 @@ def api_news_recent():
         ),
         "source": "postgresql",
     })
+
+
+@app.get("/api/news/image")
+def api_news_image():
+    from news_dataset.api.link_preview import resolve_news_image
+
+    link = request.args.get("link", "").strip()
+    if not link:
+        return jsonify({"error": "link required", "image_url": None}), 400
+    return jsonify({"image_url": resolve_news_image(link)})
 
 
 @app.get("/api/market/quotes")

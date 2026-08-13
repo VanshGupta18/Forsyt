@@ -1,54 +1,19 @@
 import { Link } from 'react-router-dom'
 import Reveal from './Reveal'
-import macroImg from '../assets/module-macro.jpg'
-import tradeImg from '../assets/module-trade.jpg'
-import portfolioImg from '../assets/module-portfolio.jpg'
-
-const modules = [
-  {
-    to: '/news',
-    title: 'News Intelligence',
-    description: 'Live geopolitical event feed from Indian news sources with NLP themes and tier filtering.',
-    icon: 'newspaper',
-    image: tradeImg,
-  },
-  {
-    to: '/macroeconomics',
-    title: 'Indian Macroeconomic Intelligence',
-    description:
-      'Track key macro indicators, markets and economic signals in real-time with predictive accuracy.',
-    icon: 'bar_chart',
-    image: macroImg,
-  },
-  {
-    to: '/trade-corridor',
-    title: 'Trade & Corridor Risk',
-    description:
-      'Monitor global trade routes, chokepoints, supply chains and corridor disruptions impacting India.',
-    icon: 'directions_boat',
-    image: tradeImg,
-  },
-  {
-    to: '/portfolio-exposure',
-    title: 'Portfolio Exposure & GPR Analytics',
-    description:
-      'Assess portfolio exposure using India GPR Index with scenario analysis, stress testing and sector impact.',
-    icon: 'deployed_code',
-    image: portfolioImg,
-  },
-]
+import { modules } from '../lib/modules'
 
 export default function Modules() {
   return (
-    <section className="py-stack-lg px-margin-page max-w-container-max mx-auto pb-32">
+    <section id="section-04" className="py-stack-lg px-margin-page max-w-container-max mx-auto pb-32">
       <Reveal className="mb-stack-lg space-y-2">
         <span className="eyebrow-badge">
           <span className="eyebrow-dot" />
-          Platform Modules
+          Explore the Platform
         </span>
         <h2 className="font-headline-lg text-on-surface">Precision Intelligence Modules</h2>
       </Reveal>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
         {modules.map((mod, i) => (
           <Reveal key={mod.to} delay={i * 100}>
             <div className="glass-card glass-card-hover group rounded-2xl overflow-hidden flex flex-col h-full inner-glow relative">
