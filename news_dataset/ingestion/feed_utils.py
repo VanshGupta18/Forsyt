@@ -9,7 +9,13 @@ logger = logging.getLogger(__name__)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                  "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    # A bare User-Agent with no other browser-typical headers is itself a bot signal
+    # some CDN/WAF layers (CloudFront, Cloudflare) key on, independent of UA string —
+    # seen causing persistent 0-entry responses for TIE specifically from shared
+    # GitHub Actions runner IPs while the same URL works fine from residential IPs.
+    "Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
+    "Accept-Language": "en-US,en;q=0.9",
 }
 
 
