@@ -64,7 +64,11 @@ TIER2_FEEDS = [
     # more on the keyword filter than the other four Tier 2 sources.
     {"source": "Times of India", "source_code": "TOI", "url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"},
     {"source": "NDTV", "source_code": "NDTV", "url": "https://feeds.feedburner.com/ndtvnews-world-news"},
-    {"source": "Indian Express", "source_code": "TIE", "url": "https://indianexpress.com/section/world/feed/"},
+    # Indian Express ("TIE") replaced 2026-08-13: its feed returns a well-formed
+    # but empty <rss> specifically to GitHub Actions' shared runner IPs (CDN/WAF
+    # bot-block, not a dead feed — works fine from non-CI IPs). Hindustan Times'
+    # world feed verified working with 100 entries/cycle, ~8% keyword yield.
+    {"source": "Hindustan Times", "source_code": "HT", "url": "https://www.hindustantimes.com/feeds/rss/world-news/rssfeed.xml"},
 ]
 
 FEEDS_BY_CODE = {f["source_code"]: dict(f, tier=1) for f in TIER1_FEEDS}
