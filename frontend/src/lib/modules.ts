@@ -6,7 +6,8 @@ export const modules = [
   {
     to: '/news',
     title: 'News Intelligence',
-    description: 'Live geopolitical event feed from Indian news sources with NLP themes and tier filtering.',
+    description:
+      'Geopolitical headlines that matter for Indian markets and trade routes — filtered by topic and priority.',
     icon: 'newspaper',
     image: tradeImg,
   },

@@ -25,6 +25,7 @@ const EVENT_MARKERS = [
 ]
 
 const CHART_HEIGHT = 360
+const FILL_MIN_HEIGHT = 200
 
 export type GprChartPeriod = '1mo' | '3mo' | '6mo' | '1y'
 
@@ -52,6 +53,8 @@ type Props = {
   className?: string
   variant?: 'default' | 'corridor'
   period?: GprChartPeriod
+  compact?: boolean
+  fill?: boolean
   onRangeNote?: (note: string | null) => void
 }
 
@@ -178,6 +181,8 @@ export default function GprHistoryChart({
   className = '',
   variant = 'default',
   period,
+  compact = false,
+  fill = false,
   onRangeNote,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -186,6 +191,9 @@ export default function GprHistoryChart({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const [fillHeight, setFillHeight] = useState(FILL_MIN_HEIGHT)
+
+  const chartHeight = fill ? fillHeight : height
 
   const filtered = filterByPeriod(history, period)
   const rows = validPoints(filtered)
@@ -229,15 +237,31 @@ export default function GprHistoryChart({
   }, [load])
 
   useEffect(() => {
+    if (!fill) return
+    const el = wrapRef.current
+    if (!el) return
+
+    const update = () => {
+      const next = el.clientHeight
+      if (next > 0) setFillHeight(Math.max(FILL_MIN_HEIGHT, next))
+    }
+
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [fill])
+
+  useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || loading || error) return
 
-    const render = () => drawGprChart(canvas, filtered, hoverIndex, height)
+    const render = () => drawGprChart(canvas, filtered, hoverIndex, chartHeight)
     render()
     const observer = new ResizeObserver(render)
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [filtered, error, loading, hoverIndex, height])
+  }, [filtered, error, loading, hoverIndex, chartHeight])
 
   const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const canvas = canvasRef.current
@@ -245,7 +269,7 @@ export default function GprHistoryChart({
     const rect = canvas.getBoundingClientRect()
     const x = event.clientX - rect.left
     const gprValsLocal = rows.map((d) => Number(d.gpr_index))
-    const points = plotSeries(gprValsLocal, rect.width, height, DEFAULT_PADDING, 0, 1)
+    const points = plotSeries(gprValsLocal, rect.width, rect.height, DEFAULT_PADDING, 0, 1)
     setHoverIndex(nearestIndex(x, points))
   }
 
@@ -254,7 +278,7 @@ export default function GprHistoryChart({
   const isCorridor = variant === 'corridor'
 
   return (
-    <div className={className}>
+    <div className={fill ? `flex flex-col flex-1 min-h-0 h-full ${className}` : className}>
       {!isCorridor && !loading && !error && rows.length > 0 && (
         <div className="flex flex-wrap gap-4 mb-3 text-xs">
           <div>
@@ -293,9 +317,9 @@ export default function GprHistoryChart({
       <div
         ref={wrapRef}
         className={`relative w-full overflow-hidden ${
-          isCorridor ? 'macro-chart-shell' : 'bg-[#0A101C]/50 rounded-lg border border-white/5'
-        }`}
-        style={{ height }}
+          fill ? 'flex-1 min-h-[200px]' : ''
+        } ${isCorridor ? 'macro-chart-shell' : 'bg-[#0A101C]/50 rounded-lg border border-white/5'}`}
+        style={fill ? undefined : { height: chartHeight }}
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
@@ -334,7 +358,7 @@ export default function GprHistoryChart({
         )}
       </div>
 
-      {!loading && !error && rows.length > 0 && (
+      {!loading && !error && rows.length > 0 && !compact && (
         <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-corridor-muted">
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-corridor-alert inline-block" /> GPR</span>
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-primary inline-block" /> 7-day MA</span>
