@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./news_dataset
+        working-directory: .
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,10 +25,9 @@ jobs:
           cache-dependency-path: './news_dataset/requirements.txt'
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r news_dataset/requirements.txt
 
       - name: Run geopolitics pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python -m ingestion.geo_scheduler --once
+        run: python -m news_dataset.ingestion.geo_scheduler --once

@@ -35,6 +35,7 @@ from news_dataset.api.gpr_service import (  # noqa: E402
     get_gpr_current,
     get_gpr_history,
     get_news_stats,
+    get_platform_status,
     serialize_rows,
 )
 from news_dataset.api.market_service import (  # noqa: E402
@@ -68,6 +69,7 @@ def root():
         "service": "forsyt-api",
         "frontend_dev": "cd frontend && npm run dev",
         "endpoints": {
+            "status": "/api/status",
             "gpr": "/api/gpr/current",
             "corridors": "/api/corridors",
             "events": "/api/events/feed",
@@ -100,12 +102,23 @@ def news_by_tier(tier: str):
 @app.get("/health/")
 def health():
     news = get_news_stats()
+    status = get_platform_status()
     return jsonify({
         "status": "healthy",
         **news,
         "database": "postgresql",
         "timestamp": datetime.utcnow().isoformat() + "Z",
+        "gpr_latest_date": status["latest_dates"].get("gpr"),
+        "corridor_latest_date": status["latest_dates"].get("corridor"),
+        "news_latest_at": status["latest_dates"].get("news"),
+        "last_platform_refresh": status["last_pipeline_runs"].get("platform_refresh"),
+        "stale_warning": status.get("stale_warning"),
     })
+
+
+@app.get("/api/status")
+def api_status():
+    return jsonify(get_platform_status())
 
 
 @app.get("/stats")

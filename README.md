@@ -600,7 +600,46 @@ python ml_inference/portfolio_risk.py --holdings portfolio_sample.json
 
 ### Running the Dashboard
 
-**Backend API** (serves `/api/*`, proxies to Supabase):
+#### Local development (daily — no pipeline on your laptop)
+
+Postgres (Supabase) is the source of truth. GitHub Actions keep news, GPR, corridors, and dual-signal fresh — you only run the API and frontend locally.
+
+1. Set `DATABASE_URL` in `news_dataset/.env` to the **same Supabase URL** used by GitHub Actions (`secrets.DATABASE_URL`).
+2. Do **not** set `ALLOW_CSV_FALLBACK=1` unless you are offline — committed CSV files stop at older dates and will mask live DB data.
+3. Start two terminals:
+
+```bash
+# Terminal 1 — API (port 5001)
+source "$HOME/.venv/forsyt/bin/activate"
+cd "/path/to/Forsyt"
+python -m news_dataset.api.server
+
+# Terminal 2 — frontend
+cd frontend && npm run dev
+```
+
+Open **http://127.0.0.1:5173**. Check freshness without opening Supabase:
+
+```bash
+curl -s http://127.0.0.1:5001/api/status | python3 -m json.tool
+curl -s http://127.0.0.1:5001/health | python3 -m json.tool
+```
+
+**Cloud automation (you do not run these locally):**
+
+| Workflow | Schedule | Purpose |
+|----------|----------|---------|
+| `scrape.yml` | every 25 min | ingest headlines → Postgres |
+| `nlp.yml` | hourly | NLP tagging |
+| `platform_refresh.yml` | hourly | GPR + corridors + dual-signal sync |
+| `daily_index.yml` | daily | authoritative end-of-day close |
+| `catch_up_index.yml` | manual | backfill a date range (e.g. 2026-08-13 → today) |
+
+After merging pipeline changes, run **Actions → Catch up index → Run workflow** once to backfill missing days.
+
+---
+
+**Backend API** (serves `/api/*`, reads Postgres):
 
 ```bash
 source "$HOME/.venv/forsyt/bin/activate"
@@ -608,7 +647,7 @@ cd "/path/to/Forsyt"
 python -m news_dataset.api.server
 ```
 
-API: **http://localhost:5000** · Health: **http://localhost:5000/health**
+API: **http://localhost:5001** · Health: **http://localhost:5001/health** · Status: **http://localhost:5001/api/status**
 
 **React frontend** (Vite + Tailwind, live data via proxy to `:5000`):
 

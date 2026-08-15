@@ -134,34 +134,48 @@ export default function HeroGlobe({ className }: { className?: string }) {
     }
     frame = requestAnimationFrame(tick)
 
+    function applyCorridorPayload(payload: Awaited<ReturnType<typeof fetchCorridors>>) {
+      const corridorNodes: GlobeNode[] = (payload.corridors ?? [])
+        .map((c): GlobeNode | null => {
+          const key = c.corridor?.toLowerCase()
+          const location = key ? CORRIDOR_LOCATIONS[key] : undefined
+          if (!location || c.corridor_risk == null) return null
+          return { location, risk: c.corridor_risk, isHub: false }
+        })
+        .filter((n): n is GlobeNode => n !== null)
+
+      let highest = -1
+      let highestRisk = -Infinity
+      corridorNodes.forEach((n, i) => {
+        if (n.risk > highestRisk) {
+          highestRisk = n.risk
+          highest = i + 1 // +1: India occupies slot 0
+        }
+      })
+      highestRiskIndexRef.current = highest
+      nodesRef.current = [{ location: INDIA, risk: 0, isHub: true }, ...corridorNodes]
+    }
+
     fetchCorridors()
       .then((payload) => {
         if (destroyed) return
-        const corridorNodes: GlobeNode[] = (payload.corridors ?? [])
-          .map((c): GlobeNode | null => {
-            const key = c.corridor?.toLowerCase()
-            const location = key ? CORRIDOR_LOCATIONS[key] : undefined
-            if (!location || c.corridor_risk == null) return null
-            return { location, risk: c.corridor_risk, isHub: false }
-          })
-          .filter((n): n is GlobeNode => n !== null)
-
-        let highest = -1
-        let highestRisk = -Infinity
-        corridorNodes.forEach((n, i) => {
-          if (n.risk > highestRisk) {
-            highestRisk = n.risk
-            highest = i + 1 // +1: India occupies slot 0
-          }
-        })
-        highestRiskIndexRef.current = highest
-        nodesRef.current = [{ location: INDIA, risk: 0, isHub: true }, ...corridorNodes]
+        applyCorridorPayload(payload)
       })
       .catch(() => undefined)
+
+    const pollId = window.setInterval(() => {
+      fetchCorridors()
+        .then((payload) => {
+          if (destroyed) return
+          applyCorridorPayload(payload)
+        })
+        .catch(() => undefined)
+    }, 15 * 60 * 1000)
 
     return () => {
       destroyed = true
       cancelAnimationFrame(frame)
+      window.clearInterval(pollId)
     }
   }, [])
 

@@ -19,6 +19,10 @@ export type GprCurrent = {
   gpr_7ma?: number
   gpr_30ma?: number
   total_articles?: number
+  data_source?: 'postgres' | 'csv'
+  updated_at?: string
+  refresh_interval_minutes?: number
+  stale_warning?: string | null
 }
 
 export type GprHistoryPoint = {
@@ -35,6 +39,36 @@ export type GprHistoryPayload = {
 export type HealthPayload = {
   total_articles?: number
   status?: string
+  gpr_latest_date?: string | null
+  corridor_latest_date?: string | null
+  news_latest_at?: string | null
+  last_platform_refresh?: {
+    run_at?: string
+    status?: string
+    details?: Record<string, unknown>
+  } | null
+  stale_warning?: string | null
+}
+
+export type PlatformStatusPayload = {
+  database_configured?: boolean
+  allow_csv_fallback?: boolean
+  refresh_interval_minutes?: number
+  latest_dates?: {
+    corridor?: string | null
+    gpr?: string | null
+    news?: string | null
+    dual_signal?: string | null
+  }
+  data_sources?: Record<string, string | null | undefined>
+  updated_at?: Record<string, string | null | undefined>
+  last_pipeline_runs?: Record<string, {
+    run_at?: string
+    status?: string
+    details?: Record<string, unknown>
+  } | null | undefined>
+  stale_warning?: string | null
+  news_total_articles?: number
 }
 
 export type StatsPayload = {
@@ -121,6 +155,10 @@ export type CorridorsPayload = {
     exposure_source?: string
   }>
   corridors?: CorridorRow[]
+  data_source?: 'postgres' | 'csv'
+  updated_at?: string
+  refresh_interval_minutes?: number
+  stale_warning?: string | null
 }
 
 export type CorridorHistoryPayload = {
@@ -205,6 +243,10 @@ export function fetchGprHistory(limit = 800) {
 
 export function fetchHealth() {
   return fetchJSON<HealthPayload>('/health')
+}
+
+export function fetchPlatformStatus() {
+  return fetchJSON<PlatformStatusPayload>('/api/status')
 }
 
 export function fetchStats() {

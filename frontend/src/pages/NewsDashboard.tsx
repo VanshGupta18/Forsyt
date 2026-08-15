@@ -13,6 +13,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton'
 import GprHistoryChart from '../components/GprHistoryChart'
 
 const THEME_PRESETS = ['', 'CONFLICT', 'MILITARY', 'TRADE', 'TERROR'] as const
+const NEWS_POLL_MS = 10 * 60 * 1000
 
 export default function NewsDashboard() {
   const [articles, setArticles] = useState<NewsArticle[]>([])
@@ -42,6 +43,11 @@ export default function NewsDashboard() {
   }, [loadFeed])
 
   useEffect(() => {
+    const id = window.setInterval(loadFeed, NEWS_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [loadFeed])
+
+  useEffect(() => {
     fetchGprCurrent()
       .then((gpr) => {
         setGprIndex(gpr.gpr_index ?? null)
@@ -65,7 +71,7 @@ export default function NewsDashboard() {
         </span>
         <h1 className="text-2xl font-bold text-white">News Intelligence</h1>
         <p className="text-sm text-[#8b97ab] max-w-2xl">
-          Geopolitical events from live PostgreSQL — filter by NLP theme or ingestion tier.
+          Geopolitical events from live PostgreSQL — filter by NLP theme or ingestion tier. Feed refreshes every 10 minutes.
         </p>
       </Reveal>
 

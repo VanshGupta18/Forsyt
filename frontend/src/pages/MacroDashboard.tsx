@@ -18,6 +18,7 @@ import {
 } from '../lib/api'
 
 const KPI_KEYS = MARKET_SYMBOL_ORDER
+const MACRO_POLL_MS = 15 * 60 * 1000
 
 function regimeTone(regime?: string) {
   const r = (regime ?? '').toUpperCase()
@@ -108,6 +109,16 @@ export default function MacroDashboard() {
       .then((g) => setGprCurrent(g.gpr_index ?? null))
       .catch(() => undefined)
   }, [loadDual, loadQuotes])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      loadDual(false)
+      fetchGprCurrent()
+        .then((g) => setGprCurrent(g.gpr_index ?? null))
+        .catch(() => undefined)
+    }, MACRO_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [loadDual])
 
   const refreshAll = () => {
     setRefreshing(true)

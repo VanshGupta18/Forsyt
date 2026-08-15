@@ -1,7 +1,14 @@
 import { corridorOperationalRisk, corridorRiskLabel, type CorridorRow } from './api'
 
 export const CORRIDOR_PAGE_DISCLAIMER =
-  'Scores reflect recent news about each route — not a guarantee of disruption. Updated daily.'
+  'Scores reflect recent news about each route — not a guarantee of disruption. Updated hourly in cloud.'
+
+export const CORRIDOR_DATA_REFRESH_NOTE = 'updates hourly in cloud'
+
+export function corridorDataThroughLine(date: string | null | undefined): string {
+  const through = date ? `Data through ${date}` : 'Waiting for corridor data'
+  return `${through} · ${CORRIDOR_DATA_REFRESH_NOTE}`
+}
 
 export const CORRIDOR_EYEBROW = 'Live route monitoring'
 

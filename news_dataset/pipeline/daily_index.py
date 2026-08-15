@@ -250,12 +250,18 @@ def run_daily_index(
     return details
 
 
-def _refresh_dual_signal() -> None:
+def _refresh_dual_signal() -> str | None:
     from news_dataset.api.gpr_service import build_dual_signal_payload
 
     payload = build_dual_signal_payload(refresh=True)
     as_of = payload["geopolitical"]["as_of"]
     db.upsert_dual_signal(as_of, payload)
+    return str(as_of)[:10] if as_of else None
+
+
+def refresh_dual_signal() -> str | None:
+    """Public wrapper for dual-signal cache refresh after index sync."""
+    return _refresh_dual_signal()
 
 
 def main() -> int:

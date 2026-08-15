@@ -24,6 +24,7 @@ import {
   calibratingBadge,
   CORRIDOR_EYEBROW,
   CORRIDOR_HEADLINES_TITLE,
+  corridorDataThroughLine,
   CORRIDOR_PAGE_DISCLAIMER,
   CORRIDOR_PAGE_SUBTITLE,
   displayStressScore,
@@ -75,6 +76,8 @@ function ScoreBar({
   )
 }
 
+const CORRIDOR_POLL_MS = 15 * 60 * 1000
+
 export default function CorridorRiskDashboard() {
   const [payload, setPayload] = useState<CorridorsPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -107,6 +110,15 @@ export default function CorridorRiskDashboard() {
     load()
   }, [load])
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      fetchCorridors()
+        .then(setPayload)
+        .catch(() => undefined)
+    }, CORRIDOR_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [])
+
   const filtered = useMemo(() => {
     let rows = [...corridors]
     if (category !== 'all') {
@@ -130,12 +142,19 @@ export default function CorridorRiskDashboard() {
 
   useEffect(() => {
     if (!selected) return
-    setHeadlinesLoading(true)
     const term = CORRIDOR_SEARCH_TERMS[selected] ?? formatCorridorName(selected)
-    fetchEventsFeed({ corridor: term, limit: 8 })
-      .then((res) => setHeadlines(res.events ?? []))
-      .catch(() => setHeadlines([]))
-      .finally(() => setHeadlinesLoading(false))
+
+    const refreshHeadlines = () => {
+      setHeadlinesLoading(true)
+      fetchEventsFeed({ corridor: term, limit: 8 })
+        .then((res) => setHeadlines(res.events ?? []))
+        .catch(() => setHeadlines([]))
+        .finally(() => setHeadlinesLoading(false))
+    }
+
+    refreshHeadlines()
+    const id = window.setInterval(refreshHeadlines, CORRIDOR_POLL_MS)
+    return () => window.clearInterval(id)
   }, [selected])
 
   const selectedRow =
@@ -198,7 +217,8 @@ export default function CorridorRiskDashboard() {
             {loading ? 'Loading…' : 'Refresh'}
           </button>
           <span className="font-label-md text-[11px] text-corridor-muted/70">
-            {asOf ? `Updated · ${asOf}` : ''} · next refresh ~ midnight IST
+            {corridorDataThroughLine(asOf)}
+            {payload?.stale_warning ? ` · ${payload.stale_warning}` : ''}
           </span>
         </div>
       </header>

@@ -1,0 +1,74 @@
+name: Catch up index
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: false
+        default: '2026-08-13'
+      to_date:
+        description: 'End date (YYYY-MM-DD, default today UTC)'
+        required: false
+        default: ''
+
+jobs:
+  catch-up:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore india processed parquets
+        uses: actions/cache/restore@v4
+        id: parquet-cache
+        with:
+          path: gpr_index/data/india_processed
+          key: india-processed-parquets-v1
+          restore-keys: |
+            india-processed-parquets-v1
+
+      - name: Ensure parquet directory exists
+        run: mkdir -p gpr_index/data/india_processed
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install news pipeline dependencies
+        run: pip install -r news_dataset/requirements.txt pandas pyarrow
+
+      - name: Install NLP dependencies
+        run: pip install -r news_dataset/requirements-nlp.txt
+
+      - name: Install GPR index dependencies
+        run: pip install -r gpr_index/requirements.txt
+
+      - name: Install NIFTY modelling dependencies
+        run: pip install -r nifty-50/requirements.txt
+
+      - name: Run catch-up range
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          INDIA_GPR_INDEX_START: '2026-08-09'
+          MIN_PARQUET_DAYS_FOR_GPR: '7'
+          PARQUET_BACKFILL_LOOKBACK_DAYS: '14'
+        run: |
+          TO_DATE="${{ github.event.inputs.to_date }}"
+          if [ -z "$TO_DATE" ]; then
+            TO_DATE="$(date -u +%F)"
+          fi
+          python -m news_dataset.pipeline.catch_up_range \
+            --from-date "${{ github.event.inputs.from_date }}" \
+            --to-date "$TO_DATE"
+
+      - name: Save india processed parquets
+        uses: actions/cache/save@v4
+        if: success()
+        with:
+          path: gpr_index/data/india_processed
+          key: india-processed-parquets-v1

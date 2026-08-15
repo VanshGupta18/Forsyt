@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import sys
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -24,6 +25,55 @@ from gpr_index.scripts.paths import INDIA_GPR_INDEX_START  # noqa: E402
 from news_dataset import db  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+REFRESH_INTERVAL_MINUTES = 60
+_STALE_AFTER = timedelta(hours=24)
+
+
+def _allow_csv_fallback() -> bool:
+    return os.environ.get("ALLOW_CSV_FALLBACK", "").strip().lower() in ("1", "true", "yes")
+
+
+def _database_configured() -> bool:
+    return bool(os.environ.get("DATABASE_URL", "").strip())
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _stale_warning_for_date(value) -> str | None:
+    if not value:
+        return "No index data available"
+    try:
+        day = date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+    age = datetime.now(timezone.utc) - datetime.combine(day, time.max, tzinfo=timezone.utc)
+    if age > _STALE_AFTER:
+        return f"Data through {day.isoformat()} is more than 24h old"
+    return None
+
+
+def _with_refresh_meta(payload: dict, *, data_source: str, as_of_date=None) -> dict:
+    out = {**payload}
+    out["data_source"] = data_source
+    out["updated_at"] = _utc_now_iso()
+    out["refresh_interval_minutes"] = REFRESH_INTERVAL_MINUTES
+    warning = _stale_warning_for_date(as_of_date or out.get("date"))
+    if warning:
+        out["stale_warning"] = warning
+    return out
+
+
+def _serialize_pipeline_run(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    out = dict(row)
+    run_at = out.get("run_at")
+    if hasattr(run_at, "isoformat"):
+        out["run_at"] = run_at.isoformat()
+    return out
 
 _INDEX_START_TS = pd.Timestamp(INDIA_GPR_INDEX_START)
 
@@ -92,6 +142,8 @@ def _csv_current_payload() -> dict | None:
 
 def _prefer_csv_gpr(db_frame: pd.DataFrame, csv_frame: pd.DataFrame) -> bool:
     """Prefer pipeline CSV when Postgres is missing days or still has CI 100 artifacts."""
+    if _database_configured() and not _allow_csv_fallback():
+        return False
     if csv_frame.empty:
         return False
     if db_frame.empty:
@@ -153,24 +205,27 @@ def gpr_frame_from_db_or_csv() -> pd.DataFrame:
 
 def get_gpr_current() -> dict | None:
     row = db.get_gpr_current()
-    csv_payload = _csv_current_payload()
-    if row and csv_payload:
+    csv_payload = _csv_current_payload() if _allow_csv_fallback() or not _database_configured() else None
+    if row and csv_payload and _allow_csv_fallback():
         db_date = str(row.get("date"))[:10]
         csv_date = csv_payload["date"]
         db_gpr = row.get("gpr_index")
         csv_gpr = csv_payload.get("gpr_index")
         if csv_date > db_date:
-            return csv_payload
+            return _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_date)
         if (
             csv_date == db_date
             and db_gpr is not None
             and csv_gpr is not None
             and abs(float(db_gpr) - float(csv_gpr)) > 0.5
         ):
-            return csv_payload
+            return _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_date)
     if row:
-        return serialize_rows([row])[0]
-    return csv_payload
+        serialized = serialize_rows([row])[0]
+        return _with_refresh_meta(serialized, data_source="postgres", as_of_date=serialized.get("date"))
+    if csv_payload:
+        return _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_payload.get("date"))
+    return None
 
 
 def _gpr_history_from_csv(
@@ -258,33 +313,58 @@ def _enrich_corridor_row(row: dict) -> dict:
     return out
 
 
-def _corridors_payload(date_val, rows: list[dict]) -> dict:
+def _corridors_payload(date_val, rows: list[dict], *, data_source: str = "postgres") -> dict:
     enriched = [_enrich_corridor_row(dict(row)) for row in rows]
-    return {
+    base = {
         "date": _serialize(date_val),
         "index_start": INDIA_GPR_INDEX_START.isoformat(),
         "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
         "metadata": corridor_metadata(),
         "corridors": serialize_rows(enriched),
     }
+    return _with_refresh_meta(base, data_source=data_source, as_of_date=base.get("date"))
 
 
 def get_corridors() -> dict:
-    try:
-        latest, rows = db.get_corridors_latest()
-        if rows:
-            return _corridors_payload(latest, rows)
-    except Exception:
-        logger.exception("corridor db read failed; falling back to CSV")
-    frame = _load_corridor_csv()
-    if frame.empty:
-        return {
+    if _database_configured():
+        try:
+            latest, rows = db.get_corridors_latest()
+            if rows:
+                return _corridors_payload(latest, rows, data_source="postgres")
+        except Exception:
+            logger.exception("corridor db read failed")
+            if not _allow_csv_fallback():
+                empty = {
+                    "date": None,
+                    "index_start": INDIA_GPR_INDEX_START.isoformat(),
+                    "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
+                    "metadata": corridor_metadata(),
+                    "corridors": [],
+                }
+                out = _with_refresh_meta(empty, data_source="postgres", as_of_date=None)
+                out["stale_warning"] = "Postgres corridor data unavailable"
+                return out
+
+    if not _allow_csv_fallback() and _database_configured():
+        empty = {
             "date": None,
             "index_start": INDIA_GPR_INDEX_START.isoformat(),
             "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
             "metadata": corridor_metadata(),
             "corridors": [],
         }
+        return _with_refresh_meta(empty, data_source="postgres", as_of_date=None)
+
+    frame = _load_corridor_csv()
+    if frame.empty:
+        empty = {
+            "date": None,
+            "index_start": INDIA_GPR_INDEX_START.isoformat(),
+            "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
+            "metadata": corridor_metadata(),
+            "corridors": [],
+        }
+        return _with_refresh_meta(empty, data_source="csv", as_of_date=None)
     latest_date = frame["date"].max()
     day = frame[frame["date"] == latest_date].sort_values("corridor_risk", ascending=False)
     corridors = []
@@ -309,13 +389,14 @@ def get_corridors() -> dict:
                 }
             )
         )
-    return {
+    base = {
         "date": latest_date.strftime("%Y-%m-%d"),
         "index_start": INDIA_GPR_INDEX_START.isoformat(),
         "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
         "metadata": corridor_metadata(),
         "corridors": serialize_rows(corridors),
     }
+    return _with_refresh_meta(base, data_source="csv", as_of_date=base["date"])
 
 
 def get_corridor_history(corridor_id: str, start: str | None = None, end: str | None = None) -> list[dict]:
@@ -376,6 +457,65 @@ def get_news_stats() -> dict:
         "latest_article_at": recent[0].get("published_at") or recent[0].get("scraped_at") if recent else None,
         "has_tagged_events": bool(tagged),
         "source": "postgresql",
+    }
+
+
+def get_platform_status() -> dict:
+    news = get_news_stats()
+    gpr = get_gpr_current()
+    corridors = get_corridors()
+
+    corridor_date = corridors.get("date")
+    gpr_date = gpr.get("date") if gpr else None
+    warnings = [
+        w
+        for w in (
+            corridors.get("stale_warning"),
+            gpr.get("stale_warning") if gpr else None,
+        )
+        if w
+    ]
+    stale_warning = warnings[0] if warnings else None
+
+    last_platform = db.get_last_pipeline_run("platform_refresh")
+    last_daily = db.get_last_pipeline_run("daily_index")
+    last_catch_up = db.get_last_pipeline_run("catch_up_range")
+
+    dual_cached = db.get_dual_signal()
+    dual_as_of = None
+    if dual_cached:
+        raw_as_of = dual_cached.get("as_of") or (dual_cached.get("geopolitical") or {}).get("as_of")
+        if hasattr(raw_as_of, "isoformat"):
+            dual_as_of = raw_as_of.isoformat()
+        elif raw_as_of:
+            dual_as_of = str(raw_as_of)
+
+    return {
+        "database_configured": _database_configured(),
+        "allow_csv_fallback": _allow_csv_fallback(),
+        "refresh_interval_minutes": REFRESH_INTERVAL_MINUTES,
+        "latest_dates": {
+            "corridor": corridor_date,
+            "gpr": gpr_date,
+            "news": news.get("latest_article_at"),
+            "dual_signal": dual_as_of,
+        },
+        "data_sources": {
+            "corridors": corridors.get("data_source"),
+            "gpr": gpr.get("data_source") if gpr else None,
+            "news": news.get("source"),
+        },
+        "updated_at": {
+            "corridors": corridors.get("updated_at"),
+            "gpr": gpr.get("updated_at") if gpr else None,
+        },
+        "last_pipeline_runs": {
+            "platform_refresh": _serialize_pipeline_run(last_platform),
+            "daily_index": _serialize_pipeline_run(last_daily),
+            "catch_up_range": _serialize_pipeline_run(last_catch_up),
+        },
+        "stale_warning": stale_warning,
+        "news_total_articles": news.get("total_articles"),
     }
 
 
