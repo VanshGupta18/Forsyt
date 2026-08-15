@@ -4,7 +4,6 @@ import ApiErrorBanner from '../components/ApiErrorBanner'
 import CorridorNewsTicker from '../components/CorridorNewsTicker'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import NewsArticleCard from '../components/NewsArticleCard'
-import NewsArticleDrawer from '../components/NewsArticleDrawer'
 import NewsHero from '../components/NewsHero'
 import NewsIntelStrip from '../components/NewsIntelStrip'
 import NewsRiskPanel from '../components/NewsRiskPanel'
@@ -15,7 +14,6 @@ import {
   fetchGprCurrent,
   fetchPlatformStatus,
   type GprCurrent,
-  type NewsArticle,
 } from '../lib/api'
 import {
   NEWS_EYEBROW,
@@ -50,7 +48,6 @@ export default function NewsDashboard() {
   const [feedError, setFeedError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [drawerArticle, setDrawerArticle] = useState<NewsArticle | null>(null)
   const [pipelineRunAt, setPipelineRunAt] = useState<string | null>(null)
 
   const syncUrl = useCallback(
@@ -206,8 +203,8 @@ export default function NewsDashboard() {
           {hero && (
             <>
               <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-4 items-stretch">
-                <NewsHero article={hero} onIntelDetails={setDrawerArticle} />
-                <NewsSidebar topStories={topStories} onSelect={setDrawerArticle} />
+                <NewsHero article={hero} />
+                <NewsSidebar topStories={topStories} />
               </section>
               <NewsRiskPanel
                 gprIndex={gprIndex}
@@ -236,7 +233,6 @@ export default function NewsDashboard() {
                     key={article.link ?? `${article.title}-feat-${i}`}
                     article={article}
                     variant="featured"
-                    onSelect={setDrawerArticle}
                   />
                 ))}
               </div>
@@ -248,7 +244,6 @@ export default function NewsDashboard() {
                   <NewsArticleCard
                     key={article.link ?? `${article.title}-${i}`}
                     article={article}
-                    onSelect={setDrawerArticle}
                   />
                 ))}
               </div>
@@ -270,12 +265,6 @@ export default function NewsDashboard() {
           />
         </div>
       </section>
-
-      <NewsArticleDrawer
-        article={drawerArticle}
-        corridorFilter={corridor}
-        onClose={() => setDrawerArticle(null)}
-      />
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import { primaryTheme, priorityLabel } from '../lib/newsCopy'
 import { useArticleImage } from '../lib/useArticleImage'
@@ -5,21 +6,41 @@ import { useArticleImage } from '../lib/useArticleImage'
 type Props = {
   article: NewsArticle
   variant?: 'featured' | 'standard'
-  onSelect: (article: NewsArticle) => void
 }
 
-export default function NewsArticleCard({ article, variant = 'standard', onSelect }: Props) {
+function StoryLink({
+  link,
+  className,
+  children,
+}: {
+  link?: string
+  className: string
+  children: ReactNode
+}) {
+  if (link) {
+    return (
+      <a
+        href={link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${className} block no-underline text-inherit`}
+      >
+        {children}
+      </a>
+    )
+  }
+  return <article className={className}>{children}</article>
+}
+
+export default function NewsArticleCard({ article, variant = 'standard' }: Props) {
   const { src } = useArticleImage(article.link)
   const theme = primaryTheme(article)
 
   if (variant === 'featured') {
     return (
-      <article
+      <StoryLink
+        link={article.link}
         className="corridor-panel overflow-hidden cursor-pointer hover:bg-[#111111] transition-colors"
-        onClick={() => onSelect(article)}
-        onKeyDown={(e) => e.key === 'Enter' && onSelect(article)}
-        role="button"
-        tabIndex={0}
       >
         <div className="flex flex-col sm:flex-row">
           <div className="sm:w-2/5 shrink-0">
@@ -46,17 +67,14 @@ export default function NewsArticleCard({ article, variant = 'standard', onSelec
             </span>
           </div>
         </div>
-      </article>
+      </StoryLink>
     )
   }
 
   return (
-    <article
+    <StoryLink
+      link={article.link}
       className="corridor-panel overflow-hidden cursor-pointer hover:bg-[#111111] transition-colors flex flex-col"
-      onClick={() => onSelect(article)}
-      onKeyDown={(e) => e.key === 'Enter' && onSelect(article)}
-      role="button"
-      tabIndex={0}
     >
       {src ? (
         <img src={src} alt="" className="w-full h-36 object-cover" loading="lazy" />
@@ -79,6 +97,6 @@ export default function NewsArticleCard({ article, variant = 'standard', onSelec
           {article.source ?? 'Source'} · {priorityLabel(article.tier)}
         </span>
       </div>
-    </article>
+    </StoryLink>
   )
 }

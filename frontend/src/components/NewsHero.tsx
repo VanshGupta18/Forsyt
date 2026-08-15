@@ -1,6 +1,5 @@
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import {
-  NEWS_HERO_WHY_CTA,
   primaryTheme,
   tierBadgeClass,
   tierHotLabel,
@@ -9,10 +8,9 @@ import { useArticleImage } from '../lib/useArticleImage'
 
 type Props = {
   article: NewsArticle
-  onIntelDetails: (article: NewsArticle) => void
 }
 
-export default function NewsHero({ article, onIntelDetails }: Props) {
+export default function NewsHero({ article }: Props) {
   const { src } = useArticleImage(article.link)
   const theme = primaryTheme(article)
   const isHot = article.tier === 1
@@ -51,8 +49,8 @@ export default function NewsHero({ article, onIntelDetails }: Props) {
           {formatArticleTime(article.published_at || article.scraped_at)}
         </p>
 
-        <div className="flex flex-wrap gap-2 pt-1">
-          {article.link && (
+        {article.link && (
+          <div className="pt-1">
             <a
               href={article.link}
               target="_blank"
@@ -61,15 +59,8 @@ export default function NewsHero({ article, onIntelDetails }: Props) {
             >
               Open story
             </a>
-          )}
-          <button
-            type="button"
-            className="corridor-btn px-4 py-2 text-sm bg-[#111111]"
-            onClick={() => onIntelDetails(article)}
-          >
-            {NEWS_HERO_WHY_CTA}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </article>
   )

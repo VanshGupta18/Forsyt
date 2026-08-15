@@ -30,16 +30,6 @@ export const NEWS_FEED_TITLE = 'All headlines'
 
 export const NEWS_TICKER_TITLE = 'More headlines'
 
-export const NEWS_DRAWER_TITLE = 'Story details'
-
-export const NEWS_WHY_SHOWING_TITLE = "Why we're showing this"
-
-export const NEWS_TOPICS_TITLE = 'Topics'
-
-export const NEWS_SEE_ALSO_TITLE = 'See also'
-
-export const NEWS_HERO_WHY_CTA = 'Why this story'
-
 export function newsStatusLine(
   gprDate: string | null | undefined,
   pipelineRunAt?: string | null,
@@ -52,25 +42,30 @@ export function newsStatusLine(
   return run ? `${base} · last updated ${run}` : base
 }
 
+function humanizeTopicLabel(raw: string): string {
+  return raw
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+}
+
 export function themeDisplayLabel(theme?: string): string {
   if (!theme?.trim()) return 'General'
-  const upper = theme.trim().toUpperCase()
+  const trimmed = theme.trim()
+  const upper = trimmed.toUpperCase()
   if (THEME_DISPLAY_LABELS[upper]) return THEME_DISPLAY_LABELS[upper]
-  return theme.trim().charAt(0).toUpperCase() + theme.trim().slice(1).toLowerCase()
+  const upperKey = upper.replace(/[\s-]+/g, '_')
+  if (THEME_DISPLAY_LABELS[upperKey]) return THEME_DISPLAY_LABELS[upperKey]
+  return humanizeTopicLabel(trimmed)
 }
 
 export function primaryTheme(article?: NewsArticle): string {
   const raw = article?.nlp_themes?.split(',')[0]?.trim()
   return raw ? themeDisplayLabel(raw) : 'General'
-}
-
-export function parseThemes(article?: NewsArticle): string[] {
-  if (!article?.nlp_themes?.trim()) return []
-  return article.nlp_themes
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((t) => themeDisplayLabel(t))
 }
 
 export function priorityLabel(tier?: number): string {
@@ -95,50 +90,10 @@ export function newsBreakingEmptyLine(): string {
   return 'No high-priority headlines right now — try All stories.'
 }
 
-export function freshnessLabel(published?: string, scraped?: string): string {
-  const value = published || scraped
-  if (!value) return 'Timing unknown'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return 'Timing unknown'
-  const hours = (Date.now() - d.getTime()) / 3_600_000
-  if (hours < 1) return 'Published within the hour'
-  if (hours < 24) return 'Published today'
-  if (hours < 72) return 'Published in the last 3 days'
-  return 'Older headline'
-}
-
-export function trustTierExplanation(tier?: number): string {
-  if (tier === 1) return 'High priority — flagged as especially relevant to markets and trade routes.'
-  if (tier === 2) return 'Standard — useful background; lower immediate weight.'
-  return 'Still being reviewed for priority.'
-}
-
-export function tagStatusLine(article?: NewsArticle): string {
-  const themes = parseThemes(article)
-  if (themes.length) {
-    return `${themes.length} topic${themes.length === 1 ? '' : 's'} identified`
-  }
-  return 'Topics still being classified'
-}
-
 export function briefWhyLine(article: NewsArticle): string {
   const parts: string[] = []
   if (article.tier === 1) parts.push('High priority')
   const theme = primaryTheme(article)
   if (theme !== 'General') parts.push(theme)
   return parts.length ? parts.join(' · ') : 'Recent headline'
-}
-
-export function crossLinkHints(
-  article?: NewsArticle,
-  corridorFilter?: string,
-): { macro?: boolean; corridor?: boolean } {
-  const rawThemes = (article?.nlp_themes ?? '').toUpperCase()
-  const macro =
-    article?.tier === 1 ||
-    ['CONFLICT', 'MILITARY', 'TERROR'].some((t) => rawThemes.includes(t))
-  const corridor =
-    Boolean(corridorFilter) ||
-    ['TRADE', 'CONFLICT', 'MILITARY'].some((t) => rawThemes.includes(t))
-  return { macro, corridor }
 }
