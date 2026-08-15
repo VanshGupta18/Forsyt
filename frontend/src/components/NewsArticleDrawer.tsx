@@ -4,13 +4,15 @@ import { formatArticleTime, type NewsArticle } from '../lib/api'
 import {
   crossLinkHints,
   freshnessLabel,
+  NEWS_DRAWER_TITLE,
+  NEWS_SEE_ALSO_TITLE,
+  NEWS_TOPICS_TITLE,
+  NEWS_WHY_SHOWING_TITLE,
   parseThemes,
-  primaryTheme,
+  priorityLabel,
   tagStatusLine,
-  tierLabel,
   trustTierExplanation,
 } from '../lib/newsCopy'
-import { toggleBriefTheme } from '../lib/newsPrefs'
 
 type Props = {
   article: NewsArticle | null
@@ -37,18 +39,13 @@ export default function NewsArticleDrawer({ article, corridorFilter, onClose }: 
 
   const themes = parseThemes(article)
   const hints = crossLinkHints(article, corridorFilter)
-  const theme = primaryTheme(article)
-
-  const handlePinTheme = () => {
-    if (theme !== 'Geopolitical') toggleBriefTheme(theme)
-  }
 
   return (
     <>
       <button
         type="button"
         className="fixed inset-0 z-40 bg-black/60"
-        aria-label="Close article details"
+        aria-label="Close story details"
         onClick={onClose}
       />
       <aside
@@ -58,7 +55,7 @@ export default function NewsArticleDrawer({ article, corridorFilter, onClose }: 
       >
         <div className="sticky top-0 bg-[#0a0a0a] border-b border-white/10 p-4 flex items-start justify-between gap-3">
           <div>
-            <p className="corridor-kicker">Intel details</p>
+            <p className="corridor-kicker">{NEWS_DRAWER_TITLE}</p>
             <h2 id="news-drawer-title" className="corridor-headline text-base mt-1 line-clamp-3">
               {article.title}
             </h2>
@@ -71,7 +68,7 @@ export default function NewsArticleDrawer({ article, corridorFilter, onClose }: 
         <div className="p-4 space-y-4">
           <div className="flex flex-wrap gap-2 text-xs">
             <span className={`px-2 py-1 bg-[#111111] ${article.tier === 1 ? 'text-corridor-alert' : 'text-corridor-muted'}`}>
-              {tierLabel(article.tier)}
+              {priorityLabel(article.tier)}
             </span>
             <span className="px-2 py-1 bg-[#111111] text-corridor-muted">{article.source ?? 'Source'}</span>
           </div>
@@ -92,7 +89,7 @@ export default function NewsArticleDrawer({ article, corridorFilter, onClose }: 
           )}
 
           <div className="corridor-advisory p-3 space-y-2 border-l-2 border-corridor-watch">
-            <p className="corridor-kicker">Trust</p>
+            <p className="corridor-kicker">{NEWS_WHY_SHOWING_TITLE}</p>
             <p className="text-sm text-corridor-muted">{trustTierExplanation(article.tier)}</p>
             <p className="text-sm text-corridor-muted">{tagStatusLine(article)}</p>
             <p className="text-sm text-corridor-muted">
@@ -102,10 +99,10 @@ export default function NewsArticleDrawer({ article, corridorFilter, onClose }: 
 
           {themes.length > 0 && (
             <div>
-              <p className="corridor-kicker mb-2">NLP themes</p>
+              <p className="corridor-kicker mb-2">{NEWS_TOPICS_TITLE}</p>
               <div className="flex flex-wrap gap-1.5">
                 {themes.map((t) => (
-                  <span key={t} className="text-[10px] px-2 py-1 bg-[#111111] text-corridor-muted uppercase">
+                  <span key={t} className="text-[10px] px-2 py-1 bg-[#111111] text-corridor-muted">
                     {t}
                   </span>
                 ))}
@@ -115,7 +112,7 @@ export default function NewsArticleDrawer({ article, corridorFilter, onClose }: 
 
           {(hints.macro || hints.corridor) && (
             <div>
-              <p className="corridor-kicker mb-2">Related Forsyt modules</p>
+              <p className="corridor-kicker mb-2">{NEWS_SEE_ALSO_TITLE}</p>
               <div className="flex flex-wrap gap-3 text-sm">
                 {hints.macro && (
                   <Link to="/macroeconomics" className="text-corridor-watch underline">
@@ -123,21 +120,12 @@ export default function NewsArticleDrawer({ article, corridorFilter, onClose }: 
                   </Link>
                 )}
                 {hints.corridor && (
-                  <Link
-                    to={corridorFilter ? `/trade-corridor` : '/trade-corridor'}
-                    className="text-corridor-watch underline"
-                  >
-                    Corridor risk
+                  <Link to="/trade-corridor" className="text-corridor-watch underline">
+                    Trade route risk
                   </Link>
                 )}
               </div>
             </div>
-          )}
-
-          {theme !== 'Geopolitical' && (
-            <button type="button" className="corridor-btn px-3 py-2 text-xs" onClick={handlePinTheme}>
-              Pin “{theme}” to morning brief
-            </button>
           )}
         </div>
       </aside>

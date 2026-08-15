@@ -7,14 +7,12 @@ import NewsArticleCard from '../components/NewsArticleCard'
 import NewsArticleDrawer from '../components/NewsArticleDrawer'
 import NewsHero from '../components/NewsHero'
 import NewsIntelStrip from '../components/NewsIntelStrip'
-import NewsMorningBrief from '../components/NewsMorningBrief'
 import NewsSidebar from '../components/NewsSidebar'
 import NewsThemeNav from '../components/NewsThemeNav'
 import {
   fetchEventsFeed,
   fetchGprCurrent,
   fetchPlatformStatus,
-  fetchStats,
   type NewsArticle,
 } from '../lib/api'
 import {
@@ -27,15 +25,10 @@ import {
   newsEmptyLine,
   newsStatusLine,
 } from '../lib/newsCopy'
-import {
-  loadBriefGeneratedAt,
-  loadBriefPreferences,
-  touchBriefGeneratedAt,
-} from '../lib/newsPrefs'
+import { loadBriefPreferences } from '../lib/newsPrefs'
 import {
   dominantTheme,
   feedAfterHero,
-  pickBreakingArticles,
   pickHeroArticle,
   rankMorningBrief,
 } from '../lib/newsUtils'
@@ -47,7 +40,6 @@ export default function NewsDashboard() {
   const [articles, setArticles] = useState<NewsArticle[]>([])
   const [gprIndex, setGprIndex] = useState<number | null>(null)
   const [gprDate, setGprDate] = useState<string | null>(null)
-  const [totalArticles, setTotalArticles] = useState<number | null>(null)
   const [theme, setTheme] = useState(() => searchParams.get('theme') ?? '')
   const [tier, setTier] = useState('')
   const [corridor, setCorridor] = useState(() => searchParams.get('corridor') ?? '')
@@ -55,8 +47,6 @@ export default function NewsDashboard() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [drawerArticle, setDrawerArticle] = useState<NewsArticle | null>(null)
-  const [briefGeneratedAt, setBriefGeneratedAt] = useState<string | null>(() => loadBriefGeneratedAt())
-  const [briefCollapsed, setBriefCollapsed] = useState(false)
   const [pipelineRunAt, setPipelineRunAt] = useState<string | null>(null)
 
   const syncUrl = useCallback(
@@ -99,12 +89,6 @@ export default function NewsDashboard() {
         setGprDate(gpr.date ?? null)
       })
       .catch(() => undefined)
-    fetchStats()
-      .then((s) => setTotalArticles(s.total_articles ?? null))
-      .catch(() => undefined)
-    if (!loadBriefGeneratedAt()) {
-      setBriefGeneratedAt(touchBriefGeneratedAt())
-    }
   }, [])
 
   useEffect(() => {
@@ -121,20 +105,18 @@ export default function NewsDashboard() {
   }, [])
 
   const hero = useMemo(() => pickHeroArticle(articles), [articles])
-  const breaking = useMemo(() => pickBreakingArticles(articles, hero?.link), [articles, hero?.link])
+  const topStories = useMemo(() => {
+    const prefs = loadBriefPreferences()
+    const ranked = rankMorningBrief(articles, prefs, 8)
+    if (!hero?.link) return ranked
+    return ranked.filter((a) => a.link !== hero.link)
+  }, [articles, hero?.link])
   const restFeed = useMemo(() => feedAfterHero(articles, hero), [articles, hero])
   const featured = restFeed.slice(0, 2)
   const gridArticles = restFeed.slice(2)
 
   const tierOneCount = articles.filter((a) => a.tier === 1).length
-  const taggedCount = articles.filter((a) => a.nlp_themes?.trim()).length
-  const taggedPct = articles.length ? Math.round((taggedCount / articles.length) * 100) : 0
   const topTheme = dominantTheme(articles)
-
-  const briefItems = useMemo(() => {
-    const prefs = loadBriefPreferences()
-    return rankMorningBrief(articles, prefs, 8)
-  }, [articles, briefGeneratedAt])
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -156,10 +138,6 @@ export default function NewsDashboard() {
   const handleCorridorClear = () => {
     setCorridor('')
     syncUrl(theme, '')
-  }
-
-  const handleRegenerateBrief = () => {
-    setBriefGeneratedAt(touchBriefGeneratedAt())
   }
 
   return (
@@ -211,10 +189,8 @@ export default function NewsDashboard() {
       <NewsIntelStrip
         feedCount={articles.length}
         tierOneCount={tierOneCount}
-        taggedPct={taggedPct}
         gprIndex={gprIndex}
         topTheme={topTheme}
-        totalIndexed={totalArticles}
         loading={loading}
       />
 
@@ -226,22 +202,13 @@ export default function NewsDashboard() {
             <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-4 items-start">
               <NewsHero article={hero} onIntelDetails={setDrawerArticle} />
               <NewsSidebar
-                breaking={breaking}
+                topStories={topStories}
                 gprIndex={gprIndex}
                 gprDate={gprDate}
                 onSelect={setDrawerArticle}
               />
             </section>
           )}
-
-          <NewsMorningBrief
-            items={briefItems}
-            generatedAt={briefGeneratedAt}
-            collapsed={briefCollapsed}
-            onToggle={() => setBriefCollapsed((v) => !v)}
-            onRegenerate={handleRegenerateBrief}
-            onSelect={setDrawerArticle}
-          />
 
           <section>
             <h2 className="corridor-kicker text-white normal-case tracking-wide text-sm font-bold mb-3">

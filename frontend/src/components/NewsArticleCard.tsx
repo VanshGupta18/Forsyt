@@ -1,5 +1,5 @@
 import { formatArticleTime, type NewsArticle } from '../lib/api'
-import { primaryTheme, tierLabel } from '../lib/newsCopy'
+import { primaryTheme, priorityLabel } from '../lib/newsCopy'
 import { useArticleImage } from '../lib/useArticleImage'
 
 type Props = {
@@ -42,7 +42,7 @@ export default function NewsArticleCard({ article, variant = 'standard', onSelec
             </div>
             <h3 className="corridor-headline line-clamp-3">{article.title}</h3>
             <span className="text-[10px] text-corridor-muted mt-auto">
-              {article.source ?? 'Source'} · {tierLabel(article.tier)}
+              {article.source ?? 'Source'} · {priorityLabel(article.tier)}
             </span>
           </div>
         </div>
@@ -75,9 +75,9 @@ export default function NewsArticleCard({ article, variant = 'standard', onSelec
           </span>
         </div>
         <h3 className="corridor-headline text-sm line-clamp-3">{article.title}</h3>
-        <p className="text-[10px] text-corridor-muted line-clamp-2 mt-auto">
-          {article.nlp_themes || 'Awaiting NLP tags'}
-        </p>
+        <span className="text-[10px] text-corridor-muted mt-auto">
+          {article.source ?? 'Source'} · {priorityLabel(article.tier)}
+        </span>
       </div>
     </article>
   )

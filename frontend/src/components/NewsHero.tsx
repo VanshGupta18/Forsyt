@@ -1,5 +1,6 @@
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import {
+  NEWS_HERO_WHY_CTA,
   primaryTheme,
   tierBadgeClass,
   tierHotLabel,
@@ -66,7 +67,7 @@ export default function NewsHero({ article, onIntelDetails }: Props) {
             className="corridor-btn px-4 py-2 text-sm bg-[#111111]"
             onClick={() => onIntelDetails(article)}
           >
-            Intel details
+            {NEWS_HERO_WHY_CTA}
           </button>
         </div>
       </div>

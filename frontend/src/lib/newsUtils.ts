@@ -18,16 +18,6 @@ export function pickHeroArticle(articles: NewsArticle[]): NewsArticle | null {
   )
 }
 
-export function pickBreakingArticles(
-  articles: NewsArticle[],
-  excludeLink?: string,
-  limit = 5,
-): NewsArticle[] {
-  return articles
-    .filter((a) => a.tier === 1 && a.link !== excludeLink)
-    .slice(0, limit)
-}
-
 export function feedAfterHero(articles: NewsArticle[], hero: NewsArticle | null): NewsArticle[] {
   if (!hero?.link) return articles.slice(1)
   return articles.filter((a) => a.link !== hero.link)
@@ -37,7 +27,7 @@ export function dominantTheme(articles: NewsArticle[]): string {
   const counts = new Map<string, number>()
   for (const article of articles) {
     const theme = primaryTheme(article)
-    if (theme === 'Geopolitical') continue
+    if (theme === 'General') continue
     counts.set(theme, (counts.get(theme) ?? 0) + 1)
   }
   let best = '—'
