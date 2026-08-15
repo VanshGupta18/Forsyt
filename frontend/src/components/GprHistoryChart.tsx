@@ -26,10 +26,33 @@ const EVENT_MARKERS = [
 
 const CHART_HEIGHT = 360
 
+export type GprChartPeriod = '1mo' | '3mo' | '6mo' | '1y'
+
+const PERIOD_DAYS: Record<GprChartPeriod, number> = {
+  '1mo': 31,
+  '3mo': 92,
+  '6mo': 183,
+  '1y': 366,
+}
+
+function filterByPeriod(history: GprHistoryPoint[], period?: GprChartPeriod): GprHistoryPoint[] {
+  if (!period || !history.length) return history
+  const last = history[history.length - 1]?.date
+  if (!last) return history
+  const end = new Date(last)
+  if (Number.isNaN(end.getTime())) return history
+  const start = new Date(end)
+  start.setDate(start.getDate() - PERIOD_DAYS[period])
+  const startIso = start.toISOString().slice(0, 10)
+  return history.filter((d) => d.date >= startIso)
+}
+
 type Props = {
   height?: number
   className?: string
   variant?: 'default' | 'corridor'
+  period?: GprChartPeriod
+  onRangeNote?: (note: string | null) => void
 }
 
 function validPoints(history: GprHistoryPoint[]) {
@@ -150,7 +173,13 @@ function drawGprChart(
   ctx.restore()
 }
 
-export default function GprHistoryChart({ height = CHART_HEIGHT, className = '', variant = 'default' }: Props) {
+export default function GprHistoryChart({
+  height = CHART_HEIGHT,
+  className = '',
+  variant = 'default',
+  period,
+  onRangeNote,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const [history, setHistory] = useState<GprHistoryPoint[]>([])
@@ -158,7 +187,9 @@ export default function GprHistoryChart({ height = CHART_HEIGHT, className = '',
   const [loading, setLoading] = useState(true)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
-  const rows = validPoints(history)
+  const filtered = filterByPeriod(history, period)
+  const rows = validPoints(filtered)
+  const fullRows = validPoints(history)
   const latest = rows[rows.length - 1]
   const first = rows[0]
   const gprVals = rows.map((d) => Number(d.gpr_index))
@@ -179,6 +210,21 @@ export default function GprHistoryChart({ height = CHART_HEIGHT, className = '',
   }, [])
 
   useEffect(() => {
+    if (!onRangeNote) return
+    if (!period || !fullRows.length) {
+      onRangeNote(null)
+      return
+    }
+    if (rows.length < fullRows.length && rows.length > 0) {
+      onRangeNote(`Index from ${fullRows[0].date.slice(0, 10)} — showing all ${rows.length} days in range`)
+    } else if (!rows.length && fullRows.length) {
+      onRangeNote(`No GPR data in selected window — index started ${fullRows[0].date.slice(0, 10)}`)
+    } else {
+      onRangeNote(null)
+    }
+  }, [period, rows.length, fullRows, onRangeNote])
+
+  useEffect(() => {
     load()
   }, [load])
 
@@ -186,12 +232,12 @@ export default function GprHistoryChart({ height = CHART_HEIGHT, className = '',
     const canvas = canvasRef.current
     if (!canvas || loading || error) return
 
-    const render = () => drawGprChart(canvas, history, hoverIndex, height)
+    const render = () => drawGprChart(canvas, filtered, hoverIndex, height)
     render()
     const observer = new ResizeObserver(render)
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [history, error, loading, hoverIndex, height])
+  }, [filtered, error, loading, hoverIndex, height])
 
   const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const canvas = canvasRef.current

@@ -47,13 +47,6 @@ export default function JointStressPanel({ dual, volUnavailable }: Props) {
       {joint?.vol_percentile != null && (
         <ScoreBar label={SCORE_LABELS.volPct} value={joint.vol_percentile} muted={volUnavailable} />
       )}
-
-      <div
-        className="corridor-advisory border-l-2 p-3 text-sm text-corridor-muted"
-        style={{ borderLeftColor: 'var(--corridor-accent-watch)' }}
-      >
-        <p>{joint?.narrative ?? (dual ? 'Loading combined stress…' : 'Dual-signal loading…')}</p>
-      </div>
     </div>
   )
 }

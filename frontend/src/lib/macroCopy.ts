@@ -33,7 +33,26 @@ export const SCORE_LABELS = {
 export const MACRO_HEADLINES_TITLE = 'Latest market & stress news'
 
 export function macroNewsEmptyLine(): string {
-  return 'No recent market-related headlines yet.'
+  return 'No verified stress headlines today — news risk may be driven by older flow.'
+}
+
+export function whyIncludedLabel(why?: string): string {
+  if (why === 'corridor_match') return 'Route'
+  if (why === 'market_keyword') return 'Market'
+  if (why === 'geo_theme') return 'Geo'
+  return ''
+}
+
+export function stressQuadrantShortLabel(
+  geoPercentile?: number | null,
+  volPercentile?: number | null,
+  volUnavailable?: boolean,
+): string {
+  const q = stressQuadrantId(geoPercentile, volPercentile, volUnavailable)
+  if (q === 'calm') return 'Calm quadrant'
+  if (q === 'geo') return 'Headline-led · market calm'
+  if (q === 'vol') return 'Market-led · headlines moderate'
+  return 'Both signals elevated'
 }
 
 export function stressRegimeLabel(regime?: string): string {
@@ -288,10 +307,13 @@ export function transmissionToneClass(tone: TransmissionState['tone']): string {
 
 export function whatChangedLine(
   geoChange7d?: number | null,
+  indexDays?: number | null,
   quotes?: Array<{ key: string; label: string; change_pct: number }>,
 ): string {
   const parts: string[] = []
-  if (geoChange7d != null) {
+  if (indexDays != null && indexDays < 8) {
+    parts.push('News risk 7d change needs 8+ index days')
+  } else if (geoChange7d != null) {
     parts.push(`News risk ${geoChange7d >= 0 ? 'up' : 'down'} ${Math.abs(geoChange7d).toFixed(1)}% over 7 days`)
   }
   const movers = (quotes ?? [])
@@ -302,4 +324,30 @@ export function whatChangedLine(
     parts.push(`${top.label} ${top.change_pct >= 0 ? '+' : ''}${top.change_pct.toFixed(2)}% today`)
   }
   return parts.length ? parts.join(' · ') : 'Waiting for market and news updates…'
+}
+
+export function formatGeoChange7d(change?: number | null, indexDays?: number | null): string {
+  if (indexDays != null && indexDays < 8) {
+    return `Early index (${indexDays}d)`
+  }
+  if (change == null) return '—'
+  return `${change > 0 ? '+' : ''}${change}%`
+}
+
+export function topNewsTheme(events?: Array<{ nlp_themes?: string }>): string {
+  const raw = events?.[0]?.nlp_themes?.trim()
+  if (!raw) return '—'
+  const first = raw.split(',')[0]?.trim()
+  return first || raw.slice(0, 48)
+}
+
+export function drivingHeadlineSummary(events?: Array<{ source?: string }>): {
+  count: string
+  latestSource: string
+} {
+  const count = events?.length ?? 0
+  return {
+    count: count ? String(count) : '—',
+    latestSource: events?.[0]?.source ?? '—',
+  }
 }

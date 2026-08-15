@@ -1,4 +1,4 @@
-import { SCORE_LABELS, STRESS_MAP_CORNERS, stressPositionAdvisory, stressQuadrantId } from '../lib/macroCopy'
+import { SCORE_LABELS, STRESS_MAP_CORNERS, stressQuadrantId, stressQuadrantShortLabel } from '../lib/macroCopy'
 
 type Props = {
   geoPercentile?: number | null
@@ -10,7 +10,7 @@ export default function StressPositionMap({ geoPercentile, volPercentile, volUna
   const geo = Math.max(0, Math.min(100, geoPercentile ?? 0))
   const vol = volUnavailable ? 0 : Math.max(0, Math.min(100, volPercentile ?? 0))
   const quadrant = stressQuadrantId(geoPercentile, volPercentile, volUnavailable)
-  const advisory = stressPositionAdvisory(geoPercentile, volPercentile, volUnavailable)
+  const shortLabel = stressQuadrantShortLabel(geoPercentile, volPercentile, volUnavailable)
 
   const dotColor =
     quadrant === 'joint'
@@ -74,7 +74,7 @@ export default function StressPositionMap({ geoPercentile, volPercentile, volUna
         <span>{SCORE_LABELS.volPct}: {volUnavailable ? 'N/A' : (volPercentile ?? '—')}</span>
       </div>
 
-      <p className="text-xs text-corridor-muted leading-relaxed">{advisory}</p>
+      <p className="text-xs text-corridor-muted">{shortLabel}</p>
     </div>
   )
 }

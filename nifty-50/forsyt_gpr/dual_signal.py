@@ -71,7 +71,7 @@ def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
     gpr_30ma = float(gpr.tail(min(30, len(gpr))).mean())
     baseline_mean, baseline_std, baseline_mode = _gpr_baseline(gpr)
     z = (gpr_today - baseline_mean) / baseline_std
-    change_7d_pct = 0.0
+    change_7d_pct: float | None = None
     if len(gpr) >= 8:
         prior = float(gpr.iloc[-8])
         if prior:

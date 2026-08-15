@@ -528,36 +528,15 @@ def _top_corridor() -> str | None:
     return top.get("corridor_name") or top.get("corridor")
 
 
-def _driving_events(limit: int = 3) -> list[dict]:
-    rows = db.get_recent_news(limit=limit)
-    out = []
-    for row in rows:
-        themes = row.get("nlp_themes") or ""
-        if not themes and row.get("matched_keywords"):
-            try:
-                import json
-                kw = row.get("matched_keywords")
-                if isinstance(kw, str):
-                    kw = json.loads(kw)
-                if isinstance(kw, list):
-                    themes = ", ".join(str(k) for k in kw if k)
-                elif isinstance(kw, dict):
-                    themes = ", ".join(f"{k}: {v}" for k, v in kw.items())
-                else:
-                    themes = str(kw)
-            except Exception:
-                themes = str(row.get("matched_keywords") or "")
-        out.append(
-            {
-                "title": row.get("title"),
-                "source": row.get("source"),
-                "link": row.get("link"),
-                "nlp_themes": themes,
-                "nlp_locations": row.get("nlp_locations"),
-                "published_at": _serialize(row.get("published_at") or row.get("scraped_at")),
-            }
-        )
-    return out
+def _driving_events(limit: int = 8, top_corridor: str | None = None) -> tuple[list[dict], dict]:
+    from news_dataset.api.stress_news import select_driving_events
+
+    rows = db.get_recent_news(limit=60, tagged_only=True)
+    events, meta = select_driving_events(rows, limit=limit, top_corridor=top_corridor)
+    for ev in events:
+        if ev.get("published_at") is not None:
+            ev["published_at"] = _serialize(ev["published_at"])
+    return events, meta
 
 
 def _normalize_dual_signal(payload: dict) -> dict:
@@ -594,6 +573,12 @@ def _dual_signal_cache_stale(cached: dict) -> bool:
     if cached_gpr is not None and db_gpr is not None:
         if abs(float(cached_gpr) - float(db_gpr)) > 0.5:
             return True
+    index_days = geo.get("index_days")
+    change_7d = geo.get("change_7d_pct")
+    if index_days is not None and index_days < 8 and (change_7d == 0.0 or change_7d is None):
+        return True
+    if not geo.get("driving_events_meta"):
+        return True
     return False
 
 
@@ -607,12 +592,15 @@ def build_dual_signal_payload(*, refresh: bool = False) -> dict:
 
     gf = gpr_frame_from_db_or_csv()
     nifty = data.load_price("NIFTY")
+    top_corridor = _top_corridor()
+    driving, driving_meta = _driving_events(top_corridor=top_corridor)
     payload = dual_signal.build_dual_signal(
         gf,
         nifty,
-        top_corridor=_top_corridor(),
-        driving_events=_driving_events(),
+        top_corridor=top_corridor,
+        driving_events=driving,
     )
+    payload["driving_events_meta"] = driving_meta
     as_of = payload["geopolitical"]["as_of"]
     db.upsert_dual_signal(as_of, payload)
     return _normalize_dual_signal(payload)
