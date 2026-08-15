@@ -5,7 +5,7 @@ import logo from '../assets/forsyt-logo.png'
 const navLinks = [
   { to: '/', label: 'Home' },
   { to: '/news', label: 'News Intelligence' },
-  { to: '/macroeconomics', label: 'Indian Macroeconomics' },
+  { to: '/macroeconomics', label: 'Market Stress Monitor' },
   { to: '/trade-corridor', label: 'Trade & Corridor Risk' },
   { to: '/portfolio-exposure', label: 'Portfolio Exposure' },
   { to: '/quality', label: 'Platform Quality' },

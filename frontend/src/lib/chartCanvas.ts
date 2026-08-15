@@ -1,3 +1,24 @@
+/** Shared corridor / macro chart palette */
+export const CHART_PALETTE = {
+  primary: '#adc6ff',
+  gpr: '#ff3333',
+  gprFill: 'rgba(255, 51, 51, 0.28)',
+  gprFillBottom: 'rgba(255, 51, 51, 0.02)',
+  niftyUp: '#00c853',
+  niftyDown: '#ff3333',
+  niftyUpFill: 'rgba(0, 200, 83, 0.22)',
+  niftyDownFill: 'rgba(255, 51, 51, 0.22)',
+  muted: '#737373',
+  axis: '#737373',
+  grid: 'rgba(115, 115, 115, 0.12)',
+  ma7: '#adc6ff',
+  ma30: '#737373',
+  baseline: 'rgba(115, 115, 115, 0.35)',
+  crosshair: 'rgba(173, 198, 255, 0.35)',
+  tooltipBg: '#111111',
+  white: '#ffffff',
+} as const
+
 export type ChartPadding = { top: number; right: number; bottom: number; left: number }
 
 export const DEFAULT_PADDING: ChartPadding = {
@@ -5,6 +26,14 @@ export const DEFAULT_PADDING: ChartPadding = {
   right: 16,
   bottom: 36,
   left: 52,
+}
+
+/** Extra right margin for dual-axis macro charts */
+export const DUAL_AXIS_PADDING: ChartPadding = {
+  top: 28,
+  right: 48,
+  bottom: 36,
+  left: 48,
 }
 
 export type PlottedPoint = {
@@ -84,9 +113,9 @@ export function drawGrid(
   const yRange = yMax - yMin || 1
 
   ctx.save()
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)'
+  ctx.strokeStyle = CHART_PALETTE.grid
   ctx.lineWidth = 1
-  ctx.fillStyle = '#94a3b8'
+  ctx.fillStyle = CHART_PALETTE.axis
   ctx.font = '11px "JetBrains Mono", ui-monospace, monospace'
   ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
@@ -103,6 +132,58 @@ export function drawGrid(
   ctx.restore()
 }
 
+export function paddedRange(values: number[], padRatio = 0.08): [number, number] {
+  if (!values.length) return [0, 1]
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const pad = (max - min) * padRatio || 1
+  return [min - pad, max + pad]
+}
+
+export function drawDualAxisGrid(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  pad: ChartPadding,
+  leftTicks: number[],
+  leftMin: number,
+  leftMax: number,
+  rightTicks: number[],
+  rightMin: number,
+  rightMax: number,
+) {
+  const innerH = height - pad.top - pad.bottom
+  const leftRange = leftMax - leftMin || 1
+  const rightRange = rightMax - rightMin || 1
+
+  ctx.save()
+  ctx.strokeStyle = CHART_PALETTE.grid
+  ctx.lineWidth = 1
+  ctx.font = '10px "JetBrains Mono", ui-monospace, monospace'
+  ctx.textBaseline = 'middle'
+
+  leftTicks.forEach((tick) => {
+    const y = pad.top + innerH - ((tick - leftMin) / leftRange) * innerH
+    ctx.beginPath()
+    ctx.moveTo(pad.left, y)
+    ctx.lineTo(width - pad.right, y)
+    ctx.stroke()
+
+    ctx.fillStyle = CHART_PALETTE.niftyUp
+    ctx.textAlign = 'right'
+    ctx.fillText(formatAxisNumber(tick), pad.left - 6, y)
+  })
+
+  rightTicks.forEach((tick) => {
+    const y = pad.top + innerH - ((tick - rightMin) / rightRange) * innerH
+    ctx.fillStyle = CHART_PALETTE.gpr
+    ctx.textAlign = 'left'
+    ctx.fillText(formatAxisNumber(tick), width - pad.right + 6, y)
+  })
+
+  ctx.restore()
+}
+
 export function drawXLabels(
   ctx: CanvasRenderingContext2D,
   labels: string[],
@@ -114,7 +195,7 @@ export function drawXLabels(
   if (!labels.length || !points.length) return
 
   ctx.save()
-  ctx.fillStyle = '#94a3b8'
+  ctx.fillStyle = CHART_PALETTE.axis
   ctx.font = '10px "JetBrains Mono", ui-monospace, monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'

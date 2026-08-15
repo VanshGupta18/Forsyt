@@ -530,3 +530,37 @@ body {
     animation: none;
   }
 }
+
+/* Macro page — inherits corridor-page utilities via dual class */
+.macro-page.corridor-page {
+  --macro-nifty-accent: var(--color-primary, #adc6ff);
+}
+
+.macro-page .macro-pulse-track {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.macro-page .macro-pulse-track::-webkit-scrollbar {
+  height: 4px;
+}
+
+.macro-page .macro-pulse-track::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.macro-page .macro-pulse-card-selected {
+  border-left: 3px solid var(--macro-nifty-accent);
+}
+
+.macro-page .macro-signal-highlight {
+  border-left: 2px solid var(--corridor-accent-alert);
+}
+
+.macro-page .macro-chart-shell {
+  background: #0a0a0a;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+}

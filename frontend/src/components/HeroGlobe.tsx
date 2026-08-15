@@ -3,7 +3,7 @@ import { geoOrthographic, geoPath, geoGraticule10, geoInterpolate, geoDistance, 
 import { feature } from 'topojson-client'
 import type { Topology } from 'topojson-specification'
 import landTopology from 'world-atlas/land-110m.json'
-import { fetchCorridors } from '../lib/api'
+import { fetchCorridors, corridorOperationalRisk } from '../lib/api'
 
 const SIZE = 640
 const GRATICULE = geoGraticule10()
@@ -139,8 +139,9 @@ export default function HeroGlobe({ className }: { className?: string }) {
         .map((c): GlobeNode | null => {
           const key = c.corridor?.toLowerCase()
           const location = key ? CORRIDOR_LOCATIONS[key] : undefined
-          if (!location || c.corridor_risk == null) return null
-          return { location, risk: c.corridor_risk, isHub: false }
+          const risk = corridorOperationalRisk(c)
+          if (!location || !Number.isFinite(risk)) return null
+          return { location, risk, isHub: false }
         })
         .filter((n): n is GlobeNode => n !== null)
 

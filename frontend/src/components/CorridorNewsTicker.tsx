@@ -92,9 +92,10 @@ function PosterSkeleton() {
 type Props = {
   articles: NewsArticle[]
   loading?: boolean
+  emptyMessage?: string
 }
 
-export default function CorridorNewsTicker({ articles, loading }: Props) {
+export default function CorridorNewsTicker({ articles, loading, emptyMessage }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
@@ -149,7 +150,9 @@ export default function CorridorNewsTicker({ articles, loading }: Props) {
 
   if (!articles.length) {
     return (
-      <p className="text-sm text-corridor-muted py-3">No recent news for this route yet.</p>
+      <p className="text-sm text-corridor-muted py-3">
+        {emptyMessage ?? 'No recent news for this route yet.'}
+      </p>
     )
   }
 
