@@ -1,6 +1,6 @@
 import type { NewsArticle } from './api'
 import { primaryTheme } from './newsCopy'
-import type { BriefPreferences, SavedNewsView } from './newsPrefs'
+import type { BriefPreferences } from './newsPrefs'
 
 function articleTime(article: NewsArticle): number {
   const raw = article.published_at || article.scraped_at
@@ -51,43 +51,25 @@ export function dominantTheme(articles: NewsArticle[]): string {
   return best
 }
 
-function matchesView(article: NewsArticle, view: SavedNewsView): boolean {
-  if (view.theme && !article.nlp_themes?.toUpperCase().includes(view.theme.toUpperCase())) return false
-  if (view.tier && String(article.tier ?? '') !== view.tier) return false
-  if (view.corridor && !article.nlp_themes?.toLowerCase().includes(view.corridor.toLowerCase())) return false
-  return true
-}
-
 export function rankMorningBrief(
   articles: NewsArticle[],
   prefs: BriefPreferences,
-  savedViews: SavedNewsView[],
   limit = 8,
-): Array<{ article: NewsArticle; matchedView?: string }> {
-  const scored = articles.map((article) => {
-    let score = articleTime(article) / 1e12
-    if (article.tier === 1) score += 100
-    else if (article.tier === 2) score += 40
-    if (article.nlp_themes?.trim()) score += 20
+): NewsArticle[] {
+  return [...articles]
+    .map((article) => {
+      let score = articleTime(article) / 1e12
+      if (article.tier === 1) score += 100
+      else if (article.tier === 2) score += 40
+      if (article.nlp_themes?.trim()) score += 20
 
-    const themes = (article.nlp_themes ?? '').toUpperCase()
-    if (prefs.themes.some((t) => themes.includes(t))) score += 30
-    if (article.tier != null && article.tier <= prefs.minTier) score += 15
+      const themes = (article.nlp_themes ?? '').toUpperCase()
+      if (prefs.themes.some((t) => themes.includes(t))) score += 30
+      if (article.tier != null && article.tier <= prefs.minTier) score += 15
 
-    let matchedView: string | undefined
-    for (const view of savedViews) {
-      if (matchesView(article, view)) {
-        score += 25
-        matchedView = view.name
-        break
-      }
-    }
-
-    return { article, score, matchedView }
-  })
-
-  return scored
+      return { article, score }
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map(({ article, matchedView }) => ({ article, matchedView }))
+    .map(({ article }) => article)
 }

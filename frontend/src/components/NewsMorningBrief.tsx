@@ -1,13 +1,8 @@
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import { briefWhyLine, NEWS_MORNING_BRIEF_TITLE, primaryTheme } from '../lib/newsCopy'
 
-type BriefItem = {
-  article: NewsArticle
-  matchedView?: string
-}
-
 type Props = {
-  items: BriefItem[]
+  items: NewsArticle[]
   generatedAt: string | null
   collapsed: boolean
   onToggle: () => void
@@ -48,7 +43,7 @@ export default function NewsMorningBrief({
 
       {!collapsed && (
         <ul className="divide-y divide-white/5">
-          {items.map(({ article, matchedView }, i) => (
+          {items.map((article, i) => (
             <li key={article.link ?? `${article.title}-${i}`}>
               <button
                 type="button"
@@ -68,7 +63,7 @@ export default function NewsMorningBrief({
                   </span>
                 </div>
                 <p className="corridor-headline text-sm line-clamp-2">{article.title}</p>
-                <p className="text-[10px] text-corridor-muted mt-1">{briefWhyLine(article, matchedView)}</p>
+                <p className="text-[10px] text-corridor-muted mt-1">{briefWhyLine(article)}</p>
               </button>
             </li>
           ))}

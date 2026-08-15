@@ -1,19 +1,9 @@
-export type SavedNewsView = {
-  id: string
-  name: string
-  theme: string
-  tier: string
-  corridor: string
-  createdAt: string
-}
-
 export type BriefPreferences = {
   themes: string[]
   minTier: number
   corridors: string[]
 }
 
-const VIEWS_KEY = 'forsyt.news.savedViews'
 const BRIEF_KEY = 'forsyt.news.briefPrefs'
 const BRIEF_AT_KEY = 'forsyt.news.briefGeneratedAt'
 
@@ -31,31 +21,6 @@ function readJson<T>(key: string, fallback: T): T {
   } catch {
     return fallback
   }
-}
-
-export function loadSavedViews(): SavedNewsView[] {
-  return readJson<SavedNewsView[]>(VIEWS_KEY, [])
-}
-
-export function saveSavedViews(views: SavedNewsView[]): void {
-  localStorage.setItem(VIEWS_KEY, JSON.stringify(views))
-}
-
-export function addSavedView(view: Omit<SavedNewsView, 'id' | 'createdAt'>): SavedNewsView[] {
-  const next: SavedNewsView = {
-    ...view,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-  }
-  const views = [...loadSavedViews(), next]
-  saveSavedViews(views)
-  return views
-}
-
-export function removeSavedView(id: string): SavedNewsView[] {
-  const views = loadSavedViews().filter((v) => v.id !== id)
-  saveSavedViews(views)
-  return views
 }
 
 export function loadBriefPreferences(): BriefPreferences {

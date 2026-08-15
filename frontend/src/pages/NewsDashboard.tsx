@@ -27,13 +27,9 @@ import {
   newsEmptyLine,
 } from '../lib/newsCopy'
 import {
-  addSavedView,
   loadBriefGeneratedAt,
   loadBriefPreferences,
-  loadSavedViews,
-  removeSavedView,
   touchBriefGeneratedAt,
-  type SavedNewsView,
 } from '../lib/newsPrefs'
 import {
   dominantTheme,
@@ -58,7 +54,6 @@ export default function NewsDashboard() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [drawerArticle, setDrawerArticle] = useState<NewsArticle | null>(null)
-  const [savedViews, setSavedViews] = useState<SavedNewsView[]>(() => loadSavedViews())
   const [briefGeneratedAt, setBriefGeneratedAt] = useState<string | null>(() => loadBriefGeneratedAt())
   const [briefCollapsed, setBriefCollapsed] = useState(false)
 
@@ -123,8 +118,8 @@ export default function NewsDashboard() {
 
   const briefItems = useMemo(() => {
     const prefs = loadBriefPreferences()
-    return rankMorningBrief(articles, prefs, savedViews, 8)
-  }, [articles, savedViews, briefGeneratedAt])
+    return rankMorningBrief(articles, prefs, 8)
+  }, [articles, briefGeneratedAt])
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -146,21 +141,6 @@ export default function NewsDashboard() {
   const handleCorridorClear = () => {
     setCorridor('')
     syncUrl(theme, '')
-  }
-
-  const handleApplyView = (view: SavedNewsView) => {
-    setTheme(view.theme)
-    setTier(view.tier)
-    setCorridor(view.corridor)
-    syncUrl(view.theme, view.corridor)
-  }
-
-  const handleSaveView = (name: string) => {
-    setSavedViews(addSavedView({ name, theme, tier, corridor }))
-  }
-
-  const handleRemoveView = (id: string) => {
-    setSavedViews(removeSavedView(id))
   }
 
   const handleRegenerateBrief = () => {
@@ -198,13 +178,9 @@ export default function NewsDashboard() {
         theme={theme}
         tier={tier}
         corridor={corridor}
-        savedViews={savedViews}
         onThemeChange={handleThemeChange}
         onTierChange={setTier}
         onCorridorClear={handleCorridorClear}
-        onApplyView={handleApplyView}
-        onSaveView={handleSaveView}
-        onRemoveView={handleRemoveView}
       />
 
       {feedError && <ApiErrorBanner message={`Feed: ${feedError}`} onRetry={loadFeed} />}

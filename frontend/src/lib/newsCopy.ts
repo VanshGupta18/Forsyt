@@ -81,12 +81,11 @@ export function tagStatusLine(article?: NewsArticle): string {
   return 'Awaiting NLP tags'
 }
 
-export function briefWhyLine(article: NewsArticle, matchedView?: string): string {
+export function briefWhyLine(article: NewsArticle): string {
   const parts: string[] = []
   if (article.tier === 1) parts.push('Tier 1')
   const theme = primaryTheme(article)
   if (theme !== 'Geopolitical') parts.push(theme)
-  if (matchedView) parts.push(`matches “${matchedView}”`)
   return parts.length ? parts.join(' · ') : 'Recent tagged flow'
 }
 

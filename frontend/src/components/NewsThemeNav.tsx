@@ -1,31 +1,21 @@
 import { NEWS_THEME_PRESETS } from '../lib/newsCopy'
-import NewsSavedViews from './NewsSavedViews'
-import type { SavedNewsView } from '../lib/newsPrefs'
 
 type Props = {
   theme: string
   tier: string
   corridor: string
-  savedViews: SavedNewsView[]
   onThemeChange: (theme: string) => void
   onTierChange: (tier: string) => void
   onCorridorClear: () => void
-  onApplyView: (view: SavedNewsView) => void
-  onSaveView: (name: string) => void
-  onRemoveView: (id: string) => void
 }
 
 export default function NewsThemeNav({
   theme,
   tier,
   corridor,
-  savedViews,
   onThemeChange,
   onTierChange,
   onCorridorClear,
-  onApplyView,
-  onSaveView,
-  onRemoveView,
 }: Props) {
   return (
     <section aria-label="Filters" className="space-y-3">
@@ -79,13 +69,6 @@ export default function NewsThemeNav({
             </button>
           </span>
         )}
-
-        <NewsSavedViews
-          savedViews={savedViews}
-          onApply={onApplyView}
-          onSave={onSaveView}
-          onRemove={onRemoveView}
-        />
       </div>
     </section>
   )
