@@ -1,31 +1,40 @@
-import macroImg from '../assets/module-macro.jpg'
-import tradeImg from '../assets/module-trade.jpg'
-import portfolioImg from '../assets/module-portfolio.jpg'
+import { CORRIDOR_PAGE_SUBTITLE } from './corridorCopy'
+import { MACRO_PAGE_SUBTITLE } from './macroCopy'
+import { NEWS_PAGE_SUBTITLE } from './newsCopy'
 
-export const modules = [
+export type ModuleTier = 'core' | 'advanced'
+
+export const modules: {
+  to: string
+  title: string
+  description: string
+  icon: string
+  tier: ModuleTier
+  kicker: string
+}[] = [
   {
     to: '/news',
     title: 'News Intelligence',
-    description:
-      'Geopolitical headlines that matter for Indian markets and trade routes — filtered by topic and priority.',
+    description: NEWS_PAGE_SUBTITLE,
     icon: 'newspaper',
-    image: tradeImg,
+    tier: 'core',
+    kicker: 'Headlines',
   },
   {
     to: '/macroeconomics',
     title: 'Indian Market Stress Monitor',
-    description:
-      'Dual-signal intelligence combining geopolitical news risk and NIFTY volatility — honest context for Indian markets.',
+    description: MACRO_PAGE_SUBTITLE,
     icon: 'bar_chart',
-    image: macroImg,
+    tier: 'core',
+    kicker: 'Markets',
   },
   {
     to: '/trade-corridor',
     title: 'Trade & Corridor Risk',
-    description:
-      'Monitor global trade routes, chokepoints, supply chains and corridor disruptions impacting India.',
+    description: CORRIDOR_PAGE_SUBTITLE,
     icon: 'directions_boat',
-    image: tradeImg,
+    tier: 'core',
+    kicker: 'Routes',
   },
   {
     to: '/portfolio-exposure',
@@ -33,7 +42,8 @@ export const modules = [
     description:
       'Assess portfolio exposure using India GPR Index with scenario analysis, stress testing and sector impact.',
     icon: 'deployed_code',
-    image: portfolioImg,
+    tier: 'advanced',
+    kicker: 'Advanced',
   },
   {
     to: '/quality',
@@ -41,6 +51,7 @@ export const modules = [
     description:
       'Validate GPR index accuracy, corridor tagging precision and NLP coverage against live benchmarks.',
     icon: 'verified',
-    image: macroImg,
+    tier: 'advanced',
+    kicker: 'Advanced',
   },
 ]

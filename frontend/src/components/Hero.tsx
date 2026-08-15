@@ -1,76 +1,49 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeroGlobe from './HeroGlobe'
-import { fetchGprCurrent, fetchHealth } from '../lib/api'
+import HomeLivePulse from './HomeLivePulse'
+import { HOME_DISCLAIMER, HOME_EYEBROW, HOME_SUBTITLE, HOME_TITLE } from '../lib/homeCopy'
+
+const CTAS = [
+  { to: '/news', label: 'Headlines' },
+  { to: '/macroeconomics', label: 'Market stress' },
+  { to: '/trade-corridor', label: 'Corridor risk' },
+] as const
 
 export default function Hero() {
-  const [articles, setArticles] = useState<number | null>(null)
-  const [regime, setRegime] = useState<string>('—')
-
-  useEffect(() => {
-    fetchHealth().then((h) => setArticles(h.total_articles ?? null)).catch(() => undefined)
-    fetchGprCurrent()
-      .then((g) => {
-        const idx = g.gpr_index ?? 100
-        if (idx >= 135) setRegime('Elevated')
-        else if (idx >= 100) setRegime('Moderate')
-        else setRegime('Calm')
-      })
-      .catch(() => undefined)
-  }, [])
-
   return (
-    <section id="section-01" className="relative h-[850px] flex items-center px-margin-page max-w-container-max mx-auto overflow-hidden">
-      <div className="w-full lg:w-1/2 z-10 space-y-7">
-        <div className="eyebrow-badge fade-in-up" style={{ animationDelay: '0ms' }}>
-          <span className="eyebrow-dot" />
-          Live Intelligence Platform
-        </div>
-
-        <h1 className="font-display-lg text-[52px] leading-[1.05] text-on-surface fade-in-up" style={{ animationDelay: '80ms' }}>
-          See geopolitical risks <br />
-          before they{' '}
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-container via-primary to-primary-container">
-            impact India.
+    <section id="section-01" className="max-w-container-max mx-auto px-margin-page pt-8 pb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12 items-center min-h-[min(72vh,680px)]">
+        <div className="space-y-6 order-2 md:order-1">
+          <span className="eyebrow-badge">
+            <span className="eyebrow-dot" />
+            {HOME_EYEBROW}
           </span>
-        </h1>
 
-        <p className="font-body-lg text-body-lg text-on-surface-variant max-w-lg fade-in-up" style={{ animationDelay: '160ms' }}>
-          Real-time intelligence. Actionable insights. Stronger decision-making for sovereign entities and global investors.
-        </p>
+          <h1 className="corridor-display font-headline-lg text-headline-lg text-on-surface">{HOME_TITLE}</h1>
 
-        <div className="flex gap-4 pt-4 fade-in-up" style={{ animationDelay: '240ms' }}>
-          <Link to="/macroeconomics" className="btn-primary text-on-primary-container px-8 py-4 rounded-lg font-title-lg flex items-center gap-2">
-            Explore Platform
-            <span className="material-symbols-outlined">arrow_forward</span>
-          </Link>
-          <Link to="/news" className="btn-secondary px-8 py-4 rounded-lg font-title-lg text-on-surface">
-            View Live Risk
-          </Link>
+          <p className="font-body-lg text-body-lg text-corridor-muted max-w-lg">{HOME_SUBTITLE}</p>
+
+          <p className="text-xs text-corridor-muted/80 max-w-lg">{HOME_DISCLAIMER}</p>
+
+          <div className="flex flex-wrap gap-3">
+            {CTAS.map(({ to, label }, i) => (
+              <Link
+                key={to}
+                to={to}
+                className={`corridor-btn px-5 py-2.5 text-sm ${i === 0 ? 'bg-white text-black hover:bg-white/90' : ''}`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="order-1 md:order-2 flex justify-center md:justify-end items-center">
+          <HeroGlobe className="w-full max-w-[min(100%,520px)] aspect-square" />
         </div>
       </div>
 
-      <div className="absolute inset-y-0 right-0 hidden lg:flex w-3/5 items-center justify-between gap-4 pr-8 pl-4">
-        <div className="flex-1 flex items-center justify-center pointer-events-none min-w-0">
-          <HeroGlobe className="h-[640px] w-[640px] max-w-full" />
-        </div>
-
-        <div className="flex flex-col gap-4 shrink-0">
-          <div className="glass-card glass-card-hover p-4 rounded-xl w-48 inner-glow fade-in-up" style={{ animationDelay: '400ms' }}>
-            <span className="font-label-md text-on-surface-variant uppercase">Articles indexed</span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-headline-lg font-bold">{articles ?? '—'}</span>
-              <span className="text-secondary text-sm">Live</span>
-            </div>
-          </div>
-          <div className="glass-card glass-card-hover p-4 rounded-xl w-48 inner-glow fade-in-up" style={{ animationDelay: '480ms' }}>
-            <span className="font-label-md text-error uppercase">GPR regime</span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-headline-lg font-bold">{regime}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <HomeLivePulse />
     </section>
   )
 }

@@ -1,3 +1,4 @@
+import PulseCard from './PulseCard'
 import { NEWS_MOST_COVERED_LABEL } from '../lib/newsCopy'
 
 type Props = {
@@ -6,23 +7,6 @@ type Props = {
   gprIndex: number | null
   topTheme: string
   loading?: boolean
-}
-
-function PulseCard({
-  label,
-  value,
-  valueClass = 'text-white',
-}: {
-  label: string
-  value: string
-  valueClass?: string
-}) {
-  return (
-    <div className="corridor-panel shrink-0 min-w-[140px] p-3 flex flex-col gap-1">
-      <span className="corridor-kicker">{label}</span>
-      <span className={`corridor-score text-2xl ${valueClass}`}>{value}</span>
-    </div>
-  )
 }
 
 export default function NewsIntelStrip({

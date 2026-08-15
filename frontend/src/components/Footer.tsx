@@ -30,7 +30,7 @@ export default function Footer() {
               }`}
             />
             <span className="font-label-md text-[11px] text-on-surface-variant uppercase tracking-wider">
-              {healthy === null ? 'Checking API…' : healthy ? 'All systems operational' : 'API degraded — start Flask on :5000'}
+              {healthy === null ? 'Checking API…' : healthy ? 'All systems operational' : 'API degraded — start Flask on :5001'}
             </span>
           </div>
         </div>

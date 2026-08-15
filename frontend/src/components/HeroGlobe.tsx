@@ -26,6 +26,9 @@ const CORRIDOR_LOCATIONS: Record<string, [number, number]> = {
   instc_chabahar: [60.6, 25.3],
 }
 const MAX_NODES = 1 + Object.keys(CORRIDOR_LOCATIONS).length
+const GLOBE_SCALE = SIZE / 2.05
+const INDIA_PHI = (-INDIA[0] * Math.PI) / 180
+const INDIA_THETA = -INDIA[1]
 
 type GlobeNode = { location: [number, number]; risk: number; isHub: boolean }
 
@@ -60,6 +63,10 @@ function riskDotRadius(node: GlobeNode): number {
   return node.isHub ? 4 : 2.5 + (Math.min(node.risk, 100) / 100) * 3
 }
 
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 export default function HeroGlobe({ className }: { className?: string }) {
   const graticuleRef = useRef<SVGPathElement>(null)
   const landRef = useRef<SVGPathElement>(null)
@@ -73,17 +80,17 @@ export default function HeroGlobe({ className }: { className?: string }) {
   useEffect(() => {
     let destroyed = false
     let frame = 0
-    let phi = 0
-    const thetaDeg = -22
+    let phi = INDIA_PHI
+    const reducedMotion = prefersReducedMotion()
 
     const projection = geoOrthographic()
-      .scale(SIZE / 2.18)
+      .scale(GLOBE_SCALE)
       .translate([SIZE / 2, SIZE / 2])
       .clipAngle(90)
     const path = geoPath(projection)
 
     function render() {
-      const rotation: [number, number, number] = [(phi * 180) / Math.PI, thetaDeg, 0]
+      const rotation: [number, number, number] = [(phi * 180) / Math.PI, INDIA_THETA, 0]
       projection.rotate(rotation)
 
       graticuleRef.current?.setAttribute('d', path(GRATICULE) ?? '')
@@ -128,11 +135,13 @@ export default function HeroGlobe({ className }: { className?: string }) {
 
     function tick() {
       if (destroyed) return
-      phi += 0.0016
+      if (!reducedMotion) phi += 0.0016
       render()
-      frame = requestAnimationFrame(tick)
+      if (!reducedMotion) frame = requestAnimationFrame(tick)
     }
-    frame = requestAnimationFrame(tick)
+
+    render()
+    if (!reducedMotion) frame = requestAnimationFrame(tick)
 
     function applyCorridorPayload(payload: Awaited<ReturnType<typeof fetchCorridors>>) {
       const corridorNodes: GlobeNode[] = (payload.corridors ?? [])
@@ -150,11 +159,12 @@ export default function HeroGlobe({ className }: { className?: string }) {
       corridorNodes.forEach((n, i) => {
         if (n.risk > highestRisk) {
           highestRisk = n.risk
-          highest = i + 1 // +1: India occupies slot 0
+          highest = i + 1
         }
       })
       highestRiskIndexRef.current = highest
       nodesRef.current = [{ location: INDIA, risk: 0, isHub: true }, ...corridorNodes]
+      render()
     }
 
     fetchCorridors()
@@ -181,17 +191,12 @@ export default function HeroGlobe({ className }: { className?: string }) {
   }, [])
 
   return (
-    <div className={`${className ?? 'h-[640px] w-[640px]'} relative flex items-center justify-center`}>
-      <div
-        className="absolute rounded-full border border-white/10"
-        style={{ width: '124%', height: '124%', transform: 'rotateX(78deg)' }}
-      />
-      <div
-        className="absolute rounded-full border border-white/[0.07]"
-        style={{ width: '148%', height: '148%', transform: 'rotateX(80deg) rotateZ(10deg)' }}
-      />
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="relative w-full h-full" aria-hidden>
-        <circle cx={SIZE / 2} cy={SIZE / 2} r={SIZE / 2.18} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={1} />
+    <div
+      className={`${className ?? 'w-full aspect-square max-w-[520px]'} relative flex items-center justify-center`}
+      aria-label="Live corridor risk map centered on India"
+    >
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="relative w-full h-full" role="img">
+        <circle cx={SIZE / 2} cy={SIZE / 2} r={GLOBE_SCALE} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={1} />
         <path ref={graticuleRef} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={0.6} />
         <path ref={landRef} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={1} />
         {Array.from({ length: MAX_NODES }).map((_, i) => (

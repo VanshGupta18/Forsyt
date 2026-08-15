@@ -592,6 +592,20 @@ body {
   background: rgba(255, 255, 255, 0.15);
 }
 
+.corridor-page .home-pulse-track {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.corridor-page .home-pulse-track::-webkit-scrollbar {
+  height: 4px;
+}
+
+.corridor-page .home-pulse-track::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
 .news-stories-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
