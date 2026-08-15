@@ -85,6 +85,7 @@ export type NewsArticle = {
   published_at?: string
   scraped_at?: string
   nlp_themes?: string
+  why_included?: 'geo_theme' | 'market_keyword' | 'corridor_match'
 }
 
 export type MarketQuote = {
@@ -174,8 +175,11 @@ export type DualSignalPayload = {
     gpr_7ma?: number
     gpr_30ma?: number
     regime?: string
-    change_7d_pct?: number
+    change_7d_pct?: number | null
     geo_percentile?: number
+    index_days?: number
+    gpr_threats?: number
+    gpr_acts?: number
     top_corridor?: string
     driving_events?: NewsArticle[]
   }
@@ -205,6 +209,13 @@ export type DualSignalPayload = {
     notable_events?: string[]
   }
   disclaimer?: string
+  driving_events_meta?: {
+    candidates_scanned?: number
+    geo_market_pass?: number
+    geo_only_pass?: number
+    returned?: number
+    gate_b_relaxed?: boolean
+  }
 }
 
 export type EventsFeedParams = {

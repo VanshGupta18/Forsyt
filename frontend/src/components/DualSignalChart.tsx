@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import GprHistoryChart from './GprHistoryChart'
+import { useEffect, useState } from 'react'
+import GprHistoryChart, { type GprChartPeriod } from './GprHistoryChart'
 import MarketSparkline from './MarketSparkline'
 
 const RANGES = [
@@ -13,20 +13,31 @@ type RangeId = (typeof RANGES)[number]['id']
 
 type Props = {
   chartHeight?: number
+  indexDays?: number | null
 }
 
-export default function DualSignalChart({ chartHeight = 260 }: Props) {
-  const [range, setRange] = useState<RangeId>('3mo')
+function defaultRange(indexDays?: number | null): RangeId {
+  if (indexDays != null && indexDays < 90) return '1mo'
+  return '3mo'
+}
+
+export default function DualSignalChart({ chartHeight = 260, indexDays }: Props) {
+  const [range, setRange] = useState<RangeId>(() => defaultRange(indexDays))
+  const [rangeNote, setRangeNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (indexDays != null && indexDays < 90 && range !== '1mo') {
+      setRange('1mo')
+    }
+  }, [indexDays, range])
 
   return (
     <div className="corridor-panel p-4 flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="corridor-kicker">Dual signal</p>
-          <h2 className="corridor-headline mt-1">NIFTY vs Forsyt GPR</h2>
-          <p className="text-[10px] text-corridor-muted mt-1">
-            Market price and news-driven risk index side by side
-          </p>
+          <h2 className="corridor-headline mt-1">NIFTY vs news risk index</h2>
+          <p className="text-[10px] text-corridor-muted mt-1">Same time window for both charts</p>
         </div>
         <div className="flex items-center gap-1">
           {RANGES.map((r) => (
@@ -43,14 +54,21 @@ export default function DualSignalChart({ chartHeight = 260 }: Props) {
         </div>
       </div>
 
+      {rangeNote && <p className="text-[10px] text-corridor-watch">{rangeNote}</p>}
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div>
           <p className="corridor-kicker mb-2">NIFTY 50</p>
           <MarketSparkline symbol="nifty" period={range} height={chartHeight} variant="corridor" />
         </div>
         <div>
-          <p className="corridor-kicker mb-2">Forsyt GPR</p>
-          <GprHistoryChart height={chartHeight} variant="corridor" />
+          <p className="corridor-kicker mb-2">News risk index</p>
+          <GprHistoryChart
+            height={chartHeight}
+            variant="corridor"
+            period={range as GprChartPeriod}
+            onRangeNote={setRangeNote}
+          />
         </div>
       </div>
     </div>

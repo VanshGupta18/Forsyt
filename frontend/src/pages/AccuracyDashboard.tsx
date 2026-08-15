@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Reveal from '../components/Reveal'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import LoadingSkeleton from '../components/LoadingSkeleton'
-import { fetchAccuracyMetrics, type AccuracyMetricsPayload } from '../lib/api'
+import { fetchAccuracyMetrics, fetchDualSignal, type AccuracyMetricsPayload, type DualSignalPayload } from '../lib/api'
 
 function MetricCard({
   label,
@@ -41,6 +41,7 @@ function PassBadge({ pass }: { pass?: boolean | null }) {
 
 export default function AccuracyDashboard() {
   const [data, setData] = useState<AccuracyMetricsPayload | null>(null)
+  const [dual, setDual] = useState<DualSignalPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshingVol, setRefreshingVol] = useState(false)
@@ -60,7 +61,12 @@ export default function AccuracyDashboard() {
 
   useEffect(() => {
     load(false)
+    fetchDualSignal(false)
+      .then(setDual)
+      .catch(() => undefined)
   }, [load])
+
+  const drivingMeta = dual?.driving_events_meta
 
   const ing = data?.ingestion
   const nlp = data?.nlp
@@ -337,6 +343,26 @@ export default function AccuracyDashboard() {
               )}
             </section>
           </Reveal>
+
+          {drivingMeta && (
+            <Reveal>
+              <section className="glass-panel rounded-xl p-6 space-y-4">
+                <h2 className="text-lg font-semibold text-white">Stress monitor driving headlines</h2>
+                <p className="text-sm text-gray-500">Filter QA from latest dual-signal payload</p>
+                <div className="flex flex-wrap gap-4">
+                  <MetricCard label="Candidates scanned" value={String(drivingMeta.candidates_scanned ?? '—')} />
+                  <MetricCard label="Geo + market pass" value={String(drivingMeta.geo_market_pass ?? '—')} />
+                  <MetricCard label="Geo-only fallback" value={String(drivingMeta.geo_only_pass ?? '—')} />
+                  <MetricCard label="Returned" value={String(drivingMeta.returned ?? '—')} />
+                  <MetricCard
+                    label="Gate B relaxed"
+                    value={drivingMeta.gate_b_relaxed ? 'Yes' : 'No'}
+                    pass={drivingMeta.gate_b_relaxed ? false : true}
+                  />
+                </div>
+              </section>
+            </Reveal>
+          )}
 
           {data.disclaimer && (
             <p className="text-xs text-gray-600 border-t border-white/5 pt-6">{data.disclaimer}</p>

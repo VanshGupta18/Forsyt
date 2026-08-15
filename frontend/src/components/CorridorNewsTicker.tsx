@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { fetchNewsImage, formatArticleTime, type NewsArticle } from '../lib/api'
+import { whyIncludedLabel } from '../lib/macroCopy'
 
 function faviconUrl(link?: string): string | null {
   if (!link) return null
@@ -32,6 +33,7 @@ function TickerItem({ article }: { article: NewsArticle }) {
   }, [link])
 
   const thumb = !failed && (img || faviconUrl(link))
+  const badge = whyIncludedLabel(article.why_included)
 
   return (
     <article className="flex flex-col shrink-0 w-[260px] gap-2.5 px-3">
@@ -58,9 +60,16 @@ function TickerItem({ article }: { article: NewsArticle }) {
       >
         {article.title}
       </a>
-      <p className="corridor-kicker truncate normal-case tracking-normal">
-        {article.source?.toUpperCase()} · {formatArticleTime(article.published_at || article.scraped_at)}
-      </p>
+      <div className="flex items-center gap-2 min-w-0">
+        {badge && (
+          <span className="text-[9px] uppercase font-semibold px-1.5 py-0.5 bg-white/10 text-corridor-watch shrink-0">
+            {badge}
+          </span>
+        )}
+        <p className="corridor-kicker truncate normal-case tracking-normal min-w-0">
+          {article.source?.toUpperCase()} · {formatArticleTime(article.published_at || article.scraped_at)}
+        </p>
+      </div>
     </article>
   )
 }
