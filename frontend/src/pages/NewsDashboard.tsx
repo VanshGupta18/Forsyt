@@ -7,12 +7,14 @@ import NewsArticleCard from '../components/NewsArticleCard'
 import NewsArticleDrawer from '../components/NewsArticleDrawer'
 import NewsHero from '../components/NewsHero'
 import NewsIntelStrip from '../components/NewsIntelStrip'
+import NewsRiskPanel from '../components/NewsRiskPanel'
 import NewsSidebar from '../components/NewsSidebar'
 import NewsThemeNav from '../components/NewsThemeNav'
 import {
   fetchEventsFeed,
   fetchGprCurrent,
   fetchPlatformStatus,
+  type GprCurrent,
   type NewsArticle,
 } from '../lib/api'
 import {
@@ -39,6 +41,8 @@ export default function NewsDashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [articles, setArticles] = useState<NewsArticle[]>([])
   const [gprIndex, setGprIndex] = useState<number | null>(null)
+  const [gpr7ma, setGpr7ma] = useState<number | null>(null)
+  const [gpr30ma, setGpr30ma] = useState<number | null>(null)
   const [gprDate, setGprDate] = useState<string | null>(null)
   const [theme, setTheme] = useState(() => searchParams.get('theme') ?? '')
   const [tier, setTier] = useState('')
@@ -82,12 +86,16 @@ export default function NewsDashboard() {
     return () => window.clearInterval(id)
   }, [loadFeed])
 
+  const applyGpr = (gpr: GprCurrent) => {
+    setGprIndex(gpr.gpr_index ?? null)
+    setGpr7ma(gpr.gpr_7ma ?? null)
+    setGpr30ma(gpr.gpr_30ma ?? null)
+    setGprDate(gpr.date ?? null)
+  }
+
   useEffect(() => {
     fetchGprCurrent()
-      .then((gpr) => {
-        setGprIndex(gpr.gpr_index ?? null)
-        setGprDate(gpr.date ?? null)
-      })
+      .then(applyGpr)
       .catch(() => undefined)
   }, [])
 
@@ -122,10 +130,7 @@ export default function NewsDashboard() {
     setRefreshing(true)
     loadFeed()
     fetchGprCurrent()
-      .then((gpr) => {
-        setGprIndex(gpr.gpr_index ?? null)
-        setGprDate(gpr.date ?? null)
-      })
+      .then(applyGpr)
       .catch(() => undefined)
     setTimeout(() => setRefreshing(false), 600)
   }
@@ -199,15 +204,18 @@ export default function NewsDashboard() {
       ) : (
         <>
           {hero && (
-            <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-4 items-start">
-              <NewsHero article={hero} onIntelDetails={setDrawerArticle} />
-              <NewsSidebar
-                topStories={topStories}
+            <>
+              <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-4 items-stretch">
+                <NewsHero article={hero} onIntelDetails={setDrawerArticle} />
+                <NewsSidebar topStories={topStories} onSelect={setDrawerArticle} />
+              </section>
+              <NewsRiskPanel
                 gprIndex={gprIndex}
                 gprDate={gprDate}
-                onSelect={setDrawerArticle}
+                gpr7ma={gpr7ma}
+                gpr30ma={gpr30ma}
               />
-            </section>
+            </>
           )}
 
           <section>
