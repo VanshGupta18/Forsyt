@@ -18,7 +18,7 @@ export default function NewsThemeNav({
   onCorridorClear,
 }: Props) {
   return (
-    <section aria-label="Filters" className="space-y-3">
+    <section aria-label="Filters" className="space-y-2">
       <div className="flex flex-wrap items-center gap-1 border-b border-white/10 pb-2">
         <button
           type="button"

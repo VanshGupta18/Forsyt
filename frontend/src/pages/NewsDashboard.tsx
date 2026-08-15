@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import CorridorNewsTicker from '../components/CorridorNewsTicker'
-import LiveClock from '../components/LiveClock'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import NewsArticleCard from '../components/NewsArticleCard'
 import NewsArticleDrawer from '../components/NewsArticleDrawer'
@@ -14,6 +13,7 @@ import NewsThemeNav from '../components/NewsThemeNav'
 import {
   fetchEventsFeed,
   fetchGprCurrent,
+  fetchPlatformStatus,
   fetchStats,
   type NewsArticle,
 } from '../lib/api'
@@ -25,6 +25,7 @@ import {
   NEWS_PAGE_TITLE,
   NEWS_TICKER_TITLE,
   newsEmptyLine,
+  newsStatusLine,
 } from '../lib/newsCopy'
 import {
   loadBriefGeneratedAt,
@@ -56,6 +57,7 @@ export default function NewsDashboard() {
   const [drawerArticle, setDrawerArticle] = useState<NewsArticle | null>(null)
   const [briefGeneratedAt, setBriefGeneratedAt] = useState<string | null>(() => loadBriefGeneratedAt())
   const [briefCollapsed, setBriefCollapsed] = useState(false)
+  const [pipelineRunAt, setPipelineRunAt] = useState<string | null>(null)
 
   const syncUrl = useCallback(
     (nextTheme: string, nextCorridor: string) => {
@@ -105,6 +107,19 @@ export default function NewsDashboard() {
     }
   }, [])
 
+  useEffect(() => {
+    const refreshStatus = () => {
+      fetchPlatformStatus()
+        .then((status) => {
+          setPipelineRunAt(status.last_pipeline_runs?.platform_refresh?.run_at ?? null)
+        })
+        .catch(() => undefined)
+    }
+    refreshStatus()
+    const id = window.setInterval(refreshStatus, NEWS_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [])
+
   const hero = useMemo(() => pickHeroArticle(articles), [articles])
   const breaking = useMemo(() => pickBreakingArticles(articles, hero?.link), [articles, hero?.link])
   const restFeed = useMemo(() => feedAfterHero(articles, hero), [articles, hero])
@@ -148,40 +163,48 @@ export default function NewsDashboard() {
   }
 
   return (
-    <div className="news-page corridor-page max-w-container-max mx-auto px-margin-page space-y-4 pb-12">
-      <header className="flex flex-wrap items-start justify-between gap-4 pt-2">
+    <div className="news-page corridor-page max-w-container-max mx-auto px-margin-page space-y-4 pb-10">
+      <header className="flex flex-wrap items-start justify-between gap-4 pt-8">
         <div className="space-y-2 max-w-2xl">
-          <span className="eyebrow-badge">
-            <span className="eyebrow-dot" />
+          <span
+            className="eyebrow-badge"
+            style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.85)' }}
+          >
+            <span
+              className="eyebrow-dot"
+              style={{ background: '#ffffff', boxShadow: '0 0 8px 2px rgba(255,255,255,0.25)' }}
+            />
             {NEWS_EYEBROW}
           </span>
           <h1 className="corridor-display font-headline-lg text-headline-lg">{NEWS_PAGE_TITLE}</h1>
-          <p className="text-sm text-corridor-muted">{NEWS_PAGE_SUBTITLE}</p>
+          <p className="font-body-lg text-body-lg text-corridor-muted">{NEWS_PAGE_SUBTITLE}</p>
+          <p className="text-xs text-corridor-muted/80 max-w-xl">{NEWS_PAGE_DISCLAIMER}</p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <LiveClock className="font-label-md text-[10px] text-corridor-muted" />
-          {gprDate && (
-            <span className="text-[10px] text-corridor-muted">GPR as of {gprDate.slice(0, 10)}</span>
-          )}
           <button
             type="button"
             onClick={handleRefresh}
             disabled={refreshing}
-            className="corridor-btn px-4 py-2 text-sm"
+            className="corridor-btn text-xs px-3 py-1.5"
           >
             {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
+          <span className="font-label-md text-[11px] text-corridor-muted/70">
+            {newsStatusLine(gprDate, pipelineRunAt)}
+          </span>
         </div>
       </header>
 
-      <NewsThemeNav
-        theme={theme}
-        tier={tier}
-        corridor={corridor}
-        onThemeChange={handleThemeChange}
-        onTierChange={setTier}
-        onCorridorClear={handleCorridorClear}
-      />
+      <div className="mt-2">
+        <NewsThemeNav
+          theme={theme}
+          tier={tier}
+          corridor={corridor}
+          onThemeChange={handleThemeChange}
+          onTierChange={setTier}
+          onCorridorClear={handleCorridorClear}
+        />
+      </div>
 
       {feedError && <ApiErrorBanner message={`Feed: ${feedError}`} onRetry={loadFeed} />}
 
@@ -272,8 +295,6 @@ export default function NewsDashboard() {
           />
         </div>
       </section>
-
-      <p className="text-[10px] text-corridor-muted text-center pt-2">{NEWS_PAGE_DISCLAIMER}</p>
 
       <NewsArticleDrawer
         article={drawerArticle}

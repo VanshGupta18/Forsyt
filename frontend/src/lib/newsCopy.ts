@@ -1,4 +1,5 @@
 import type { NewsArticle } from './api'
+import { formatPipelineRunAt } from './corridorCopy'
 
 export const NEWS_EYEBROW = 'Live news intelligence'
 
@@ -9,6 +10,18 @@ export const NEWS_PAGE_SUBTITLE =
 
 export const NEWS_PAGE_DISCLAIMER =
   'Headlines reflect ingested news flow and NLP tags — not trading advice or operational directives.'
+
+export const NEWS_DATA_REFRESH_NOTE = 'feed refreshes every 10 minutes'
+
+export function newsStatusLine(
+  gprDate: string | null | undefined,
+  pipelineRunAt?: string | null,
+): string {
+  const through = gprDate ? `GPR through ${gprDate.slice(0, 10)}` : 'Waiting for GPR data'
+  const base = `${through} · ${NEWS_DATA_REFRESH_NOTE}`
+  const run = formatPipelineRunAt(pipelineRunAt)
+  return run ? `${base} · recomputed ${run}` : base
+}
 
 export const NEWS_THEME_PRESETS = ['CONFLICT', 'MILITARY', 'TRADE', 'TERROR'] as const
 
