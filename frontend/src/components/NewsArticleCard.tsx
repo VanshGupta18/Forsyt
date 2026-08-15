@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react'
 import { formatArticleTime, type NewsArticle } from '../lib/api'
-import { primaryTheme, priorityLabel } from '../lib/newsCopy'
-import { useArticleImage } from '../lib/useArticleImage'
+import { articleTopicLabel } from '../lib/newsCopy'
+import NewsArticleImage from './NewsArticleImage'
 
 type Props = {
   article: NewsArticle
-  variant?: 'featured' | 'standard'
 }
 
 function StoryLink({
@@ -32,70 +31,33 @@ function StoryLink({
   return <article className={className}>{children}</article>
 }
 
-export default function NewsArticleCard({ article, variant = 'standard' }: Props) {
-  const { src } = useArticleImage(article.link)
-  const theme = primaryTheme(article)
-
-  if (variant === 'featured') {
-    return (
-      <StoryLink
-        link={article.link}
-        className="corridor-panel overflow-hidden cursor-pointer hover:bg-[#111111] transition-colors"
-      >
-        <div className="flex flex-col sm:flex-row">
-          <div className="sm:w-2/5 shrink-0">
-            {src ? (
-              <img src={src} alt="" className="w-full h-40 sm:h-full min-h-[160px] object-cover" loading="lazy" />
-            ) : (
-              <div className="w-full h-40 sm:min-h-[160px] bg-[#0d0d0d] flex items-center justify-center">
-                <span className="corridor-kicker">News</span>
-              </div>
-            )}
-          </div>
-          <div className="p-4 flex flex-col gap-2 flex-1">
-            <div className="flex justify-between gap-2 text-[10px] uppercase">
-              <span className={article.tier === 1 ? 'text-corridor-alert font-bold' : 'text-corridor-muted'}>
-                {theme}
-              </span>
-              <span className="text-corridor-muted shrink-0">
-                {formatArticleTime(article.published_at || article.scraped_at)}
-              </span>
-            </div>
-            <h3 className="corridor-headline line-clamp-3">{article.title}</h3>
-            <span className="text-[10px] text-corridor-muted mt-auto">
-              {article.source ?? 'Source'} · {priorityLabel(article.tier)}
-            </span>
-          </div>
-        </div>
-      </StoryLink>
-    )
-  }
+export default function NewsArticleCard({ article }: Props) {
+  const topic = articleTopicLabel(article)
+  const isHot = article.tier === 1
 
   return (
     <StoryLink
       link={article.link}
-      className="corridor-panel overflow-hidden cursor-pointer hover:bg-[#111111] transition-colors flex flex-col"
+      className="corridor-panel overflow-hidden cursor-pointer hover:bg-[#111111] transition-colors flex flex-row h-full group"
     >
-      {src ? (
-        <img src={src} alt="" className="w-full h-36 object-cover" loading="lazy" />
-      ) : (
-        <div className="w-full h-36 bg-[#0d0d0d] flex items-center justify-center">
-          <span className="corridor-kicker">News</span>
-        </div>
-      )}
-      <div className="p-4 flex flex-col gap-2 flex-1">
-        <div className="flex justify-between gap-2 text-[10px] uppercase">
-          <span className={article.tier === 1 ? 'text-corridor-alert font-bold' : 'text-corridor-muted'}>
-            {theme}
+      {isHot && <span className="w-0.5 shrink-0 bg-corridor-alert" aria-hidden />}
+      <div className="flex flex-row gap-2.5 p-2.5 flex-1 min-w-0">
+        <NewsArticleImage link={article.link} variant="card" />
+        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] uppercase">
+            {isHot && <span className="w-1.5 h-1.5 rounded-full bg-corridor-alert shrink-0" aria-hidden />}
+            <span className={isHot ? 'text-corridor-alert font-bold' : 'text-corridor-muted'}>{topic}</span>
+            <span className="text-corridor-muted/40 hidden sm:inline">·</span>
+            <span className="text-corridor-muted hidden sm:inline">
+              {formatArticleTime(article.published_at || article.scraped_at)}
+            </span>
+          </div>
+          <h3 className="corridor-headline text-sm line-clamp-2 group-hover:text-corridor-watch">{article.title}</h3>
+          <span className="text-[10px] text-corridor-muted truncate">
+            {article.source ?? 'Source'}
+            <span className="sm:hidden"> · {formatArticleTime(article.published_at || article.scraped_at)}</span>
           </span>
-          <span className="text-corridor-muted shrink-0">
-            {formatArticleTime(article.published_at || article.scraped_at)}
-          </span>
         </div>
-        <h3 className="corridor-headline text-sm line-clamp-3">{article.title}</h3>
-        <span className="text-[10px] text-corridor-muted mt-auto">
-          {article.source ?? 'Source'} · {priorityLabel(article.tier)}
-        </span>
       </div>
     </StoryLink>
   )

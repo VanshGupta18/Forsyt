@@ -1,5 +1,5 @@
 import type { NewsArticle } from './api'
-import { primaryTheme } from './newsCopy'
+import { articleTopicLabel } from './newsCopy'
 import type { BriefPreferences } from './newsPrefs'
 
 function articleTime(article: NewsArticle): number {
@@ -26,9 +26,9 @@ export function feedAfterHero(articles: NewsArticle[], hero: NewsArticle | null)
 export function dominantTheme(articles: NewsArticle[]): string {
   const counts = new Map<string, number>()
   for (const article of articles) {
-    const theme = primaryTheme(article)
-    if (theme === 'General') continue
-    counts.set(theme, (counts.get(theme) ?? 0) + 1)
+    const topic = articleTopicLabel(article)
+    if (topic === 'General') continue
+    counts.set(topic, (counts.get(topic) ?? 0) + 1)
   }
   let best = '—'
   let max = 0

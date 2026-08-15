@@ -1,38 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { fetchNewsImage, formatArticleTime, type NewsArticle } from '../lib/api'
+import { formatArticleTime, type NewsArticle } from '../lib/api'
 import { whyIncludedLabel } from '../lib/macroCopy'
+import NewsArticleImage from './NewsArticleImage'
 
-function faviconUrl(link?: string): string | null {
-  if (!link) return null
-  try {
-    const host = new URL(link).hostname
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`
-  } catch {
-    return null
-  }
-}
-
-function TickerItem({ article, variant }: { article: NewsArticle; variant: 'dark' | 'light' }) {
-  const [img, setImg] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
+function TickerItem({
+  article,
+  variant,
+  showImages,
+}: {
+  article: NewsArticle
+  variant: 'dark' | 'light'
+  showImages: boolean
+}) {
   const link = article.link ?? ''
-
-  useEffect(() => {
-    if (!link) return
-    let cancelled = false
-    fetchNewsImage(link)
-      .then((url) => {
-        if (!cancelled) setImg(url)
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [link])
-
-  const thumb = !failed && (img || faviconUrl(link))
   const badge = whyIncludedLabel(article.why_included)
   const isLight = variant === 'light'
   const imageBg = isLight ? 'bg-[#e8e8e3]' : 'bg-[#0a0a0a]'
@@ -43,23 +23,27 @@ function TickerItem({ article, variant }: { article: NewsArticle; variant: 'dark
     ? 'text-[10px] uppercase text-[#555] truncate normal-case min-w-0'
     : 'corridor-kicker truncate normal-case tracking-normal min-w-0'
 
+  if (!showImages) {
+    return (
+      <article className="flex flex-col shrink-0 w-[240px] gap-1 px-4 border-l border-black/10 first:border-l-0">
+        <a
+          href={link || undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={headlineClass}
+        >
+          {article.title}
+        </a>
+        <p className={metaClass}>
+          {article.source?.toUpperCase()} · {formatArticleTime(article.published_at || article.scraped_at)}
+        </p>
+      </article>
+    )
+  }
+
   return (
-    <article className="flex flex-col shrink-0 w-[260px] gap-2.5 px-3">
-      {thumb ? (
-        <img
-          src={thumb}
-          alt=""
-          width={260}
-          height={168}
-          loading="lazy"
-          className={`w-full h-[168px] object-cover ${imageBg}`}
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <div className={`w-full h-[168px] ${imageBg} flex items-center justify-center`}>
-          <span className={isLight ? 'text-[10px] uppercase text-[#555] font-bold' : 'corridor-kicker'}>News</span>
-        </div>
-      )}
+    <article className="flex flex-col shrink-0 w-[220px] gap-2 px-3">
+      <NewsArticleImage link={link || undefined} variant="ticker" className={imageBg} />
       <a
         href={link || undefined}
         target="_blank"
@@ -86,22 +70,35 @@ function TickerItem({ article, variant }: { article: NewsArticle; variant: 'dark
   )
 }
 
-function TickerStrip({ articles, variant }: { articles: NewsArticle[]; variant: 'dark' | 'light' }) {
+function TickerStrip({
+  articles,
+  variant,
+  showImages,
+}: {
+  articles: NewsArticle[]
+  variant: 'dark' | 'light'
+  showImages: boolean
+}) {
   return (
     <div className="flex items-start shrink-0">
       {articles.map((article, i) => (
-        <TickerItem key={`${article.link ?? article.title}-${i}`} article={article} variant={variant} />
+        <TickerItem
+          key={`${article.link ?? article.title}-${i}`}
+          article={article}
+          variant={variant}
+          showImages={showImages}
+        />
       ))}
     </div>
   )
 }
 
-function PosterSkeleton() {
+function PosterSkeleton({ showImages }: { showImages: boolean }) {
   return (
     <div className="flex gap-3 overflow-hidden py-2">
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="shrink-0 w-[260px] px-3 space-y-2.5">
-          <div className="h-[168px] bg-white/5 animate-pulse" />
+        <div key={i} className={`shrink-0 px-3 space-y-2 ${showImages ? 'w-[220px]' : 'w-[240px]'}`}>
+          {showImages && <div className="w-full aspect-[16/10] bg-white/5 animate-pulse" />}
           <div className="h-4 bg-white/5 animate-pulse" />
           <div className="h-3 w-2/3 bg-white/5 animate-pulse" />
         </div>
@@ -115,9 +112,16 @@ type Props = {
   loading?: boolean
   emptyMessage?: string
   variant?: 'dark' | 'light'
+  showImages?: boolean
 }
 
-export default function CorridorNewsTicker({ articles, loading, emptyMessage, variant = 'dark' }: Props) {
+export default function CorridorNewsTicker({
+  articles,
+  loading,
+  emptyMessage,
+  variant = 'dark',
+  showImages = true,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
@@ -169,7 +173,7 @@ export default function CorridorNewsTicker({ articles, loading, emptyMessage, va
   const isLight = variant === 'light'
 
   if (loading) {
-    return <PosterSkeleton />
+    return <PosterSkeleton showImages={showImages} />
   }
 
   if (!articles.length) {
@@ -193,12 +197,12 @@ export default function CorridorNewsTicker({ articles, loading, emptyMessage, va
       onMouseLeave={() => overflows && setPaused(false)}
     >
       <div
-        className={`flex py-4 ${shouldAnimate ? 'w-max animate-marquee-slow' : ''} ${paused ? 'is-paused' : ''}`}
+        className={`flex ${showImages ? 'py-4' : 'py-3'} ${shouldAnimate ? 'w-max animate-marquee-slow' : ''} ${paused ? 'is-paused' : ''}`}
       >
         <div ref={stripRef}>
-          <TickerStrip articles={articles} variant={variant} />
+          <TickerStrip articles={articles} variant={variant} showImages={showImages} />
         </div>
-        {shouldAnimate && <TickerStrip articles={articles} variant={variant} />}
+        {shouldAnimate && <TickerStrip articles={articles} variant={variant} showImages={showImages} />}
       </div>
     </div>
   )

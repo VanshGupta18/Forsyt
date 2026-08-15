@@ -1,3 +1,5 @@
+import { NEWS_MOST_COVERED_LABEL } from '../lib/newsCopy'
+
 type Props = {
   feedCount: number
   tierOneCount: number
@@ -43,7 +45,7 @@ export default function NewsIntelStrip({
         value={gprIndex != null ? String(gprIndex) : '—'}
         valueClass="text-corridor-watch"
       />
-      <PulseCard label="Top topic" value={topTheme} />
+      <PulseCard label={NEWS_MOST_COVERED_LABEL} value={topTheme} />
     </div>
   )
 }

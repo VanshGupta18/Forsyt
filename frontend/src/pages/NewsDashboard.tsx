@@ -14,6 +14,7 @@ import {
   fetchGprCurrent,
   fetchPlatformStatus,
   type GprCurrent,
+  type NewsArticle,
 } from '../lib/api'
 import {
   NEWS_EYEBROW,
@@ -117,8 +118,6 @@ export default function NewsDashboard() {
     return ranked.filter((a) => a.link !== hero.link)
   }, [articles, hero?.link])
   const restFeed = useMemo(() => feedAfterHero(articles, hero), [articles, hero])
-  const featured = restFeed.slice(0, 2)
-  const gridArticles = restFeed.slice(2)
 
   const tierOneCount = articles.filter((a) => a.tier === 1).length
   const topTheme = dominantTheme(articles)
@@ -226,26 +225,18 @@ export default function NewsDashboard() {
               <p className="text-sm text-corridor-muted">{newsEmptyLine()}</p>
             )}
 
-            {!loading && featured.length > 0 && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                {featured.map((article, i) => (
-                  <NewsArticleCard
-                    key={article.link ?? `${article.title}-feat-${i}`}
-                    article={article}
-                    variant="featured"
-                  />
-                ))}
-              </div>
-            )}
-
-            {!loading && gridArticles.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {gridArticles.map((article, i) => (
-                  <NewsArticleCard
-                    key={article.link ?? `${article.title}-${i}`}
-                    article={article}
-                  />
-                ))}
+            {!loading && restFeed.length > 0 && (
+              <div className="corridor-panel overflow-hidden max-h-[min(440px,55vh)] md:max-h-[480px] flex flex-col">
+                <div className="flex-1 min-h-0 overflow-y-auto news-stories-scroll p-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {restFeed.map((article, i) => (
+                      <NewsArticleCard
+                        key={article.link ?? `${article.title}-${i}`}
+                        article={article}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </section>

@@ -11,7 +11,7 @@ type Props = {
 
 export default function NewsSidebar({ topStories }: Props) {
   return (
-    <aside className="flex flex-col min-h-[320px] md:min-h-[420px] lg:border-r-2 lg:border-[#ff3333]/40 lg:pr-1">
+    <aside className="flex flex-col min-h-[280px] md:min-h-[340px] lg:border-r-2 lg:border-[#ff3333]/40 lg:pr-1">
       <div className="corridor-panel p-4 flex flex-col flex-1 min-h-0 overflow-hidden">
         <h2 className="corridor-kicker text-corridor-alert mb-3 shrink-0">{NEWS_TOP_STORIES_TITLE}</h2>
         <ul className="flex-1 min-h-0 overflow-y-auto news-stories-scroll pr-1">
