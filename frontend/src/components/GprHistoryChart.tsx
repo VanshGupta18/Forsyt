@@ -52,6 +52,7 @@ type Props = {
   className?: string
   variant?: 'default' | 'corridor'
   period?: GprChartPeriod
+  compact?: boolean
   onRangeNote?: (note: string | null) => void
 }
 
@@ -178,6 +179,7 @@ export default function GprHistoryChart({
   className = '',
   variant = 'default',
   period,
+  compact = false,
   onRangeNote,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -334,7 +336,7 @@ export default function GprHistoryChart({
         )}
       </div>
 
-      {!loading && !error && rows.length > 0 && (
+      {!loading && !error && rows.length > 0 && !compact && (
         <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-corridor-muted">
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-corridor-alert inline-block" /> GPR</span>
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-primary inline-block" /> 7-day MA</span>

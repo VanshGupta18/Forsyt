@@ -564,3 +564,52 @@ body {
   border-radius: 0;
   overflow: hidden;
 }
+
+/* News Intelligence — editorial hybrid on corridor system */
+.news-page.corridor-page {
+  --news-ticker-light-bg: #f5f5f0;
+  --news-ticker-light-text: #0a0a0a;
+}
+
+.news-page .news-hero-headline {
+  font-family: "Newsreader", Georgia, serif;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.news-page .news-pulse-track {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.news-page .news-pulse-track::-webkit-scrollbar {
+  height: 4px;
+}
+
+.news-page .news-pulse-track::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.news-ticker-light {
+  background: var(--news-ticker-light-bg, #f5f5f0);
+  color: var(--news-ticker-light-text, #0a0a0a);
+}
+
+.news-ticker-light-headline {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.35;
+  color: #0a0a0a;
+}
+
+.news-tier-hot {
+  color: var(--corridor-accent-alert);
+}
+
+@media (max-width: 767px) {
+  .news-page .news-hero-headline {
+    font-size: 1.5rem;
+  }
+}

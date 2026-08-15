@@ -12,7 +12,7 @@ function faviconUrl(link?: string): string | null {
   }
 }
 
-function TickerItem({ article }: { article: NewsArticle }) {
+function TickerItem({ article, variant }: { article: NewsArticle; variant: 'dark' | 'light' }) {
   const [img, setImg] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const link = article.link ?? ''
@@ -34,6 +34,14 @@ function TickerItem({ article }: { article: NewsArticle }) {
 
   const thumb = !failed && (img || faviconUrl(link))
   const badge = whyIncludedLabel(article.why_included)
+  const isLight = variant === 'light'
+  const imageBg = isLight ? 'bg-[#e8e8e3]' : 'bg-[#0a0a0a]'
+  const headlineClass = isLight
+    ? 'news-ticker-light-headline hover:opacity-80 line-clamp-2'
+    : 'corridor-headline hover:text-corridor-watch line-clamp-2'
+  const metaClass = isLight
+    ? 'text-[10px] uppercase text-[#555] truncate normal-case min-w-0'
+    : 'corridor-kicker truncate normal-case tracking-normal min-w-0'
 
   return (
     <article className="flex flex-col shrink-0 w-[260px] gap-2.5 px-3">
@@ -44,29 +52,33 @@ function TickerItem({ article }: { article: NewsArticle }) {
           width={260}
           height={168}
           loading="lazy"
-          className="w-full h-[168px] object-cover bg-[#0a0a0a]"
+          className={`w-full h-[168px] object-cover ${imageBg}`}
           onError={() => setFailed(true)}
         />
       ) : (
-        <div className="w-full h-[168px] bg-[#0a0a0a] flex items-center justify-center">
-          <span className="corridor-kicker">News</span>
+        <div className={`w-full h-[168px] ${imageBg} flex items-center justify-center`}>
+          <span className={isLight ? 'text-[10px] uppercase text-[#555] font-bold' : 'corridor-kicker'}>News</span>
         </div>
       )}
       <a
         href={link || undefined}
         target="_blank"
         rel="noopener noreferrer"
-        className="corridor-headline hover:text-corridor-watch line-clamp-2"
+        className={headlineClass}
       >
         {article.title}
       </a>
       <div className="flex items-center gap-2 min-w-0">
         {badge && (
-          <span className="text-[9px] uppercase font-semibold px-1.5 py-0.5 bg-white/10 text-corridor-watch shrink-0">
+          <span
+            className={`text-[9px] uppercase font-semibold px-1.5 py-0.5 shrink-0 ${
+              isLight ? 'bg-black/10 text-[#333]' : 'bg-white/10 text-corridor-watch'
+            }`}
+          >
             {badge}
           </span>
         )}
-        <p className="corridor-kicker truncate normal-case tracking-normal min-w-0">
+        <p className={metaClass}>
           {article.source?.toUpperCase()} · {formatArticleTime(article.published_at || article.scraped_at)}
         </p>
       </div>
@@ -74,11 +86,11 @@ function TickerItem({ article }: { article: NewsArticle }) {
   )
 }
 
-function TickerStrip({ articles }: { articles: NewsArticle[] }) {
+function TickerStrip({ articles, variant }: { articles: NewsArticle[]; variant: 'dark' | 'light' }) {
   return (
     <div className="flex items-start shrink-0">
       {articles.map((article, i) => (
-        <TickerItem key={`${article.link ?? article.title}-${i}`} article={article} />
+        <TickerItem key={`${article.link ?? article.title}-${i}`} article={article} variant={variant} />
       ))}
     </div>
   )
@@ -102,9 +114,10 @@ type Props = {
   articles: NewsArticle[]
   loading?: boolean
   emptyMessage?: string
+  variant?: 'dark' | 'light'
 }
 
-export default function CorridorNewsTicker({ articles, loading, emptyMessage }: Props) {
+export default function CorridorNewsTicker({ articles, loading, emptyMessage, variant = 'dark' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
@@ -153,13 +166,15 @@ export default function CorridorNewsTicker({ articles, loading, emptyMessage }: 
     }
   }, [])
 
+  const isLight = variant === 'light'
+
   if (loading) {
     return <PosterSkeleton />
   }
 
   if (!articles.length) {
     return (
-      <p className="text-sm text-corridor-muted py-3">
+      <p className={`text-sm py-3 ${isLight ? 'text-[#555]' : 'text-corridor-muted'}`}>
         {emptyMessage ?? 'No recent news for this route yet.'}
       </p>
     )
@@ -170,7 +185,7 @@ export default function CorridorNewsTicker({ articles, loading, emptyMessage }: 
   return (
     <div
       ref={containerRef}
-      className={overflows ? 'corridor-ticker-track' : 'overflow-hidden'}
+      className={`${overflows ? 'corridor-ticker-track' : 'overflow-hidden'} ${isLight ? 'news-ticker-light' : ''}`}
       onScroll={pauseBriefly}
       onPointerDown={() => overflows && setPaused(true)}
       onPointerUp={pauseBriefly}
@@ -181,9 +196,9 @@ export default function CorridorNewsTicker({ articles, loading, emptyMessage }: 
         className={`flex py-4 ${shouldAnimate ? 'w-max animate-marquee-slow' : ''} ${paused ? 'is-paused' : ''}`}
       >
         <div ref={stripRef}>
-          <TickerStrip articles={articles} />
+          <TickerStrip articles={articles} variant={variant} />
         </div>
-        {shouldAnimate && <TickerStrip articles={articles} />}
+        {shouldAnimate && <TickerStrip articles={articles} variant={variant} />}
       </div>
     </div>
   )
