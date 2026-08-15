@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchMarketHistory, type MarketHistoryPayload } from '../lib/api'
 import {
+  CHART_PALETTE,
   DEFAULT_PADDING,
   drawArea,
   drawCrosshair,
@@ -22,6 +23,7 @@ type Props = {
   height?: number
   title?: string
   className?: string
+  variant?: 'default' | 'corridor'
 }
 
 export default function MarketSparkline({
@@ -30,6 +32,7 @@ export default function MarketSparkline({
   height = 280,
   title,
   className = '',
+  variant = 'default',
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [data, setData] = useState<MarketHistoryPayload | null>(null)
@@ -74,9 +77,9 @@ export default function MarketSparkline({
 
       const plotted = plotSeries(closes, width, height, pad, yMin, yMax)
       const baselineY = pad.top + (height - pad.top - pad.bottom)
-      const stroke = up ? '#34d399' : '#f87171'
-      const fillTop = up ? 'rgba(52, 211, 153, 0.28)' : 'rgba(248, 113, 113, 0.28)'
-      const fillBottom = up ? 'rgba(52, 211, 153, 0.02)' : 'rgba(248, 113, 113, 0.02)'
+      const stroke = up ? CHART_PALETTE.niftyUp : CHART_PALETTE.niftyDown
+      const fillTop = up ? CHART_PALETTE.niftyUpFill : CHART_PALETTE.niftyDownFill
+      const fillBottom = up ? 'rgba(0, 200, 83, 0.02)' : 'rgba(255, 51, 51, 0.02)'
 
       drawArea(ctx, plotted, baselineY, stroke, fillTop, fillBottom, 2.5)
       drawXLabels(
@@ -101,7 +104,7 @@ export default function MarketSparkline({
       }
 
       ctx.save()
-      ctx.fillStyle = '#e7ecf3'
+      ctx.fillStyle = CHART_PALETTE.white
       ctx.font = '600 13px Inter, sans-serif'
       ctx.textAlign = 'left'
       ctx.fillText(title ?? `${symbol.toUpperCase()} · ${period}`, pad.left, 18)
@@ -125,13 +128,15 @@ export default function MarketSparkline({
 
   const hoverPoint = hoverIndex != null ? points[hoverIndex] : points[points.length - 1]
 
+  const isCorridor = variant === 'corridor'
+
   if (error) {
-    return <p className="text-xs text-[#f59e0b]">{error}</p>
+    return <p className="text-xs text-corridor-watch">{error}</p>
   }
 
   return (
     <div className={className}>
-      {!loading && points.length > 0 && (
+      {!isCorridor && !loading && points.length > 0 && (
         <div className="flex flex-wrap gap-5 mb-3 text-xs">
           <div>
             <span className="text-gray-500 uppercase tracking-wide">Last</span>
@@ -159,7 +164,9 @@ export default function MarketSparkline({
       )}
 
       <div
-        className="relative w-full rounded-lg border border-white/5 bg-[#0A101C]/50 overflow-hidden"
+        className={`relative w-full overflow-hidden ${
+          isCorridor ? 'macro-chart-shell' : 'rounded-lg border border-white/5 bg-[#0A101C]/50'
+        }`}
         style={{ height }}
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHoverIndex(null)}

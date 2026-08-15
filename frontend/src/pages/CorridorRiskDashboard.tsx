@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import CorridorRiskMap from '../components/CorridorRiskMap'
 import CorridorRouteList from '../components/CorridorRouteList'
 import CorridorNewsTicker from '../components/CorridorNewsTicker'
+import ScoreBar from '../components/ScoreBar'
 import {
   corridorOperationalRisk,
   corridorRiskLabel,
   fetchCorridors,
   fetchEventsFeed,
+  fetchPlatformStatus,
   formatCorridorName,
   type CargoFocus,
   type CorridorCategory,
@@ -24,13 +26,15 @@ import {
   calibratingBadge,
   CORRIDOR_EYEBROW,
   CORRIDOR_HEADLINES_TITLE,
-  corridorDataThroughLine,
+  corridorStatusLine,
   CORRIDOR_PAGE_DISCLAIMER,
   CORRIDOR_PAGE_SUBTITLE,
   displayStressScore,
   newsMentionsLine,
+  OPERATIONAL_SCORE_NOTE,
   SCORE_LABELS,
   spikeBadge,
+  spikeBadgeDetail,
   tierAccentColor,
   watchlistAlertLine,
 } from '../lib/corridorCopy'
@@ -52,33 +56,11 @@ function tierDotClass(risk: number): string {
   return businessTierClass(risk).replace('text-', 'bg-')
 }
 
-function ScoreBar({
-  label,
-  value,
-  muted = false,
-}: {
-  label: string
-  value: number
-  muted?: boolean
-}) {
-  const tier = businessTierLabel(value)
-  return (
-    <div className={`flex items-center gap-2 text-xs ${muted ? 'opacity-40' : 'text-corridor-muted'}`}>
-      <span className="w-28 shrink-0">{label}</span>
-      <div className="h-1.5 flex-1 bg-white/10 overflow-hidden">
-        <div
-          className={`h-full ${value >= 50 ? 'bg-corridor-alert' : value >= 20 ? 'bg-corridor-watch' : 'bg-corridor-clear'}`}
-          style={{ width: `${Math.min(100, value)}%` }}
-        />
-      </div>
-      <span className={`w-16 text-right shrink-0 ${businessTierClass(value)}`}>{tier}</span>
-    </div>
-  )
-}
-
 const CORRIDOR_POLL_MS = 15 * 60 * 1000
 
 export default function CorridorRiskDashboard() {
+  const [searchParams] = useSearchParams()
+  const corridorParam = searchParams.get('corridor')?.toLowerCase() ?? null
   const [payload, setPayload] = useState<CorridorsPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -93,6 +75,7 @@ export default function CorridorRiskDashboard() {
   const [routeDestination, setRouteDestination] = useState('')
   const [routeMode, setRouteMode] = useState<RouteMode>('sea')
   const [finderOpen, setFinderOpen] = useState(false)
+  const [pipelineRunAt, setPipelineRunAt] = useState<string | null>(null)
 
   const corridors = payload?.corridors ?? []
   const asOf = payload?.date ?? null
@@ -109,6 +92,19 @@ export default function CorridorRiskDashboard() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    const refreshStatus = () => {
+      fetchPlatformStatus()
+        .then((status) => {
+          setPipelineRunAt(status.last_pipeline_runs?.platform_refresh?.run_at ?? null)
+        })
+        .catch(() => undefined)
+    }
+    refreshStatus()
+    const id = window.setInterval(refreshStatus, CORRIDOR_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -133,6 +129,14 @@ export default function CorridorRiskDashboard() {
     }
     return rows.sort((a, b) => corridorOperationalRisk(b) - corridorOperationalRisk(a))
   }, [corridors, category, watchlistOnly, watchlist])
+
+  useEffect(() => {
+    if (!corridorParam || !corridors.length) return
+    const match = corridors.find((c) => c.corridor?.toLowerCase() === corridorParam)
+    if (match?.corridor) {
+      setSelected(match.corridor.toLowerCase())
+    }
+  }, [corridorParam, corridors])
 
   useEffect(() => {
     if (!selected && filtered.length) {
@@ -217,7 +221,7 @@ export default function CorridorRiskDashboard() {
             {loading ? 'Loading…' : 'Refresh'}
           </button>
           <span className="font-label-md text-[11px] text-corridor-muted/70">
-            {corridorDataThroughLine(asOf)}
+            {corridorStatusLine(asOf, pipelineRunAt)}
             {payload?.stale_warning ? ` · ${payload.stale_warning}` : ''}
           </span>
         </div>
@@ -339,12 +343,16 @@ export default function CorridorRiskDashboard() {
                   <span
                     className="corridor-score text-4xl leading-none shrink-0"
                     style={{ color: tierAccentColor(operational) }}
+                    title={OPERATIONAL_SCORE_NOTE}
                   >
                     {displayStressScore(selectedRow)}
                   </span>
-                  <h3 className="corridor-display text-lg leading-snug">
-                    {formatCorridorName(selectedRow.corridor, selectedRow.corridor_name)}
-                  </h3>
+                  <div>
+                    <h3 className="corridor-display text-lg leading-snug">
+                      {formatCorridorName(selectedRow.corridor, selectedRow.corridor_name)}
+                    </h3>
+                    <p className="text-[10px] text-corridor-muted/70 mt-0.5">{OPERATIONAL_SCORE_NOTE}</p>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   <span
@@ -362,7 +370,10 @@ export default function CorridorRiskDashboard() {
                     </span>
                   )}
                   {spikeToday && !isCalibrating && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-corridor-alert/10 text-corridor-alert">
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full bg-corridor-alert/10 text-corridor-alert"
+                      title={spikeBadgeDetail()}
+                    >
                       {spikeBadge()}
                     </span>
                   )}

@@ -12,9 +12,9 @@ export const modules = [
   },
   {
     to: '/macroeconomics',
-    title: 'Indian Macroeconomic Intelligence',
+    title: 'Indian Market Stress Monitor',
     description:
-      'Track key macro indicators, markets and economic signals in real-time with predictive accuracy.',
+      'Dual-signal intelligence combining geopolitical news risk and NIFTY volatility — honest context for Indian markets.',
     icon: 'bar_chart',
     image: macroImg,
   },

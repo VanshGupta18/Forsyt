@@ -10,6 +10,29 @@ export function corridorDataThroughLine(date: string | null | undefined): string
   return `${through} · ${CORRIDOR_DATA_REFRESH_NOTE}`
 }
 
+export function formatPipelineRunAt(value?: string | null): string | null {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value.slice(0, 16)
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+export function corridorStatusLine(
+  date: string | null | undefined,
+  pipelineRunAt?: string | null,
+): string {
+  const base = corridorDataThroughLine(date)
+  const run = formatPipelineRunAt(pipelineRunAt)
+  return run ? `${base} · recomputed ${run}` : base
+}
+
+export const OPERATIONAL_SCORE_NOTE = '7-day operational average'
+
 export const CORRIDOR_EYEBROW = 'Live route monitoring'
 
 export const CORRIDOR_PAGE_SUBTITLE =
@@ -59,6 +82,10 @@ export function calibratingBadge(): string {
 
 export function spikeBadge(): string {
   return 'Unusual activity today'
+}
+
+export function spikeBadgeDetail(): string {
+  return 'Today’s daily score is elevated vs the 7-day average shown above.'
 }
 
 export function tierAccentColor(risk: number): string {

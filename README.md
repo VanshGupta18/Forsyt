@@ -635,7 +635,7 @@ curl -s http://127.0.0.1:5001/health | python3 -m json.tool
 | `daily_index.yml` | daily | authoritative end-of-day close |
 | `catch_up_index.yml` | manual | backfill a date range (e.g. 2026-08-13 → today) |
 
-After merging pipeline changes, run **Actions → Catch up index → Run workflow** once to backfill missing days.
+After merging pipeline changes, run **Actions → Catch up index → Run workflow** once to backfill missing days. See [`docs/CLOUD_PIPELINE.md`](docs/CLOUD_PIPELINE.md) for the full push + verify checklist.
 
 ---
 
