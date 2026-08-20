@@ -31,7 +31,8 @@ from typing import List, Literal
 
 import pandas as pd
 
-from .paths import CALDARA_DAILY_CANDIDATES, OUTPUT_DIR
+from .paths import CALDARA_DAILY_CANDIDATES, INDIA_GPR_INDEX_START, OUTPUT_DIR
+from .split_era import rolling_product_era, should_split_era
 
 FILL_METHODS = ("forward", "linear", "caldara")
 
@@ -82,7 +83,8 @@ def fill_daily_gaps(
 
     if not missing:
         df = df.sort_values("date").reset_index(drop=True)
-        return _recompute_moving_averages(df)
+        split = should_split_era(df, start_date)
+        return _recompute_moving_averages(df, split_era=split, baseline_start=start_date)
 
     gap_rows = pd.DataFrame({"date": missing})
     gap_rows["is_imputed"] = True
@@ -135,18 +137,53 @@ def fill_daily_gaps(
             for col in ("gpr_acts_index", "gpr_threats_index"):
                 combined[col] = combined[col].interpolate(method="linear")
 
-    combined = _recompute_moving_averages(combined)
-    scale = 100.0 / combined["gpr_index"].mean() if combined["gpr_index"].mean() > 0 else 1.0
-    for col in INDEX_COLS:
-        combined[col] = combined[col] * scale
-    combined = _recompute_moving_averages(combined)
+    split_era = should_split_era(combined, start_date)
+    combined = _recompute_moving_averages(
+        combined, split_era=split_era, baseline_start=start_date
+    )
+    combined = _rescale_to_baseline(combined, split_era=split_era)
+    combined = _recompute_moving_averages(
+        combined, split_era=split_era, baseline_start=start_date
+    )
     return combined
 
 
-def _recompute_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
+def _rescale_to_baseline(df: pd.DataFrame, *, split_era: bool) -> pd.DataFrame:
+    out = df.copy()
+    if split_era:
+        product = out["date"] >= pd.Timestamp(INDIA_GPR_INDEX_START)
+        if not product.any():
+            return out
+        mean = float(out.loc[product, "gpr_index"].mean())
+        if mean <= 0:
+            return out
+        scale = 100.0 / mean
+        for col in INDEX_COLS:
+            out.loc[product, col] = out.loc[product, col] * scale
+        return out
+
+    mean = float(out["gpr_index"].mean())
+    if mean <= 0:
+        return out
+    scale = 100.0 / mean
+    for col in INDEX_COLS:
+        out[col] = out[col] * scale
+    return out
+
+
+def _recompute_moving_averages(
+    df: pd.DataFrame,
+    *,
+    split_era: bool = False,
+    baseline_start: str | None = None,
+) -> pd.DataFrame:
     df = df.sort_values("date").reset_index(drop=True)
-    df["gpr_7ma"]  = df["gpr_index"].rolling(7,  min_periods=1).mean()
-    df["gpr_30ma"] = df["gpr_index"].rolling(30, min_periods=1).mean()
+    if split_era and baseline_start and should_split_era(df, baseline_start):
+        df["gpr_7ma"] = rolling_product_era(df, "gpr_index", 7)
+        df["gpr_30ma"] = rolling_product_era(df, "gpr_index", 30)
+    else:
+        df["gpr_7ma"] = df["gpr_index"].rolling(7, min_periods=1).mean()
+        df["gpr_30ma"] = df["gpr_index"].rolling(30, min_periods=1).mean()
     return df
 
 
@@ -181,7 +218,14 @@ def run(
         )
 
     daily_df = pd.read_csv(daily_path, parse_dates=["date"])
-    missing = detect_missing_dates(daily_df, start_date, end_date)
+    effective_start = start_date
+    if should_split_era(daily_df, start_date):
+        effective_start = max(
+            pd.to_datetime(start_date),
+            pd.Timestamp(INDIA_GPR_INDEX_START),
+        ).strftime("%Y-%m-%d")
+
+    missing = detect_missing_dates(daily_df, effective_start, end_date)
 
     if not missing:
         print("[GAPS] No missing calendar dates — nothing to fill.")
@@ -192,7 +236,7 @@ def run(
         print(f"  {d.date()}")
     print(f"[GAPS] Fill method: {method}")
 
-    continuous = fill_daily_gaps(daily_df, start_date, end_date, method)
+    continuous = fill_daily_gaps(daily_df, effective_start, end_date, method)
     monthly    = build_monthly(continuous)
 
     save_cols = [

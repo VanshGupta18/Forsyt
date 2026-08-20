@@ -71,6 +71,57 @@ export type PlatformStatusPayload = {
   news_total_articles?: number
 }
 
+export type PlatformStatusSlim = Pick<
+  PlatformStatusPayload,
+  'refresh_interval_minutes' | 'latest_dates' | 'stale_warning' | 'last_pipeline_runs'
+>
+
+export type MarketHistoriesBatch = {
+  histories: Record<string, MarketHistoryPayload>
+  errors?: string[]
+}
+
+export type HomePageBundle = {
+  health: HealthPayload
+  gpr_current: GprCurrent | null
+  corridors: CorridorsPayload
+  quotes: MarketQuotesPayload
+  dual_signal: DualSignalPayload | null
+  status: PlatformStatusSlim
+}
+
+export type MacroPageBundle = {
+  dual_signal: DualSignalPayload | null
+  quotes: MarketQuotesPayload
+  indicators: MarketIndicatorsPayload
+  gpr_current: GprCurrent | null
+  gpr_history: GprHistoryPayload
+  corridors: CorridorsPayload
+  market_histories: MarketHistoriesBatch
+  status: PlatformStatusSlim
+}
+
+export type NewsPageBundle = {
+  events: NewsArticle[]
+  gpr_current: GprCurrent | null
+  gpr_history: GprHistoryPayload
+  status: PlatformStatusSlim
+}
+
+export type CorridorPageBundle = {
+  corridors: CorridorsPayload
+  status: PlatformStatusSlim
+  events: NewsArticle[]
+  selected_corridor: string | null
+}
+
+export type PortfolioPageBundle = {
+  gpr_current: GprCurrent | null
+  dual_signal: DualSignalPayload | null
+  quotes: MarketQuotesPayload
+  gpr_history: GprHistoryPayload
+}
+
 export type StatsPayload = {
   total_articles?: number
   recent_cycles?: unknown[]
@@ -85,6 +136,7 @@ export type NewsArticle = {
   published_at?: string
   scraped_at?: string
   nlp_themes?: string
+  image_url?: string | null
   why_included?: 'geo_theme' | 'market_keyword' | 'corridor_match'
 }
 
@@ -154,6 +206,8 @@ export type CorridorsPayload = {
     energy_exposure?: number
     goods_exposure?: number
     exposure_source?: string
+    centroid?: { lat: number; lon: number }
+    waypoints?: [number, number][]
   }>
   corridors?: CorridorRow[]
   data_source?: 'postgres' | 'csv'
@@ -169,6 +223,7 @@ export type CorridorHistoryPayload = {
 }
 
 export type DualSignalPayload = {
+  index_start?: string
   geopolitical?: {
     as_of?: string
     gpr_index?: number
@@ -177,6 +232,7 @@ export type DualSignalPayload = {
     regime?: string
     change_7d_pct?: number | null
     geo_percentile?: number
+    geo_percentile_confidence?: 'low' | 'normal'
     index_days?: number
     gpr_threats?: number
     gpr_acts?: number
@@ -226,7 +282,13 @@ export type EventsFeedParams = {
   tagged_only?: boolean
 }
 
-export function corridorRiskLabel(risk: number): { label: string; className: string } {
+export function corridorRiskLabel(
+  risk: number,
+  scoreStatus?: string | null,
+): { label: string; className: string } {
+  if (scoreStatus === 'insufficient_history') {
+    return { label: 'Calibrating', className: 'text-corridor-muted' }
+  }
   if (risk >= 50) return { label: 'High', className: 'text-error' }
   if (risk >= 20) return { label: 'Medium', className: 'text-tertiary' }
   return { label: 'Low', className: 'text-secondary' }
@@ -244,28 +306,8 @@ export function formatPrice(price: number, currency?: string): string {
   return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export function fetchGprCurrent() {
-  return fetchJSON<GprCurrent>('/api/gpr/current')
-}
-
-export function fetchGprHistory(limit = 800) {
-  return fetchJSON<GprHistoryPayload>(`/api/gpr/history?limit=${limit}`)
-}
-
 export function fetchHealth() {
   return fetchJSON<HealthPayload>('/health')
-}
-
-export function fetchPlatformStatus() {
-  return fetchJSON<PlatformStatusPayload>('/api/status')
-}
-
-export function fetchStats() {
-  return fetchJSON<StatsPayload>('/stats')
-}
-
-export function fetchRecentNews(limit = 50) {
-  return fetchJSON<{ articles: NewsArticle[] }>(`/api/news/recent?limit=${limit}`)
 }
 
 export function fetchEventsFeed(params: EventsFeedParams = {}) {
@@ -277,14 +319,6 @@ export function fetchEventsFeed(params: EventsFeedParams = {}) {
   if (params.tagged_only) qs.set('tagged_only', '1')
   const q = qs.toString()
   return fetchJSON<{ events: NewsArticle[]; source?: string }>(`/api/events/feed${q ? `?${q}` : ''}`)
-}
-
-export function fetchCorridors() {
-  return fetchJSON<CorridorsPayload>('/api/corridors')
-}
-
-export function fetchCorridorHistory(corridorId: string, limit = 30) {
-  return fetchJSON<CorridorHistoryPayload>(`/api/corridors/${encodeURIComponent(corridorId)}?limit=${limit}`)
 }
 
 export function fetchNewsImage(link: string) {
@@ -336,86 +370,135 @@ export function orderMarketQuotes(quotes: MarketQuote[]): MarketQuote[] {
   return MARKET_SYMBOL_ORDER.map((k) => byKey.get(k)).filter(Boolean) as MarketQuote[]
 }
 
-export function fetchMarketQuotes(symbols?: string[]) {
-  const qs = symbols?.length ? `?symbols=${symbols.join(',')}` : ''
-  return fetchJSON<MarketQuotesPayload>(`/api/market/quotes${qs}`)
+export type QualityCheckStatus = 'pass' | 'fail' | 'warn' | 'na'
+
+export type QualityCheck = {
+  id: string
+  category: 'pipeline' | 'gpr' | 'corridor' | 'market' | 'nlp'
+  title: string
+  value: string | number | null
+  threshold: string
+  status: QualityCheckStatus
+  why: string
+  tier?: 'headline' | 'detail' | 'informational'
+  freshness?: 'live' | 'offline' | 'stale'
+  validated_at?: string | null
+  source?: { type: string; path?: string | null; updated_at?: string }
+  detail?: Record<string, unknown>
 }
 
-export function fetchMarketHistory(symbol = 'nifty', period = '3mo') {
-  return fetchJSON<MarketHistoryPayload>(`/api/market/history?symbol=${symbol}&period=${period}`)
+export type QualitySummaryHeadline = {
+  checks_total: number
+  checks_passing: number
+  checks_failing?: number
+  checks_warn?: number
+  overall_status: 'pass' | 'warn' | 'fail'
 }
 
-export function fetchMarketIndicators(symbol = 'nifty') {
-  return fetchJSON<MarketIndicatorsPayload>(`/api/market/indicators?symbol=${symbol}`)
+export type QualityReportMeta = {
+  cached_at?: string | null
+  validation_artifacts_as_of?: string | null
+  live_index_through?: string | null
+  live_gpr_source?: string | null
+  is_stale?: boolean
+  stale_reason?: string | null
 }
 
-export type AccuracyMetricsPayload = {
-  generated_at?: string
-  disclaimer?: string
-  ingestion?: {
-    total_articles?: number
-    tier_articles?: number
-    ingest_yield_7d_pct?: number | null
-    discard_rate_7d_pct?: number | null
-    fetched_7d?: number
-    ingested_7d?: number
-    sources_healthy?: number
-    sources_total?: number
-    sources_unhealthy?: number
-    feed_health?: Record<
-      string,
-      { consecutive_failures?: number; last_success?: string | null; last_error?: string | null }
-    >
-    gpr_index_days?: number
-    gpr_latest_date?: string | null
-    description?: string
+export type HealthSnapshot = {
+  status?: string
+  gpr_latest_date?: string | null
+  stale_warning?: string | null
+  articles_total?: number
+  timestamp?: string
+}
+
+export type QualityReport = {
+  generated_at: string
+  as_of: {
+    gpr_latest_date: string | null
+    pipeline_last_run: string | null
   }
-  nlp?: {
-    tier_articles?: number
-    nlp_complete?: number
-    nlp_pending?: number
-    coverage_pct?: number | null
-    corridor_tagging?: {
-      passed?: number
-      total?: number
-      pass_rate_pct?: number | null
-      cases?: Array<{ label: string; pass: boolean }>
+  report_meta?: QualityReportMeta
+  summary: QualitySummaryHeadline & {
+    checks_na?: number
+    headline?: QualitySummaryHeadline
+  }
+  coverage: Array<{
+    id: string
+    label: string
+    value: string | number
+    unit?: string
+    status?: QualityCheckStatus | null
+  }>
+  checks: QualityCheck[]
+  pipeline: {
+    ingestion: {
+      total_articles?: number
+      tier_articles?: number
+      ingest_yield_7d_pct?: number | null
+      fetched_7d?: number
+      ingested_7d?: number
+      sources_healthy?: number
+      sources_total?: number
+      sources_unhealthy?: number
+      feed_health?: Record<
+        string,
+        { consecutive_failures?: number; last_success?: string | null; last_error?: string | null }
+      >
+      gpr_index_days?: number
+      gpr_latest_date?: string | null
       description?: string
     }
-    description?: string
+    nlp: {
+      tier_articles?: number
+      nlp_complete?: number
+      nlp_pending?: number
+      coverage_pct?: number | null
+      corridor_tagging?: {
+        passed?: number
+        total?: number
+        pass_rate_pct?: number | null
+        cases?: Array<{ label: string; pass: boolean }>
+      }
+      description?: string
+    }
+    stages_30d?: Array<{ stage: string; status: string; count: number }>
   }
-  gpr_index?: {
-    benchmarks?: Array<{
-      comparison?: string
-      pearson_r?: number | null
-      pass?: boolean
-      days_overlap?: number
-    }>
-    caldara_ma30_r?: number | null
-    caldara_ma30_pass?: boolean | null
-    target_r?: number
-    description?: string
-  }
-  corridors?: {
-    corridors_validated?: number
-    parent_leakage_pass_rate_pct?: number | null
-    parent_leakage_passed?: number
-    corridors?: Array<{ corridor?: string; parent_correlation?: number; pass?: boolean }>
-    description?: string
-  }
-  nifty_volatility?: {
-    market_only_roc_auc?: number
-    market_plus_gpr_roc_auc?: number
-    gpr_incremental_roc_auc?: number
-    horizon_days?: number
-    source?: string
-    note?: string
-    description?: string
-    error?: string
-  }
+  methodology: Array<{
+    step: number
+    title: string
+    body: string
+    layer: string
+  }>
+  disclaimer: string
+  status?: PlatformStatusSlim | null
+  health?: HealthSnapshot | null
 }
 
-export function fetchAccuracyMetrics(refreshVol = false) {
-  const qs = refreshVol ? '?refresh_vol=1' : ''
-  return fetchJSON<AccuracyMetricsPayload>(`/api/metrics/accuracy${qs}`)
+export function fetchPageHome() {
+  return fetchJSON<HomePageBundle>('/api/pages/home')
 }
+
+export function fetchPageMacro() {
+  return fetchJSON<MacroPageBundle>('/api/pages/macro')
+}
+
+export function fetchPageNews(limit = 50) {
+  return fetchJSON<NewsPageBundle>(`/api/pages/news?limit=${limit}`)
+}
+
+export function fetchPageCorridor(corridor?: string, limit = 40) {
+  const qs = new URLSearchParams({ limit: String(limit) })
+  if (corridor) qs.set('corridor', corridor)
+  return fetchJSON<CorridorPageBundle>(`/api/pages/corridor?${qs}`)
+}
+
+export function fetchPagePortfolio() {
+  return fetchJSON<PortfolioPageBundle>('/api/pages/portfolio')
+}
+
+export function fetchPageQuality(refresh = false) {
+  const qs = refresh ? '?refresh=1' : ''
+  return fetchJSON<QualityReport>(`/api/pages/quality${qs}`)
+}
+

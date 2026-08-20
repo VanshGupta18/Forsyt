@@ -46,15 +46,17 @@ export const SCORE_LABELS = {
   energy: 'Fuel & energy impact',
 } as const
 
-export function businessTierLabel(risk: number): string {
-  const { label } = corridorRiskLabel(risk)
+export function businessTierLabel(risk: number, scoreStatus?: string | null): string {
+  const { label } = corridorRiskLabel(risk, scoreStatus)
+  if (label === 'Calibrating') return 'Calibrating'
   if (label === 'High') return 'High alert'
   if (label === 'Medium') return 'Watch'
   return 'Normal'
 }
 
-export function businessTierClass(risk: number): string {
-  const { label } = corridorRiskLabel(risk)
+export function businessTierClass(risk: number, scoreStatus?: string | null): string {
+  const { label } = corridorRiskLabel(risk, scoreStatus)
+  if (label === 'Calibrating') return 'text-corridor-muted'
   if (label === 'High') return 'text-corridor-alert'
   if (label === 'Medium') return 'text-corridor-watch'
   return 'text-corridor-clear'
@@ -88,8 +90,9 @@ export function spikeBadgeDetail(): string {
   return 'Today’s daily score is elevated vs the 7-day average shown above.'
 }
 
-export function tierAccentColor(risk: number): string {
-  const { label } = corridorRiskLabel(risk)
+export function tierAccentColor(risk: number, scoreStatus?: string | null): string {
+  const { label } = corridorRiskLabel(risk, scoreStatus)
+  if (label === 'Calibrating') return 'var(--corridor-accent-clear)'
   if (label === 'High') return 'var(--corridor-accent-alert)'
   if (label === 'Medium') return 'var(--corridor-accent-watch)'
   return 'var(--corridor-accent-clear)'
@@ -100,11 +103,12 @@ export function displayStressScore(row: CorridorRow | Record<string, unknown>): 
 }
 
 export function routeStressTier(row: CorridorRow | Record<string, unknown>): string {
+  const typed = row as CorridorRow
   const op = Number(
-    (row as CorridorRow).operational_risk ??
-      (row as CorridorRow).corridor_risk_7ma ??
-      (row as CorridorRow).corridor_risk ??
+    typed.operational_risk ??
+      typed.corridor_risk_7ma ??
+      typed.corridor_risk ??
       0,
   )
-  return businessTierLabel(op)
+  return businessTierLabel(op, typed.score_status)
 }

@@ -51,14 +51,19 @@ def _percentile(series: pd.Series, value: float, window: int = 252) -> float:
 
 
 def _gpr_baseline(gpr: pd.Series) -> tuple[float, float, str]:
-    """Caldara-scale baseline for long history; in-sample mean/std for India index ramp."""
+    """Caldara-scale baseline for long history; fixed 100/35 during India index ramp."""
     clean = gpr.dropna()
     if len(clean) >= CALDARA_BASELINE_MIN_DAYS:
         return BASELINE_GPR_MEAN, BASELINE_GPR_STD, "caldara"
     if len(clean) >= IN_SAMPLE_BASELINE_MIN_DAYS:
-        std = float(clean.std())
-        return float(clean.mean()), max(std, 1.0), "in_sample"
+        return BASELINE_GPR_MEAN, BASELINE_GPR_STD, "caldara_ramp"
     return BASELINE_GPR_MEAN, BASELINE_GPR_STD, "caldara"
+
+
+def _gpr_moving_average(gf: pd.DataFrame, gpr: pd.Series, column: str, window: int) -> float:
+    if column in gf.columns and pd.notna(gf[column].iloc[-1]):
+        return float(gf[column].iloc[-1])
+    return float(gpr.tail(min(window, len(gpr))).mean())
 
 
 def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
@@ -67,10 +72,11 @@ def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
     gpr = gf["gpr"].astype(float)
     as_of = gpr.index[-1]
     gpr_today = float(gpr.iloc[-1])
-    gpr_7ma = float(gpr.tail(min(7, len(gpr))).mean())
-    gpr_30ma = float(gpr.tail(min(30, len(gpr))).mean())
+    gpr_7ma = _gpr_moving_average(gf, gpr, "gpr_7ma", 7)
+    gpr_30ma = _gpr_moving_average(gf, gpr, "gpr_30ma", 30)
     baseline_mean, baseline_std, baseline_mode = _gpr_baseline(gpr)
     z = (gpr_today - baseline_mean) / baseline_std
+    index_days = int(len(gpr))
     change_7d_pct: float | None = None
     if len(gpr) >= 8:
         prior = float(gpr.iloc[-8])
@@ -85,9 +91,10 @@ def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
         "regime": _regime_from_z(z),
         "z_score": round(z, 3),
         "baseline_mode": baseline_mode,
-        "index_days": int(len(gpr)),
+        "index_days": index_days,
         "change_7d_pct": change_7d_pct,
         "geo_percentile": round(_percentile(gpr, gpr_today, window=len(gpr)), 1),
+        "geo_percentile_confidence": "low" if index_days < 8 else "normal",
     }
     if "gpr_threats" in gf.columns:
         out["gpr_threats"] = round(float(gf["gpr_threats"].iloc[-1]), 2)

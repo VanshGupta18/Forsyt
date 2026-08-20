@@ -6,7 +6,9 @@ import logging
 import math
 import os
 import sys
-from datetime import date, datetime, time, timedelta, timezone
+import time
+from datetime import date, datetime, timedelta, timezone
+from datetime import time as dt_time
 from decimal import Decimal
 from pathlib import Path
 
@@ -23,6 +25,7 @@ from gpr_index.scripts.corridor_index import CORRIDOR_SCORE_DISCLAIMER  # noqa: 
 from gpr_index.scripts.corridors import corridor_metadata  # noqa: E402
 from gpr_index.scripts.paths import INDIA_GPR_INDEX_START  # noqa: E402
 from news_dataset import db  # noqa: E402
+from news_dataset.api.cache import cache_get, cache_set, _MISSING  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +52,7 @@ def _stale_warning_for_date(value) -> str | None:
         day = date.fromisoformat(str(value)[:10])
     except ValueError:
         return None
-    age = datetime.now(timezone.utc) - datetime.combine(day, time.max, tzinfo=timezone.utc)
+    age = datetime.now(timezone.utc) - datetime.combine(day, dt_time.max, tzinfo=timezone.utc)
     if age > _STALE_AFTER:
         return f"Data through {day.isoformat()} is more than 24h old"
     return None
@@ -106,20 +109,39 @@ def serialize_rows(rows: list[dict]) -> list[dict]:
     return [{key: _serialize(val) for key, val in row.items()} for row in rows]
 
 
+_GPR_CSV_CACHE: tuple[float, pd.DataFrame] | None = None
+_CORRIDOR_CSV_CACHE: tuple[float, pd.DataFrame] | None = None
+_CSV_CACHE_TTL = 300.0
+
+
 def _load_gpr_csv() -> pd.DataFrame:
+    global _GPR_CSV_CACHE
+    now = time.monotonic()
+    if _GPR_CSV_CACHE and now - _GPR_CSV_CACHE[0] < _CSV_CACHE_TTL:
+        return _GPR_CSV_CACHE[1]
     path = GPR_OUTPUT / "gpr_daily_index.csv"
     if not path.exists():
-        return pd.DataFrame()
-    frame = pd.read_csv(path, parse_dates=["date"]).set_index("date").sort_index()
-    return frame[frame.index >= _INDEX_START_TS]
+        frame = pd.DataFrame()
+    else:
+        frame = pd.read_csv(path, parse_dates=["date"]).set_index("date").sort_index()
+        frame = frame[frame.index >= _INDEX_START_TS]
+    _GPR_CSV_CACHE = (now, frame)
+    return frame
 
 
 def _load_corridor_csv() -> pd.DataFrame:
+    global _CORRIDOR_CSV_CACHE
+    now = time.monotonic()
+    if _CORRIDOR_CSV_CACHE and now - _CORRIDOR_CSV_CACHE[0] < _CSV_CACHE_TTL:
+        return _CORRIDOR_CSV_CACHE[1]
     path = GPR_OUTPUT / "gpr_corridor_daily.csv"
     if not path.exists():
-        return pd.DataFrame()
-    frame = pd.read_csv(path, parse_dates=["date"])
-    return frame[frame["date"] >= _INDEX_START_TS]
+        frame = pd.DataFrame()
+    else:
+        frame = pd.read_csv(path, parse_dates=["date"])
+        frame = frame[frame["date"] >= _INDEX_START_TS]
+    _CORRIDOR_CSV_CACHE = (now, frame)
+    return frame
 
 
 def _csv_current_payload() -> dict | None:
@@ -203,7 +225,11 @@ def gpr_frame_from_db_or_csv() -> pd.DataFrame:
     return csv_frame
 
 
-def get_gpr_current() -> dict | None:
+def get_gpr_current(*, skip_cache: bool = False) -> dict | None:
+    if not skip_cache:
+        hit = cache_get("gpr:current", ttl_seconds=300)
+        if hit is not _MISSING:
+            return hit
     row = db.get_gpr_current()
     csv_payload = _csv_current_payload() if _allow_csv_fallback() or not _database_configured() else None
     if row and csv_payload and _allow_csv_fallback():
@@ -212,19 +238,28 @@ def get_gpr_current() -> dict | None:
         db_gpr = row.get("gpr_index")
         csv_gpr = csv_payload.get("gpr_index")
         if csv_date > db_date:
-            return _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_date)
+            result = _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_date)
+            cache_set("gpr:current", result)
+            return result
         if (
             csv_date == db_date
             and db_gpr is not None
             and csv_gpr is not None
             and abs(float(db_gpr) - float(csv_gpr)) > 0.5
         ):
-            return _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_date)
+            result = _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_date)
+            cache_set("gpr:current", result)
+            return result
     if row:
         serialized = serialize_rows([row])[0]
-        return _with_refresh_meta(serialized, data_source="postgres", as_of_date=serialized.get("date"))
+        result = _with_refresh_meta(serialized, data_source="postgres", as_of_date=serialized.get("date"))
+        cache_set("gpr:current", result)
+        return result
     if csv_payload:
-        return _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_payload.get("date"))
+        result = _with_refresh_meta(csv_payload, data_source="csv", as_of_date=csv_payload.get("date"))
+        cache_set("gpr:current", result)
+        return result
+    cache_set("gpr:current", None)
     return None
 
 
@@ -259,7 +294,18 @@ def _gpr_history_from_csv(
     return out
 
 
-def get_gpr_history(start: str | None = None, end: str | None = None, limit: int = 500) -> list[dict]:
+def get_gpr_history(
+    start: str | None = None,
+    end: str | None = None,
+    limit: int = 500,
+    *,
+    skip_cache: bool = False,
+) -> list[dict]:
+    cache_key = f"gpr:history:{start}:{end}:{limit}"
+    if not skip_cache:
+        hit = cache_get(cache_key, ttl_seconds=900)
+        if hit is not _MISSING:
+            return hit
     csv_history = _gpr_history_from_csv(start=start, end=end, limit=limit)
     rows = db.get_gpr_history(start=start, end=end, limit=limit)
     if rows:
@@ -286,8 +332,12 @@ def get_gpr_history(start: str | None = None, end: str | None = None, limit: int
                         acts="gpr_acts_index",
                     )
                     if _prefer_csv_gpr(db_frame, csv_frame):
+                        cache_set(cache_key, csv_history)
                         return csv_history
-            return serialize_rows(cleaned)
+            result = serialize_rows(cleaned)
+            cache_set(cache_key, result)
+            return result
+    cache_set(cache_key, csv_history)
     return csv_history
 
 
@@ -302,6 +352,20 @@ def _corridor_action_label(risk: float | None, score_status: str | None = None) 
     return "Normal operations"
 
 
+def _corridor_operational_risk(row: dict) -> float:
+    operational = row.get("corridor_risk_7ma")
+    if operational is None or (isinstance(operational, float) and math.isnan(operational)):
+        operational = row.get("corridor_risk")
+    try:
+        return float(operational or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _sort_corridors_by_operational(rows: list[dict]) -> list[dict]:
+    return sorted(rows, key=_corridor_operational_risk, reverse=True)
+
+
 def _enrich_corridor_row(row: dict) -> dict:
     meta = corridor_metadata().get(str(row.get("corridor") or ""), {})
     operational = row.get("corridor_risk_7ma")
@@ -314,7 +378,7 @@ def _enrich_corridor_row(row: dict) -> dict:
 
 
 def _corridors_payload(date_val, rows: list[dict], *, data_source: str = "postgres") -> dict:
-    enriched = [_enrich_corridor_row(dict(row)) for row in rows]
+    enriched = [_enrich_corridor_row(dict(row)) for row in _sort_corridors_by_operational(rows)]
     base = {
         "date": _serialize(date_val),
         "index_start": INDIA_GPR_INDEX_START.isoformat(),
@@ -325,7 +389,17 @@ def _corridors_payload(date_val, rows: list[dict], *, data_source: str = "postgr
     return _with_refresh_meta(base, data_source=data_source, as_of_date=base.get("date"))
 
 
-def get_corridors() -> dict:
+def get_corridors(*, skip_cache: bool = False) -> dict:
+    if not skip_cache:
+        hit = cache_get("corridors:latest", ttl_seconds=300)
+        if hit is not _MISSING:
+            return hit
+    result = _fetch_corridors()
+    cache_set("corridors:latest", result)
+    return result
+
+
+def _fetch_corridors() -> dict:
     if _database_configured():
         try:
             latest, rows = db.get_corridors_latest()
@@ -366,7 +440,12 @@ def get_corridors() -> dict:
         }
         return _with_refresh_meta(empty, data_source="csv", as_of_date=None)
     latest_date = frame["date"].max()
-    day = frame[frame["date"] == latest_date].sort_values("corridor_risk", ascending=False)
+    day = frame[frame["date"] == latest_date].copy()
+    day["_operational"] = day.apply(
+        lambda row: _corridor_operational_risk(row.to_dict()),
+        axis=1,
+    )
+    day = day.sort_values("_operational", ascending=False)
     corridors = []
     for _, row in day.iterrows():
         corridors.append(
@@ -434,8 +513,8 @@ def get_corridor_history(corridor_id: str, start: str | None = None, end: str | 
 
 
 def get_events_feed(limit=100, theme=None, corridor=None, tier=None, start=None, end=None, tagged_only=False) -> list[dict]:
-    start_dt = datetime.combine(date.fromisoformat(start), time.min, tzinfo=timezone.utc) if start else None
-    end_dt = datetime.combine(date.fromisoformat(end), time.min, tzinfo=timezone.utc) if end else None
+    start_dt = datetime.combine(date.fromisoformat(start), dt_time.min, tzinfo=timezone.utc) if start else None
+    end_dt = datetime.combine(date.fromisoformat(end), dt_time.min, tzinfo=timezone.utc) if end else None
     rows = db.get_recent_news(
         limit=limit,
         theme=theme,
@@ -460,7 +539,47 @@ def get_news_stats() -> dict:
     }
 
 
-def get_platform_status() -> dict:
+def get_platform_status(*, skip_cache: bool = False) -> dict:
+    if not skip_cache:
+        hit = cache_get("platform:status", ttl_seconds=120)
+        if hit is not _MISSING:
+            return hit
+    result = _build_platform_status()
+    cache_set("platform:status", result)
+    return result
+
+
+def get_platform_status_slim(*, skip_cache: bool = False) -> dict:
+    full = get_platform_status(skip_cache=skip_cache)
+    return {
+        "refresh_interval_minutes": full.get("refresh_interval_minutes"),
+        "latest_dates": full.get("latest_dates"),
+        "stale_warning": full.get("stale_warning"),
+        "last_pipeline_runs": full.get("last_pipeline_runs"),
+    }
+
+
+def get_health_snapshot(*, skip_cache: bool = False) -> dict:
+    if not skip_cache:
+        hit = cache_get("platform:health", ttl_seconds=120)
+        if hit is not _MISSING:
+            return hit
+    snap = db.get_health_snapshot()
+    last_platform = db.get_last_pipeline_run("platform_refresh")
+    stale = _stale_warning_for_date(snap.get("gpr_latest_date"))
+    payload = {
+        "status": "healthy",
+        **snap,
+        "database": "postgresql",
+        "timestamp": _utc_now_iso(),
+        "last_platform_refresh": _serialize_pipeline_run(last_platform),
+        "stale_warning": stale,
+    }
+    cache_set("platform:health", payload)
+    return payload
+
+
+def _build_platform_status() -> dict:
     news = get_news_stats()
     gpr = get_gpr_current()
     corridors = get_corridors()

@@ -13,7 +13,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from gpr_index.scripts.paths import INDIA_GPR_INDEX_START, INDIA_PROCESSED_DIR, OUTPUT_DIR  # noqa: E402
+from gpr_index.scripts.paths import (  # noqa: E402
+    GPR_WARMUP_START,
+    INDIA_GPR_INDEX_START,
+    INDIA_PROCESSED_DIR,
+    OUTPUT_DIR,
+    gpr_baseline_start,
+    gpr_index_processed_dir,
+    gpr_score_start,
+)
 
 from news_dataset import db  # noqa: E402
 from news_dataset.export.to_db import sync_all  # noqa: E402
@@ -42,7 +50,11 @@ def _run_cmd(args: list[str], *, cwd: Path | None = None) -> None:
 
 
 def _clamp_index_start(day: date) -> date:
-    return max(day, INDIA_GPR_INDEX_START)
+    return gpr_score_start(day)
+
+
+def _processed_dir() -> Path:
+    return gpr_index_processed_dir()
 
 
 def _list_processed_files(end_day: date, *, lookback_days: int = 365):
@@ -50,10 +62,10 @@ def _list_processed_files(end_day: date, *, lookback_days: int = 365):
 
     baseline = max(
         end_day - timedelta(days=lookback_days),
-        INDIA_GPR_INDEX_START,
+        gpr_score_start(end_day - timedelta(days=lookback_days)),
     )
     return list_processed_files(
-        INDIA_PROCESSED_DIR,
+        _processed_dir(),
         baseline.isoformat(),
         end_day.isoformat(),
     )
@@ -108,54 +120,83 @@ def backfill_missing_parquets(
     return created
 
 
-def run_gpr_range(start_day: date, end_day: date) -> None:
+def run_gpr_range(
+    start_day: date,
+    end_day: date,
+    *,
+    dirty_days: list[date] | None = None,
+) -> None:
     """Score and normalize GPR + corridors across every parquet day in range.
 
     Normalization needs multiple days in one batch — running one day at a time
     forces gpr_index to 100 every time (ratio / its own mean = 1).
+
+    Product-era batches (>= INDIA_GPR_INDEX_START) always read india_processed/
+    and baseline from the India index start, even if GPR_INDEX_PROCESSED_DIR is set.
     """
-    start_day = _clamp_index_start(start_day)
-    baseline_start = INDIA_GPR_INDEX_START.isoformat()
-    start_str = start_day.isoformat()
+    is_product_batch = start_day >= INDIA_GPR_INDEX_START
+    processed_dir = INDIA_PROCESSED_DIR if is_product_batch else _processed_dir()
+    score_start = gpr_score_start(start_day)
+    baseline_start = (
+        INDIA_GPR_INDEX_START.isoformat()
+        if is_product_batch
+        else gpr_baseline_start().isoformat()
+    )
+    start_str = score_start.isoformat()
     end_str = end_day.isoformat()
+    gpr_cmd = [
+        sys.executable,
+        "gpr_index/main.py",
+        "gpr",
+        "--processed-dir",
+        str(processed_dir),
+        "--output-dir",
+        str(OUTPUT_DIR),
+        "--start-date",
+        start_str,
+        "--end-date",
+        end_str,
+        "--baseline-start",
+        baseline_start,
+        "--baseline-end",
+        end_str,
+    ]
+    if dirty_days:
+        gpr_cmd.extend(["--only-dirty-days", *[d.isoformat() for d in dirty_days]])
+    _run_cmd(gpr_cmd)
     _run_cmd(
         [
             sys.executable,
             "gpr_index/main.py",
-            "gpr",
-            "--processed-dir",
-            str(INDIA_PROCESSED_DIR),
+            "fill-gaps",
             "--output-dir",
             str(OUTPUT_DIR),
             "--start-date",
             start_str,
             "--end-date",
             end_str,
-            "--baseline-start",
-            baseline_start,
-            "--baseline-end",
-            end_str,
         ]
     )
-    _run_cmd(
-        [
-            sys.executable,
-            "gpr_index/main.py",
-            "corridor",
-            "--processed-dir",
-            str(INDIA_PROCESSED_DIR),
-            "--output-dir",
-            str(OUTPUT_DIR),
-            "--start-date",
-            start_str,
-            "--end-date",
-            end_str,
-            "--baseline-start",
-            baseline_start,
-            "--baseline-end",
-            end_str,
-        ]
-    )
+    corridor_cmd = [
+        sys.executable,
+        "gpr_index/main.py",
+        "corridor",
+        "--processed-dir",
+        str(processed_dir),
+        "--output-dir",
+        str(OUTPUT_DIR),
+        "--start-date",
+        start_str,
+        "--end-date",
+        end_str,
+        "--baseline-start",
+        baseline_start,
+        "--baseline-end",
+        end_str,
+    ]
+    if dirty_days:
+        corridor_cmd.extend(["--dates", *[d.isoformat() for d in dirty_days]])
+    _run_cmd(corridor_cmd)
 
 
 def run_daily_index(

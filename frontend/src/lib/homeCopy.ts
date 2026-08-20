@@ -4,11 +4,9 @@ export const HOME_EYEBROW = 'Live intelligence for India'
 
 export const HOME_TITLE = 'See headline risk, market stress, and corridor disruption — today.'
 
+/** Fallback copy when verdict is unavailable */
 export const HOME_SUBTITLE =
-  'Geopolitical headlines, market volatility, and trade route scores — in one place for Indian decision-makers.'
-
-export const HOME_DISCLAIMER =
-  'Scores reflect recent news we track — not trading advice or shipping instructions.'
+  'Headlines, market stress, and corridor risk — updated throughout the day.'
 
 export function homeStatusLine(gprDate?: string | null, pipelineRunAt?: string | null): string {
   const through = gprDate ? `Geo data through ${gprDate.slice(0, 10)}` : 'Waiting for geo data'

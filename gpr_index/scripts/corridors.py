@@ -295,17 +295,89 @@ CORRIDOR_CATEGORIES: dict[str, str] = {
     "instc_chabahar": "strategic",
 }
 
+_INDIA_LATLON = (20.5937, 78.9629)
+
+# Map paths and centroids for dashboard geo viz (lat, lon waypoints).
+CORRIDOR_GEO: dict[str, dict] = {
+    "strait_of_hormuz": {
+        "category": "sea",
+        "centroid": {"lat": 26.5667, "lon": 56.25},
+        "waypoints": [[26.0, 52.0], [26.5667, 56.25], [25.5, 58.5]],
+    },
+    "red_sea_suez": {
+        "category": "sea",
+        "centroid": {"lat": 20.0, "lon": 38.0},
+        "waypoints": [[12.5833, 43.3333], [20.0, 38.0], [30.455, 32.35]],
+    },
+    "strait_of_malacca": {
+        "category": "sea",
+        "centroid": {"lat": 2.5, "lon": 101.0},
+        "waypoints": [[5.5, 98.5], [2.5, 101.0], [1.3, 103.9]],
+    },
+    "cape_of_good_hope": {
+        "category": "sea",
+        "centroid": {"lat": -34.3568, "lon": 18.474},
+        "waypoints": [[-20.0, 5.0], [-34.3568, 18.474], [-15.0, 42.0]],
+    },
+    "danish_straits_baltic": {
+        "category": "sea",
+        "centroid": {"lat": 55.75, "lon": 12.75},
+        "waypoints": [[55.75, 12.75], [57.0, 19.0]],
+    },
+    "taiwan_south_china_sea": {
+        "category": "sea",
+        "centroid": {"lat": 12.0, "lon": 114.0},
+        "waypoints": [[2.5, 101.0], [12.0, 114.0], [24.0, 119.5]],
+    },
+    "india_china_lac": {
+        "category": "land",
+        "centroid": {"lat": 34.1526, "lon": 77.5771},
+        "waypoints": [[28.0, 77.0], [34.1526, 77.5771]],
+    },
+    "india_pakistan_attari": {
+        "category": "land",
+        "centroid": {"lat": 31.6048, "lon": 74.572},
+        "waypoints": [[31.63, 74.87], [31.6048, 74.572]],
+    },
+    "india_bangladesh_petrapole": {
+        "category": "land",
+        "centroid": {"lat": 23.05, "lon": 88.83},
+        "waypoints": [[22.5, 88.2], [23.05, 88.83]],
+    },
+    "india_nepal_raxaul": {
+        "category": "land",
+        "centroid": {"lat": 26.9833, "lon": 84.85},
+        "waypoints": [[26.8, 84.7], [26.9833, 84.85]],
+    },
+    "imec": {
+        "category": "strategic",
+        "centroid": {"lat": 25.2048, "lon": 55.2708},
+        "waypoints": [list(_INDIA_LATLON), [25.2048, 55.2708]],
+    },
+    "instc_chabahar": {
+        "category": "strategic",
+        "centroid": {"lat": 25.2919, "lon": 60.643},
+        "waypoints": [list(_INDIA_LATLON), [25.2919, 60.643]],
+    },
+}
+
 
 def corridor_metadata() -> dict[str, dict]:
     """Static corridor registry for API / dashboard (category + exposure weights)."""
-    return {
-        corridor_id: {
+    result: dict[str, dict] = {}
+    for corridor_id, spec in CORRIDORS.items():
+        geo = CORRIDOR_GEO.get(corridor_id, {})
+        entry = {
             "id": corridor_id,
             "name": spec["name"],
-            "category": CORRIDOR_CATEGORIES.get(corridor_id, "sea"),
+            "category": geo.get("category") or CORRIDOR_CATEGORIES.get(corridor_id, "sea"),
             "energy_exposure": spec["energy_exposure"],
             "goods_exposure": spec["goods_exposure"],
             "exposure_source": spec["exposure_source"],
         }
-        for corridor_id, spec in CORRIDORS.items()
-    }
+        if geo.get("centroid"):
+            entry["centroid"] = geo["centroid"]
+        if geo.get("waypoints"):
+            entry["waypoints"] = geo["waypoints"]
+        result[corridor_id] = entry
+    return result

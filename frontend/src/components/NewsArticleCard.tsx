@@ -42,7 +42,7 @@ export default function NewsArticleCard({ article }: Props) {
     >
       {isHot && <span className="w-0.5 shrink-0 bg-corridor-alert" aria-hidden />}
       <div className="flex flex-row gap-2.5 p-2.5 flex-1 min-w-0">
-        <NewsArticleImage link={article.link} variant="card" />
+        <NewsArticleImage link={article.link} imageUrl={article.image_url} variant="card" />
         <div className="flex flex-col gap-0.5 min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] uppercase">
             {isHot && <span className="w-1.5 h-1.5 rounded-full bg-corridor-alert shrink-0" aria-hidden />}

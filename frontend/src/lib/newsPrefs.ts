@@ -1,3 +1,5 @@
+import { readJson, writeJson } from './storage'
+
 export type BriefPreferences = {
   themes: string[]
   minTier: number
@@ -12,20 +14,10 @@ const DEFAULT_BRIEF: BriefPreferences = {
   corridors: [],
 }
 
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return fallback
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
 export function loadBriefPreferences(): BriefPreferences {
-  return readJson<BriefPreferences>(BRIEF_KEY, DEFAULT_BRIEF)
+  return readJson(BRIEF_KEY, DEFAULT_BRIEF)
 }
 
 export function saveBriefPreferences(prefs: BriefPreferences): void {
-  localStorage.setItem(BRIEF_KEY, JSON.stringify(prefs))
+  writeJson(BRIEF_KEY, prefs)
 }

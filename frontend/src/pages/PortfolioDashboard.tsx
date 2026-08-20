@@ -1,18 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import Reveal from '../components/Reveal'
 import GprHistoryChart from '../components/GprHistoryChart'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import MarketTicker from '../components/MarketTicker'
 import {
-  fetchDualSignal,
-  fetchGprCurrent,
-  fetchMarketQuotes,
+  fetchPagePortfolio,
   formatCorridorName,
   formatPrice,
   orderMarketQuotes,
-  type DualSignalPayload,
-  type MarketQuote,
 } from '../lib/api'
 import {
   portfolioStressContext,
@@ -20,40 +17,23 @@ import {
   tiltClass,
   tiltLabel,
 } from '../lib/portfolioCopy'
+import { queryKeys } from '../lib/queryClient'
 
 export default function PortfolioDashboard() {
   const [searchParams] = useSearchParams()
   const stressParam = searchParams.get('stress')
   const corridorParam = searchParams.get('corridor')
 
-  const [gpr, setGpr] = useState<number | null>(null)
-  const [gprDate, setGprDate] = useState<string | null>(null)
-  const [dual, setDual] = useState<DualSignalPayload | null>(null)
-  const [dualError, setDualError] = useState<string | null>(null)
-  const [quotes, setQuotes] = useState<MarketQuote[]>([])
-  const [quotesLoading, setQuotesLoading] = useState(true)
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.portfolio,
+    queryFn: fetchPagePortfolio,
+  })
 
-  const load = useCallback(() => {
-    fetchGprCurrent()
-      .then((g) => {
-        setGpr(g.gpr_index ?? null)
-        setGprDate(g.date ?? null)
-      })
-      .catch(() => undefined)
-    setDualError(null)
-    fetchDualSignal(false)
-      .then(setDual)
-      .catch((e: Error) => setDualError(e.message))
-    setQuotesLoading(true)
-    fetchMarketQuotes()
-      .then((p) => setQuotes(orderMarketQuotes(p.quotes ?? [])))
-      .catch(() => setQuotes([]))
-      .finally(() => setQuotesLoading(false))
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const gpr = data?.gpr_current?.gpr_index ?? null
+  const gprDate = data?.gpr_current?.date ?? null
+  const dual = data?.dual_signal ?? null
+  const quotes = orderMarketQuotes(data?.quotes?.quotes ?? [])
+  const quotesLoading = isLoading && !quotes.length
 
   const joint = dual?.joint_stress
   const geo = dual?.geopolitical
@@ -93,7 +73,9 @@ export default function PortfolioDashboard() {
 
       <MarketTicker quotes={quotes} loading={quotesLoading} />
 
-      {dualError && <ApiErrorBanner message={`Dual-signal: ${dualError}`} onRetry={load} />}
+      {error instanceof Error && (
+        <ApiErrorBanner message={`Portfolio data: ${error.message}`} onRetry={() => void refetch()} />
+      )}
 
       <Reveal>
         <header className="glass-card p-6">
@@ -156,7 +138,7 @@ export default function PortfolioDashboard() {
       <Reveal>
         <section className="glass-card p-5">
           <h2 className="text-base font-semibold text-white mb-4">Historical news risk index</h2>
-          <GprHistoryChart />
+          <GprHistoryChart history={data?.gpr_history?.history ?? []} />
         </section>
       </Reveal>
 

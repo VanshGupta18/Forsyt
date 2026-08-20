@@ -94,7 +94,7 @@ With **170 million+ active Demat accounts** in India as of 2024 — a 3.6× incr
 ### Product Surface (shipped)
 
 - **📰 Event Feed** — Searchable tagged news via `/api/events/feed`
-- **🚢 Corridor Monitor** — Daily corridor scores via `/api/corridors`
+- **🚢 Corridor Monitor** — Daily corridor scores via `/api/pages/corridor`
 - **📊 Dual-Signal Panel** — `/api/market/dual-signal` (geo + market vol side-by-side)
 - **🖥️ Dashboard MVP** — 4 screens at `/` (home, chart, corridors, events)
 
@@ -637,6 +637,44 @@ curl -s http://127.0.0.1:5001/health | python3 -m json.tool
 
 After merging pipeline changes, run **Actions → Catch up index → Run workflow** once to backfill missing days. See [`docs/CLOUD_PIPELINE.md`](docs/CLOUD_PIPELINE.md) for the full push + verify checklist.
 
+#### GDELT warmup (local laptop — stronger 7MA, no news DB)
+
+Before **2026-08-09**, the index uses **global GDELT GKG** parquets for normalization only. Nothing is inserted into `geo_articles`; Postgres/API still start at the India news era (`INDIA_GPR_INDEX_START`).
+
+One command (download → preprocess → merge → GPR → sync):
+
+```bash
+source "$HOME/.venv/forsyt/bin/activate"
+cd "/path/to/Forsyt"
+
+# Full warmup Jan 1 → Aug 8 2026 (overnight; slot_step=4 ≈ 24 slots/day)
+python -m news_dataset.pipeline.gdelt_warmup \
+  --warmup-start 2026-01-01 \
+  --slot-step 4
+
+# Resume after interrupt (skip download/preprocess if parquets exist)
+python -m news_dataset.pipeline.gdelt_warmup \
+  --skip-download --skip-preprocess
+```
+
+Manual steps:
+
+```bash
+python gpr_index/main.py merge-processed
+export GPR_INDEX_PROCESSED_DIR="$(pwd)/gpr_index/data/index_processed"
+python -m news_dataset.pipeline.gdelt_warmup \
+  --skip-download --skip-preprocess --skip-merge
+```
+
+Verify product still starts at Aug 9:
+
+```bash
+curl -s http://127.0.0.1:5001/api/status | python3 -m json.tool
+# latest_dates.gpr >= 2026-08-09, not 2026-01-01
+```
+
+Use `--slot-step 8` (12 slots/day) if disk or time is tight. Do **not** add GDELT download to GitHub Actions.
+
 ---
 
 **Backend API** (serves `/api/*`, reads Postgres):
@@ -645,6 +683,14 @@ After merging pipeline changes, run **Actions → Catch up index → Run workflo
 source "$HOME/.venv/forsyt/bin/activate"
 cd "/path/to/Forsyt"
 python -m news_dataset.api.server
+```
+
+**Production (≤10 concurrent users)** — use gunicorn with the bundled config (1 worker, 4 threads, shared in-memory cache):
+
+```bash
+source "$HOME/.venv/forsyt/bin/activate"
+cd "/path/to/Forsyt"
+gunicorn -c news_dataset/gunicorn.conf.py news_dataset.api.server:app
 ```
 
 API: **http://localhost:5001** · Health: **http://localhost:5001/health** · Status: **http://localhost:5001/api/status**
@@ -661,10 +707,10 @@ Open **http://127.0.0.1:5173**. Pages wired to the API:
 
 | Page | API |
 |------|-----|
-| Live snapshot | `/api/gpr/current`, `/health` |
-| Macro / dual-signal / GPR history | `/api/market/dual-signal`, `/api/gpr/history`, `/api/market/quotes` |
-| Trade corridors | `/api/corridors` |
-| News feed | `/api/events/feed`, `/api/news/recent` |
+| Home | `/api/pages/home`, `/health` |
+| Macro / dual-signal | `/api/pages/macro`, `/api/market/dual-signal?refresh=1` |
+| Trade corridors | `/api/pages/corridor` |
+| News feed | `/api/pages/news`, `/api/events/feed` (filters) |
 
 **Production build:** copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_BASE` to your API URL.
 
@@ -815,16 +861,16 @@ The Forsyt backend exposes a REST API consumed by the React frontend (`news_data
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/gpr/current` | Latest India GPR |
-| `GET /api/gpr/history?start=&end=` | GPR time series |
-| `GET /api/corridors` | All corridor scores (latest day) |
-| `GET /api/corridors/{id}` | Single corridor history |
-| `GET /api/events/feed` | NLP-tagged articles |
-| `GET /api/market/dual-signal` | Geo + NIFTY vol + joint stress |
-| `GET /api/market/quotes` | Live NIFTY, SENSEX, VIX, USD/INR, Brent (yfinance + cache) |
-| `GET /api/market/history?symbol=nifty&period=3mo` | Daily close history |
-| `GET /api/market/indicators?symbol=nifty` | Trailing vol, 7d return |
-| `GET /health`, `GET /stats`, `GET /news` | Legacy ops endpoints |
+| `GET /api/pages/home` | Home bundle (health, GPR, corridors, quotes) |
+| `GET /api/pages/macro` | Macro bundle (dual signal, GPR history, market histories) |
+| `GET /api/pages/news` | News bundle (events, GPR, history) |
+| `GET /api/pages/corridor` | Corridor bundle (scores, metadata, events) |
+| `GET /api/pages/portfolio` | Portfolio bundle |
+| `GET /api/pages/quality` | Quality / accuracy report |
+| `GET /api/events/feed` | Filtered NLP-tagged articles |
+| `GET /api/news/image?link=` | On-demand article image |
+| `GET /api/market/dual-signal` | Geo + NIFTY vol + joint stress (refresh with `?refresh=1`) |
+| `GET /health`, `GET /api/status` | Ops health and platform status |
 
 React UI runs separately via Vite (`frontend/`). Run API from repo root:
 
@@ -1259,7 +1305,7 @@ Forsyt uses **product KPIs** (pipeline reliability + index credibility), not ML 
 | Index freshness | GPR updated within 24h | `gpr_daily.updated_at` vs scrape time |
 | Caldara correlation | Monthly r ≥ 0.50 | `gpr_index/scripts/validate_gpr.py` |
 | Event detection | GPR spike within 3 days | Galwan, Pulwama, 26/11 manual check |
-| Corridor sanity | Top corridor matches news | Compare `/api/corridors` to event feed |
+| Corridor sanity | Top corridor matches news | Compare `/api/pages/corridor` to event feed |
 
 ### Research Validation (internal QA)
 
@@ -1267,7 +1313,7 @@ Forsyt uses **product KPIs** (pipeline reliability + index credibility), not ML 
 |-------|----------|
 | OOS NIFTY vol backtest | `nifty-50/forsyt_gpr/vol_model.py` |
 | GPR vs Caldara benchmark | `gpr_index/scripts/validate_gpr.py` |
-| Platform accuracy dashboard | `/quality` (API: `/api/metrics/accuracy`) |
+| Platform accuracy dashboard | `/quality` (API: `/api/pages/quality`) |
 
 **Honest finding:** GPR does not beat market-only vol forecasts OOS — the product shows both signals side-by-side instead of overclaiming.
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import GprHistoryChart, { type GprChartPeriod } from './GprHistoryChart'
 import MarketSparkline from './MarketSparkline'
+import type { GprHistoryPoint, MarketHistoryPayload } from '../lib/api'
 
 const RANGES = [
   { id: '1mo', label: '1M' },
@@ -14,6 +15,8 @@ type RangeId = (typeof RANGES)[number]['id']
 type Props = {
   chartHeight?: number
   indexDays?: number | null
+  gprHistory?: GprHistoryPoint[]
+  niftyHistory?: MarketHistoryPayload | null
 }
 
 function defaultRange(indexDays?: number | null): RangeId {
@@ -21,7 +24,7 @@ function defaultRange(indexDays?: number | null): RangeId {
   return '3mo'
 }
 
-export default function DualSignalChart({ chartHeight = 260, indexDays }: Props) {
+export default function DualSignalChart({ chartHeight = 260, indexDays, gprHistory, niftyHistory }: Props) {
   const [range, setRange] = useState<RangeId>(() => defaultRange(indexDays))
   const [rangeNote, setRangeNote] = useState<string | null>(null)
 
@@ -59,7 +62,7 @@ export default function DualSignalChart({ chartHeight = 260, indexDays }: Props)
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div>
           <p className="corridor-kicker mb-2">NIFTY 50</p>
-          <MarketSparkline symbol="nifty" period={range} height={chartHeight} variant="corridor" />
+          <MarketSparkline data={niftyHistory} period={range} height={chartHeight} variant="corridor" />
         </div>
         <div>
           <p className="corridor-kicker mb-2">News risk index</p>
@@ -67,6 +70,8 @@ export default function DualSignalChart({ chartHeight = 260, indexDays }: Props)
             height={chartHeight}
             variant="corridor"
             period={range as GprChartPeriod}
+            history={gprHistory ?? []}
+            indexDays={indexDays}
             onRangeNote={setRangeNote}
           />
         </div>

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { NEWS_RISK_CONTEXT_TITLE } from '../lib/newsCopy'
+import type { GprHistoryPoint } from '../lib/api'
 import GprHistoryChart from './GprHistoryChart'
 
 type Props = {
@@ -7,6 +8,7 @@ type Props = {
   gprDate: string | null
   gpr7ma: number | null
   gpr30ma: number | null
+  gprHistory?: GprHistoryPoint[]
 }
 
 function formatScore(value: number | null): string {
@@ -14,9 +16,9 @@ function formatScore(value: number | null): string {
   return value.toFixed(2)
 }
 
-export default function NewsRiskPanel({ gprIndex, gprDate, gpr7ma, gpr30ma }: Props) {
+export default function NewsRiskPanel({ gprIndex, gprDate, gpr7ma, gpr30ma, gprHistory = [] }: Props) {
   return (
-    <section className="corridor-panel p-4 flex flex-col gap-3 min-h-[400px]">
+    <section className="corridor-panel p-4 flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3 shrink-0">
         <h2 className="corridor-kicker">{NEWS_RISK_CONTEXT_TITLE}</h2>
         {gprDate && (
@@ -25,22 +27,22 @@ export default function NewsRiskPanel({ gprIndex, gprDate, gpr7ma, gpr30ma }: Pr
       </div>
 
       <div className="grid grid-cols-3 gap-2 shrink-0 max-w-md">
-        <div className="bg-[#0d0d0d] p-2">
+        <div className="news-risk-stat">
           <p className="corridor-kicker">Latest</p>
           <span className="corridor-score text-xl text-corridor-watch">{formatScore(gprIndex)}</span>
         </div>
-        <div className="bg-[#0d0d0d] p-2">
+        <div className="news-risk-stat">
           <p className="corridor-kicker">7-day avg</p>
           <span className="corridor-score text-lg text-white">{formatScore(gpr7ma)}</span>
         </div>
-        <div className="bg-[#0d0d0d] p-2">
+        <div className="news-risk-stat">
           <p className="corridor-kicker">30-day avg</p>
           <span className="corridor-score text-lg text-corridor-muted">{formatScore(gpr30ma)}</span>
         </div>
       </div>
 
-      <div className="flex-1 min-h-[320px] flex flex-col">
-        <GprHistoryChart fill variant="corridor" period="3mo" className="h-full flex flex-col flex-1 min-h-0" />
+      <div className="h-[240px] shrink-0">
+        <GprHistoryChart height={240} variant="corridor" period="3mo" compact className="h-full" history={gprHistory} />
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs shrink-0">

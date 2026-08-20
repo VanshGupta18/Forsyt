@@ -11,6 +11,7 @@
     "smoke": "node smoke.mjs"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.90.2",
     "d3-geo": "^3.1.1",
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
@@ -31,7 +32,6 @@
     "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
-    "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"

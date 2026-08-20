@@ -10,6 +10,7 @@ from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -43,11 +44,25 @@ if DATABASE_URL.startswith("postgres://"):
 
 HINDI_SOURCES = {"AU", "BBC", "OI", "LH", "N18"}
 
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+
+def _ensure_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = psycopg2.pool.ThreadedConnectionPool(2, 5, DATABASE_URL)
+    return _pool
+
 
 def get_connection():
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = _ensure_pool().getconn()
     conn.autocommit = False
     return conn
+
+
+def release_connection(conn) -> None:
+    if conn is not None:
+        _ensure_pool().putconn(conn)
 
 
 def init_db():
@@ -84,7 +99,12 @@ def init_db():
     cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_extracted_at TIMESTAMP;")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_tier ON articles(tier);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_duplicate_of ON articles(duplicate_of);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);")
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_articles_tier_published "
+        "ON articles(tier, published_at DESC) WHERE duplicate_of IS NULL;"
+    )
+    cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS geo_feed_health (
@@ -174,7 +194,7 @@ def init_db():
     """)
     conn.commit()
     cur.close()
-    conn.close()
+    release_connection(conn)
     logger.info("PostgreSQL database initialized")
 
 
@@ -184,7 +204,7 @@ def get_total_count():
     cur.execute("SELECT COUNT(*) FROM articles")
     count = cur.fetchone()[0]
     cur.close()
-    conn.close()
+    release_connection(conn)
     return count
 
 
@@ -215,7 +235,7 @@ def insert_geo_article(article):
         return row[0] if row else None
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_recent_geo_articles(since):
@@ -229,7 +249,7 @@ def get_recent_geo_articles(since):
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -250,7 +270,7 @@ def get_geo_articles(tier=None, dedup_only=True, limit=500):
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -275,7 +295,7 @@ def record_geo_seen_links(rows, seen_at):
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def count_geo_seen_articles(start, end):
@@ -289,7 +309,7 @@ def count_geo_seen_articles(start, end):
     )
     count = cur.fetchone()[0]
     cur.close()
-    conn.close()
+    release_connection(conn)
     return count
 
 
@@ -306,7 +326,7 @@ def count_geo_ingested_articles(start, end):
     )
     count = cur.fetchone()[0]
     cur.close()
-    conn.close()
+    release_connection(conn)
     return count
 
 
@@ -339,7 +359,7 @@ def count_articles_pending_nlp(model_version, start=None, end=None, reprocess=Fa
     )
     count = int(cur.fetchone()[0])
     cur.close()
-    conn.close()
+    release_connection(conn)
     return count
 
 
@@ -357,7 +377,7 @@ def list_tier_article_days() -> list[date]:
         val = row[0]
         days.append(val if isinstance(val, date) else date.fromisoformat(str(val)))
     cur.close()
-    conn.close()
+    release_connection(conn)
     return days
 
 
@@ -380,7 +400,7 @@ def get_gpr_articles(start, end):
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -408,7 +428,7 @@ def get_articles_pending_nlp(limit, model_version, start=None, end=None, reproce
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -433,7 +453,7 @@ def update_article_nlp(article_id, fields):
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def upsert_geo_feed_health(source_code, success, error=None, now=None):
@@ -462,7 +482,7 @@ def upsert_geo_feed_health(source_code, success, error=None, now=None):
         )
     conn.commit()
     cur.close()
-    conn.close()
+    release_connection(conn)
 
 
 def get_geo_feed_health():
@@ -471,7 +491,7 @@ def get_geo_feed_health():
     cur.execute("SELECT * FROM geo_feed_health")
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return {row["source_code"]: dict(row) for row in rows}
 
 
@@ -485,7 +505,7 @@ def log_geo_cycle_stats(run_at, tier, source_code, fetched, ingested, discarded)
     )
     conn.commit()
     cur.close()
-    conn.close()
+    release_connection(conn)
 
 
 def get_geo_cycle_stats(limit=100):
@@ -494,7 +514,7 @@ def get_geo_cycle_stats(limit=100):
     cur.execute("SELECT * FROM geo_cycle_stats ORDER BY run_at DESC LIMIT %s", (limit,))
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -525,7 +545,7 @@ def upsert_gpr_daily(rows):
         return len(rows)
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def delete_gpr_daily_before(cutoff) -> int:
@@ -535,7 +555,7 @@ def delete_gpr_daily_before(cutoff) -> int:
     deleted = cur.rowcount
     conn.commit()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return deleted
 
 
@@ -546,7 +566,7 @@ def delete_corridor_daily_before(cutoff) -> int:
     deleted = cur.rowcount
     conn.commit()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return deleted
 
 
@@ -561,7 +581,7 @@ def get_gpr_current():
     )
     row = cur.fetchone()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return dict(row) if row else None
 
 
@@ -583,7 +603,7 @@ def get_gpr_history(start=None, end=None, limit=500):
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -622,7 +642,7 @@ def upsert_corridor_daily(rows):
         return len(rows)
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_corridors_latest():
@@ -635,7 +655,7 @@ def get_corridors_latest():
     latest = cur.fetchone()["latest"]
     if not latest:
         cur.close()
-        conn.close()
+        release_connection(conn)
         return None, []
     cur.execute(
         """SELECT corridor, corridor_name, corridor_risk, corridor_risk_7ma,
@@ -643,12 +663,12 @@ def get_corridors_latest():
                   raw_ratio, corridor_hit_count, gpr_sum, energy_exposure,
                   goods_exposure, score_status, date
            FROM corridor_daily WHERE date = %s
-           ORDER BY corridor_risk DESC NULLS LAST, corridor ASC""",
+           ORDER BY COALESCE(corridor_risk_7ma, corridor_risk) DESC NULLS LAST, corridor ASC""",
         (latest,),
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return latest, [dict(row) for row in rows]
 
 
@@ -671,7 +691,7 @@ def get_corridor_history(corridor_id, start=None, end=None, limit=500):
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -714,7 +734,7 @@ def get_recent_news(
     cur.execute(
         f"""SELECT id, title, source, link, published_at, scraped_at, tier,
                    nlp_themes, nlp_locations, nlp_tone_neg, nlp_tone_polarity,
-                   confidence, matched_keywords
+                   confidence, matched_keywords, image_url
             FROM articles
             WHERE {' AND '.join(clauses)}
             ORDER BY COALESCE(published_at, scraped_at) DESC NULLS LAST
@@ -723,7 +743,7 @@ def get_recent_news(
     )
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    release_connection(conn)
     return [dict(row) for row in rows]
 
 
@@ -742,7 +762,7 @@ def upsert_dual_signal(as_of, payload):
         conn.commit()
     finally:
         cur.close()
-        conn.close()
+        release_connection(conn)
 
 
 def get_dual_signal(as_of=None):
@@ -754,7 +774,7 @@ def get_dual_signal(as_of=None):
         cur.execute("SELECT as_of, payload FROM dual_signal_daily ORDER BY as_of DESC LIMIT 1")
     row = cur.fetchone()
     cur.close()
-    conn.close()
+    release_connection(conn)
     if not row:
         return None
     payload = row["payload"]
@@ -773,7 +793,7 @@ def log_pipeline_run(stage, status, details=None):
     )
     conn.commit()
     cur.close()
-    conn.close()
+    release_connection(conn)
 
 
 def get_last_pipeline_run(stage):
@@ -786,10 +806,65 @@ def get_last_pipeline_run(stage):
     )
     row = cur.fetchone()
     cur.close()
-    conn.close()
+    release_connection(conn)
     if not row:
         return None
     return dict(row)
+
+
+def get_health_snapshot() -> dict:
+    """Single-query health summary for /health and page bundles."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT
+               (SELECT COUNT(*) FROM articles) AS total_articles,
+               (SELECT MAX(date) FROM gpr_daily) AS gpr_latest_date,
+               (SELECT MAX(date) FROM corridor_daily) AS corridor_latest_date,
+               (SELECT MAX(COALESCE(published_at, scraped_at)) FROM articles
+                WHERE tier IS NOT NULL AND duplicate_of IS NULL) AS news_latest_at"""
+    )
+    row = cur.fetchone()
+    cur.close()
+    release_connection(conn)
+    return {
+        "total_articles": row[0] or 0,
+        "gpr_latest_date": row[1].isoformat() if row[1] else None,
+        "corridor_latest_date": row[2].isoformat() if row[2] else None,
+        "news_latest_at": row[3].isoformat() if row[3] and hasattr(row[3], "isoformat") else row[3],
+    }
+
+
+def list_articles_missing_image(limit: int = 20) -> list[dict]:
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT id, link FROM articles
+           WHERE tier IS NOT NULL AND duplicate_of IS NULL
+             AND link IS NOT NULL AND link <> ''
+             AND (image_url IS NULL OR image_url = '')
+           ORDER BY COALESCE(published_at, scraped_at) DESC NULLS LAST
+           LIMIT %s""",
+        (limit,),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    release_connection(conn)
+    return rows
+
+
+def update_article_image_url(article_id: int, image_url: str | None) -> None:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE articles SET image_url = %s WHERE id = %s",
+            (image_url, article_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        release_connection(conn)
 
 
 def _should_run_init_db() -> bool:

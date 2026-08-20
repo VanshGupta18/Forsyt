@@ -1,59 +1,47 @@
-import { useEffect, useState } from 'react'
-import logo from '../assets/forsyt-logo.png'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import ForsytLogo from './ForsytLogo'
 import { fetchHealth } from '../lib/api'
+import { queryKeys } from '../lib/queryClient'
 
 export default function Footer() {
-  const [healthy, setHealthy] = useState<boolean | null>(null)
+  const { data: health } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: fetchHealth,
+    staleTime: 2 * 60_000,
+  })
 
-  useEffect(() => {
-    fetchHealth()
-      .then((h) => setHealthy(h.status === 'healthy'))
-      .catch(() => setHealthy(false))
-  }, [])
+  const healthy = health ? health.status === 'healthy' : null
+
+  const statusLabel =
+    healthy === null ? 'Checking data feed…' : healthy ? 'Data feed live' : 'Data feed degraded'
 
   return (
-    <footer className="relative bg-surface-container-lowest border-t border-white/5 py-stack-lg">
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-      <div className="px-margin-page max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-center gap-stack-md">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <img alt="FORSYT Logo" className="h-8 w-auto" src={logo} />
-            <span className="font-headline-md text-on-surface">FORSYT</span>
-          </div>
-          <p className="font-body-md text-on-surface-variant">
-            © 2026 FORSYT Intelligence. Empowering sovereign decision-making.
+    <footer className="app-footer corridor-page border-t border-[var(--chrome-border)] bg-[var(--chrome-bg)]">
+      <div className="max-w-container-max mx-auto px-margin-page py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link to="/" className="shrink-0 hover:opacity-80 transition-opacity">
+            <ForsytLogo variant="mark" />
+          </Link>
+          <p className="text-[11px] text-corridor-muted leading-snug truncate">
+            © 2026 Forsyt · Not trading or shipping advice
           </p>
-          <div className="flex items-center gap-2">
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-corridor-muted sm:justify-end">
+          <Link to="/quality" className="hover:text-white transition-colors">
+            Quality
+          </Link>
+          <span className="flex items-center gap-1.5">
             <span
-              className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                healthy === false ? 'bg-error' : healthy ? 'bg-secondary shadow-[0_0_6px_1px_rgba(78,222,163,0.6)]' : 'bg-gray-500'
+              className={`w-1.5 h-1.5 shrink-0 ${
+                healthy === false ? 'bg-corridor-alert' : healthy ? 'bg-corridor-clear' : 'bg-corridor-muted'
               }`}
             />
-            <span className="font-label-md text-[11px] text-on-surface-variant uppercase tracking-wider">
-              {healthy === null ? 'Checking API…' : healthy ? 'All systems operational' : 'API degraded — start Flask on :5001'}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-8 justify-center border-t border-white/5 pt-6">
-          {['Privacy Policy', 'Terms of Service', 'Security Architecture', 'Contact Support'].map((label) => (
-            <a
-              key={label}
-              className="relative font-body-md text-on-surface-variant hover:text-primary transition-colors after:absolute after:left-0 after:-bottom-1 after:h-px after:w-0 after:bg-primary after:transition-all after:duration-300 hover:after:w-full"
-              href="#"
-            >
-              {label}
-            </a>
-          ))}
+            {statusLabel}
+          </span>
         </div>
       </div>
-      <div
-        aria-hidden
-        className="mt-stack-lg h-3 w-full opacity-40"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.08) 10px, transparent 10px, transparent 20px)',
-        }}
-      />
     </footer>
   )
 }

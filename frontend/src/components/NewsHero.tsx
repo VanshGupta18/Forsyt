@@ -11,7 +11,7 @@ type Props = {
 }
 
 export default function NewsHero({ article }: Props) {
-  const { src, onImageError } = useArticleImage(article.link)
+  const { src, onImageError } = useArticleImage(article.link, article.image_url)
   const topic = articleTopicLabel(article)
   const isHot = article.tier === 1
 

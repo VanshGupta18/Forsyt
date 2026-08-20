@@ -43,6 +43,25 @@ python main.py reprocess --start-date 2025-01-01 --end-date 2025-12-31
 
 From repo root: `python gpr_index/main.py validate ...`
 
+## GDELT warmup (2026, local only)
+
+Mature GPR/corridor **7MA and baselines** by backfilling **2026-01-01 → 2026-08-08** with global GKG, then merging with `india_processed_*` from **2026-08-09** onward:
+
+```bash
+# from repo root
+python -m news_dataset.pipeline.gdelt_warmup --slot-step 4
+python gpr_index/main.py merge-processed
+```
+
+Merged symlinks: `data/index_processed/`. Set `GPR_INDEX_PROCESSED_DIR` to that path for scoring; hourly CI keeps `india_processed/` only (do **not** set `GPR_INDEX_PROCESSED_DIR` in GitHub Actions unless intentionally running warmup).
+
+### Score semantics after warmup
+
+- **Jan 1 – Aug 8 (GKG warmup):** internal calibration only — builds corridor hit-days and GKG-scale baselines. Not synced to Postgres or shown in the UI.
+- **Aug 9+ (India news):** product scores use an **India-only baseline**; 100 = average India-news stress day. Split-era normalization prevents GKG article volume from compressing India-era levels.
+- **7MA / corridor_risk_7ma:** rolling averages computed only on product-era rows (not across the Aug 8→9 boundary).
+- **Cloud hourly jobs** score `india_processed/` only — split-era applies locally when the merged dir is used.
+
 ## Outputs
 
 | File | Contents |
@@ -68,3 +87,4 @@ From repo root: `python gpr_index/main.py validate ...`
 | `scripts/fill_gpr_gaps.py` | Caldara imputation for missing calendar days |
 | `scripts/diagnose_gpr_scoring.py` | Sample scoring diagnostics |
 | `scripts/plot_gpr.py` | Charts |
+| `scripts/merge_processed_dirs.py` | Symlink GKG warmup + India parquets into `index_processed/` |

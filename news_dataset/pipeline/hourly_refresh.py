@@ -27,6 +27,36 @@ STAGE = "platform_refresh"
 NLP_BATCH = int(os.environ.get("PLATFORM_REFRESH_NLP_BATCH", "200"))
 
 
+def _warm_api_caches() -> dict:
+    """Precompute quality report cache and resolve missing article images."""
+    details: dict = {}
+    try:
+        from news_dataset.api.metrics_service import warm_quality_report_cache
+
+        warm_quality_report_cache(refresh=False)
+        details["quality_cache"] = "ok"
+    except Exception as exc:
+        details["quality_cache_error"] = str(exc)
+
+    resolved = 0
+    try:
+        from news_dataset.api.link_preview import resolve_news_image
+
+        for row in db.list_articles_missing_image(limit=20):
+            try:
+                image_url = resolve_news_image(row["link"])
+                db.update_article_image_url(row["id"], image_url)
+                if image_url:
+                    resolved += 1
+            except Exception:
+                continue
+        details["images_resolved"] = resolved
+    except Exception as exc:
+        details["image_warm_error"] = str(exc)
+
+    return details
+
+
 def run_platform_refresh(*, skip_nlp: bool = False, skip_dual_signal: bool = False) -> dict:
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -57,12 +87,15 @@ def run_platform_refresh(*, skip_nlp: bool = False, skip_dual_signal: bool = Fal
         except Exception as exc:
             details[f"export_{day.isoformat()}_error"] = str(exc)
 
-    run_gpr_range(INDIA_GPR_INDEX_START, today)
+    dirty = [d for d in (yesterday, today) if d >= INDIA_GPR_INDEX_START]
+    run_gpr_range(INDIA_GPR_INDEX_START, today, dirty_days=dirty or None)
     counts = sync_all()
     details["sync"] = counts
 
     if not skip_dual_signal:
         details["dual_signal_as_of"] = refresh_dual_signal()
+
+    details["api_cache_warm"] = _warm_api_caches()
 
     details["completed_at"] = datetime_now_iso()
     db.log_pipeline_run(STAGE, "ok", details)

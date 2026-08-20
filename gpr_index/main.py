@@ -11,6 +11,7 @@ Pipeline:
   validate-corridors → corridor specificity, coverage, parity, and summary
   plot        → outputs/plots/
   reprocess   → rebuild index from existing daily CSV
+  merge-processed → symlink gkg + india parquets into index_processed/
 
 Quickstart (2025):
   cd gpr_index
@@ -44,6 +45,7 @@ COMMANDS: dict[str, str] = {
     "validate-corridors": "scripts.validate_corridors",
     "plot":        "scripts.plot_gpr",
     "reprocess":   "scripts.gkg_gpr_pipeline",
+    "merge-processed": "scripts.merge_processed_dirs",
 }
 
 COMMAND_ENTRYPOINTS = {

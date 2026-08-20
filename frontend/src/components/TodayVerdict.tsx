@@ -1,8 +1,8 @@
 import {
   stressQuadrantId,
+  titleAccent,
   todayVerdict,
   verdictToneClass,
-  type TodayVerdictTone,
 } from '../lib/macroCopy'
 
 type Props = {
@@ -11,13 +11,6 @@ type Props = {
   volUnavailable?: boolean
   stressRegime?: string | null
   loading?: boolean
-}
-
-function titleAccent(tone: TodayVerdictTone): string {
-  if (tone === 'alert') return 'text-corridor-alert'
-  if (tone === 'watch') return 'text-corridor-watch'
-  if (tone === 'clear') return 'text-corridor-clear'
-  return 'text-corridor-muted'
 }
 
 export default function TodayVerdict({

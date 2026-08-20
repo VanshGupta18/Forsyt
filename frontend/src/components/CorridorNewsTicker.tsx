@@ -43,7 +43,7 @@ function TickerItem({
 
   return (
     <article className="flex flex-col shrink-0 w-[220px] gap-2 px-3">
-      <NewsArticleImage link={link || undefined} variant="ticker" className={imageBg} />
+      <NewsArticleImage link={link || undefined} imageUrl={article.image_url} variant="ticker" className={imageBg} />
       <a
         href={link || undefined}
         target="_blank"

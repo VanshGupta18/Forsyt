@@ -13,7 +13,7 @@ function isUsableImageUrl(url: string): boolean {
   }
 }
 
-export function useArticleImage(link?: string): {
+export function useArticleImage(link?: string, imageUrl?: string | null): {
   src: string | null
   failed: boolean
   onImageError: () => void
@@ -22,6 +22,12 @@ export function useArticleImage(link?: string): {
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
+    if (imageUrl && isUsableImageUrl(imageUrl)) {
+      setSrc(imageUrl)
+      setFailed(false)
+      return
+    }
+
     if (!link) {
       setSrc(null)
       setFailed(false)
@@ -45,7 +51,7 @@ export function useArticleImage(link?: string): {
     return () => {
       cancelled = true
     }
-  }, [link])
+  }, [link, imageUrl])
 
   const onImageError = useCallback(() => {
     setFailed(true)

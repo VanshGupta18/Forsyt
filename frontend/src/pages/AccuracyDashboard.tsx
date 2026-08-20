@@ -1,372 +1,200 @@
-import { useCallback, useEffect, useState } from 'react'
-import Reveal from '../components/Reveal'
+import { useCallback, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import LoadingSkeleton from '../components/LoadingSkeleton'
-import { fetchAccuracyMetrics, fetchDualSignal, type AccuracyMetricsPayload, type DualSignalPayload } from '../lib/api'
+import DataArchitectureDiagram from '../components/quality/DataArchitectureDiagram'
+import HeadlineTrustCards from '../components/quality/HeadlineTrustCards'
+import LiveStatusStrip from '../components/quality/LiveStatusStrip'
+import MethodologyPipeline from '../components/quality/MethodologyPipeline'
+import QualityCheckTable from '../components/quality/QualityCheckTable'
+import StaleDataBanner from '../components/quality/StaleDataBanner'
+import ValidationSummaryBar from '../components/quality/ValidationSummaryBar'
+import ValidationVizPanel from '../components/quality/ValidationVizPanel'
+import { fetchPageQuality } from '../lib/api'
+import { queryKeys } from '../lib/queryClient'
+import {
+  QUALITY_EYEBROW,
+  QUALITY_SUBTITLE,
+  QUALITY_TITLE,
+  SECTION_HOW_BUILT,
+  SECTION_HOW_BUILT_SUB,
+  SECTION_TECHNICAL,
+  SECTION_TECHNICAL_SUB,
+  TOGGLE_HIDE_TECHNICAL,
+  TOGGLE_SHOW_TECHNICAL,
+  qualityStatusLine,
+} from '../lib/qualityCopy'
 
-function MetricCard({
-  label,
-  value,
-  sub,
-  pass,
+function FeedHealthTable({
+  feedHealth,
 }: {
-  label: string
-  value: string
-  sub?: string
-  pass?: boolean | null
+  feedHealth: Record<
+    string,
+    { consecutive_failures?: number; last_success?: string | null; last_error?: string | null }
+  >
 }) {
+  const [open, setOpen] = useState(false)
+  const entries = Object.entries(feedHealth)
+  if (!entries.length) return null
+
   return (
-    <div className="glass-panel rounded-xl p-5 flex flex-col gap-1 min-w-[140px]">
-      <span className="text-xs text-gray-400 uppercase tracking-wide">{label}</span>
-      <span className={`text-2xl font-bold ${pass === true ? 'text-[#10B981]' : pass === false ? 'text-[#EF4444]' : 'text-white'}`}>
-        {value}
-      </span>
-      {sub && <span className="text-xs text-gray-500">{sub}</span>}
+    <div className="corridor-panel overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-4 py-3 text-left corridor-btn bg-transparent hover:bg-[#111111]"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span className="corridor-kicker">News feed details ({entries.length})</span>
+        <span className="material-symbols-outlined text-corridor-muted text-lg">
+          {open ? 'expand_less' : 'expand_more'}
+        </span>
+      </button>
+      {open && (
+        <div className="overflow-x-auto border-t border-white/5">
+          <table className="w-full text-sm min-w-[480px]">
+            <thead className="text-corridor-muted border-b border-white/10">
+              <tr>
+                <th className="text-left p-3 font-medium">Source</th>
+                <th className="text-left p-3 font-medium">Failures</th>
+                <th className="text-left p-3 font-medium">Last success</th>
+                <th className="text-left p-3 font-medium">Last error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map(([name, h]) => (
+                <tr key={name} className="border-b border-white/5">
+                  <td className="p-3 text-white">{name}</td>
+                  <td
+                    className={`p-3 corridor-score ${(h.consecutive_failures ?? 0) > 0 ? 'text-corridor-alert' : 'text-corridor-clear'}`}
+                  >
+                    {h.consecutive_failures ?? 0}
+                  </td>
+                  <td className="p-3 text-corridor-muted text-xs">
+                    {h.last_success ? new Date(h.last_success).toLocaleString() : '—'}
+                  </td>
+                  <td className="p-3 text-corridor-muted text-xs truncate max-w-xs">{h.last_error ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
 
-function PassBadge({ pass }: { pass?: boolean | null }) {
-  if (pass == null) return null
-  return (
-    <span
-      className={`text-xs px-2 py-0.5 rounded font-medium ${
-        pass ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
-      }`}
-    >
-      {pass ? 'PASS' : 'FAIL'}
-    </span>
-  )
-}
-
 export default function AccuracyDashboard() {
-  const [data, setData] = useState<AccuracyMetricsPayload | null>(null)
-  const [dual, setDual] = useState<DualSignalPayload | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [refreshingVol, setRefreshingVol] = useState(false)
+  const queryClient = useQueryClient()
+  const [refreshing, setRefreshing] = useState(false)
+  const [technicalOpen, setTechnicalOpen] = useState(false)
 
-  const load = useCallback((refreshVol = false) => {
-    if (refreshVol) setRefreshingVol(true)
-    else setLoading(true)
-    setError(null)
-    fetchAccuracyMetrics(refreshVol)
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => {
-        setLoading(false)
-        setRefreshingVol(false)
-      })
-  }, [])
+  const { data, error, isLoading, refetch, isError } = useQuery({
+    queryKey: queryKeys.quality(false),
+    queryFn: () => fetchPageQuality(false),
+    refetchOnMount: 'always',
+  })
 
-  useEffect(() => {
-    load(false)
-    fetchDualSignal(false)
-      .then(setDual)
-      .catch(() => undefined)
-  }, [load])
-
-  const drivingMeta = dual?.driving_events_meta
-
-  const ing = data?.ingestion
-  const nlp = data?.nlp
-  const gpr = data?.gpr_index
-  const corridors = data?.corridors
-  const vol = data?.nifty_volatility
+  const load = useCallback(
+    (refresh = false) => {
+      if (refresh) {
+        setRefreshing(true)
+        fetchPageQuality(true)
+          .then((report) => {
+            queryClient.setQueryData(queryKeys.quality(false), report)
+          })
+          .finally(() => setRefreshing(false))
+      } else {
+        void refetch()
+      }
+    },
+    [queryClient, refetch],
+  )
 
   return (
-    <div className="flex-grow max-w-[1600px] mx-auto w-full px-6 py-8 flex flex-col gap-8">
-      <Reveal>
-        <section className="space-y-3">
-          <span className="eyebrow-badge">
-            <span className="eyebrow-dot" />
-            Platform Quality
-          </span>
-          <h1 className="text-4xl font-bold text-white">Accuracy & Validation Metrics</h1>
-          <p className="text-gray-400 max-w-3xl">
-            Live pipeline health plus offline benchmarks for news ingestion, NLP tagging, GPR index, trade corridors, and NIFTY volatility models.
+    <div className="corridor-page max-w-container-max mx-auto px-margin-page py-stack-lg flex flex-col gap-stack-lg">
+      <section className="space-y-4 max-w-3xl">
+        <span className="eyebrow-badge">
+          <span className="eyebrow-dot" />
+          {QUALITY_EYEBROW}
+        </span>
+        <h1 className="corridor-display font-headline-lg text-headline-lg">{QUALITY_TITLE}</h1>
+        <p className="font-body-md text-corridor-muted">{QUALITY_SUBTITLE}</p>
+        {data && (
+          <p className="text-xs text-corridor-muted">
+            {qualityStatusLine(data.as_of.gpr_latest_date, data.as_of.pipeline_last_run)}
+            {data.report_meta?.live_gpr_source && ` · source: ${data.report_meta.live_gpr_source}`}
+            {' · '}
+            Generated {new Date(data.generated_at).toLocaleString()}
           </p>
-          {data?.generated_at && (
-            <p className="text-xs text-gray-500">Generated {new Date(data.generated_at).toLocaleString()}</p>
-          )}
-        </section>
-      </Reveal>
+        )}
+      </section>
 
-      {error && <ApiErrorBanner message={error} onRetry={() => load(false)} />}
-      {loading && !data && <LoadingSkeleton lines={4} />}
+      {isError && !data && error instanceof Error && (
+        <ApiErrorBanner
+          message={`Could not load quality report (${error.message}). If you just restarted the API, retry now.`}
+          onRetry={() => void refetch()}
+        />
+      )}
+      {isLoading && !data && <LoadingSkeleton lines={4} />}
 
       {data && (
         <>
-          <Reveal>
-            <section className="space-y-4">
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-lg">rss_feed</span>
-                News Ingestion
-              </h2>
-              <p className="text-sm text-gray-500">{ing?.description}</p>
-              <div className="flex flex-wrap gap-4">
-                <MetricCard label="Total articles" value={String(ing?.total_articles ?? '—')} />
-                <MetricCard label="Geo-tier articles" value={String(ing?.tier_articles ?? '—')} />
-                <MetricCard
-                  label="7d ingest yield"
-                  value={ing?.ingest_yield_7d_pct != null ? `${ing.ingest_yield_7d_pct}%` : '—'}
-                  sub={ing?.fetched_7d ? `${ing.ingested_7d}/${ing.fetched_7d} articles` : undefined}
-                />
-                <MetricCard
-                  label="Sources healthy"
-                  value={ing?.sources_total ? `${ing.sources_healthy}/${ing.sources_total}` : '—'}
-                  sub={ing?.sources_unhealthy ? `${ing.sources_unhealthy} failing` : 'All OK'}
-                  pass={ing?.sources_unhealthy === 0 ? true : ing?.sources_unhealthy ? false : null}
-                />
-                <MetricCard
-                  label="GPR index days"
-                  value={String(ing?.gpr_index_days ?? '—')}
-                  sub={ing?.gpr_latest_date ? `Latest: ${ing.gpr_latest_date}` : undefined}
-                />
-              </div>
-              {ing?.feed_health && Object.keys(ing.feed_health).length > 0 && (
-                <div className="glass-panel rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="text-gray-400 border-b border-white/10">
-                      <tr>
-                        <th className="text-left p-3 font-medium">Source</th>
-                        <th className="text-left p-3 font-medium">Failures</th>
-                        <th className="text-left p-3 font-medium">Last success</th>
-                        <th className="text-left p-3 font-medium">Last error</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(ing.feed_health).map(([name, h]) => (
-                        <tr key={name} className="border-b border-white/5">
-                          <td className="p-3 text-white">{name}</td>
-                          <td className={`p-3 ${(h.consecutive_failures ?? 0) > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-                            {h.consecutive_failures ?? 0}
-                          </td>
-                          <td className="p-3 text-gray-400">{h.last_success ? new Date(h.last_success).toLocaleString() : '—'}</td>
-                          <td className="p-3 text-gray-500 truncate max-w-xs">{h.last_error ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          </Reveal>
+          {data.report_meta && <StaleDataBanner reportMeta={data.report_meta} />}
+          <ValidationSummaryBar summary={data.summary} />
+          <LiveStatusStrip data={data} />
+          <HeadlineTrustCards checks={data.checks} summary={data.summary} />
 
-          <Reveal>
-            <section className="space-y-4">
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-lg">label</span>
-                NLP Tagging
-              </h2>
-              <p className="text-sm text-gray-500">{nlp?.description}</p>
-              <div className="flex flex-wrap gap-4">
-                <MetricCard
-                  label="NLP coverage"
-                  value={nlp?.coverage_pct != null ? `${nlp.coverage_pct}%` : '—'}
-                  sub={`${nlp?.nlp_complete ?? 0} / ${nlp?.tier_articles ?? 0} tier articles`}
-                  pass={nlp?.coverage_pct != null ? nlp.coverage_pct >= 95 : null}
-                />
-                <MetricCard label="Pending NLP" value={String(nlp?.nlp_pending ?? '—')} />
-                <MetricCard
-                  label="Corridor fixtures"
-                  value={
-                    nlp?.corridor_tagging?.pass_rate_pct != null
-                      ? `${nlp.corridor_tagging.pass_rate_pct}%`
-                      : '—'
-                  }
-                  sub={
-                    nlp?.corridor_tagging
-                      ? `${nlp.corridor_tagging.passed}/${nlp.corridor_tagging.total} labelled cases`
-                      : undefined
-                  }
-                  pass={
-                    nlp?.corridor_tagging?.pass_rate_pct != null
-                      ? nlp.corridor_tagging.pass_rate_pct === 100
-                      : null
-                  }
-                />
-              </div>
-              {nlp?.corridor_tagging?.cases && (
-                <div className="flex flex-wrap gap-2">
-                  {nlp.corridor_tagging.cases.map((c) => (
-                    <span
-                      key={c.label}
-                      className={`text-xs px-2 py-1 rounded border ${
-                        c.pass ? 'border-[#10B981]/30 text-[#10B981]' : 'border-[#EF4444]/30 text-[#EF4444]'
-                      }`}
-                    >
-                      {c.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </section>
-          </Reveal>
+          <section className="space-y-4">
+            <div>
+              <span className="corridor-kicker">{SECTION_HOW_BUILT}</span>
+              <p className="text-sm text-corridor-muted mt-1">{SECTION_HOW_BUILT_SUB}</p>
+            </div>
+            <MethodologyPipeline />
+            <DataArchitectureDiagram />
+          </section>
 
-          <Reveal>
-            <section className="space-y-4">
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-lg">show_chart</span>
-                GPR Index Benchmark
-              </h2>
-              <p className="text-sm text-gray-500">{gpr?.description}</p>
-              <div className="flex flex-wrap gap-4 items-start">
-                <MetricCard
-                  label="Caldara MA30 r"
-                  value={gpr?.caldara_ma30_r != null ? String(gpr.caldara_ma30_r) : '—'}
-                  sub={`Target ${gpr?.target_r ?? 0.5}`}
-                  pass={gpr?.caldara_ma30_pass}
-                />
-              </div>
-              {gpr?.benchmarks && (
-                <div className="glass-panel rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="text-gray-400 border-b border-white/10">
-                      <tr>
-                        <th className="text-left p-3">Comparison</th>
-                        <th className="text-left p-3">Pearson r</th>
-                        <th className="text-left p-3">Days</th>
-                        <th className="text-left p-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {gpr.benchmarks.map((b) => (
-                        <tr key={b.comparison} className="border-b border-white/5">
-                          <td className="p-3 text-white">{b.comparison}</td>
-                          <td className="p-3">{b.pearson_r ?? '—'}</td>
-                          <td className="p-3 text-gray-400">{b.days_overlap}</td>
-                          <td className="p-3">
-                            <PassBadge pass={b.pass} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          </Reveal>
+          <section className="space-y-4 border-t border-white/5 pt-6">
+            <button
+              type="button"
+              className="corridor-btn px-4 py-2.5 text-sm flex items-center gap-2"
+              onClick={() => setTechnicalOpen((o) => !o)}
+              aria-expanded={technicalOpen}
+            >
+              {technicalOpen ? TOGGLE_HIDE_TECHNICAL : TOGGLE_SHOW_TECHNICAL}
+              <span className="material-symbols-outlined text-base">
+                {technicalOpen ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
 
-          <Reveal>
-            <section className="space-y-4">
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-lg">route</span>
-                Trade Corridors
-              </h2>
-              <p className="text-sm text-gray-500">{corridors?.description}</p>
-              <div className="flex flex-wrap gap-4">
-                <MetricCard
-                  label="Parent leakage check"
-                  value={
-                    corridors?.parent_leakage_pass_rate_pct != null
-                      ? `${corridors.parent_leakage_pass_rate_pct}%`
-                      : '—'
-                  }
-                  sub={`${corridors?.parent_leakage_passed}/${corridors?.corridors_validated} corridors`}
-                  pass={
-                    corridors?.parent_leakage_pass_rate_pct != null
-                      ? corridors.parent_leakage_pass_rate_pct === 100
-                      : null
-                  }
-                />
-              </div>
-              {corridors?.corridors && corridors.corridors.length > 0 && (
-                <div className="glass-panel rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="text-gray-400 border-b border-white/10">
-                      <tr>
-                        <th className="text-left p-3">Corridor</th>
-                        <th className="text-left p-3">Parent correlation</th>
-                        <th className="text-left p-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {corridors.corridors.map((c) => (
-                        <tr key={c.corridor} className="border-b border-white/5">
-                          <td className="p-3 text-white">{c.corridor}</td>
-                          <td className="p-3">{c.parent_correlation}</td>
-                          <td className="p-3">
-                            <PassBadge pass={c.pass} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          </Reveal>
-
-          <Reveal>
-            <section className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
+            {technicalOpen && (
+              <div className="space-y-6 pt-2">
                 <div>
-                  <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-lg">candlestick_chart</span>
-                    NIFTY Volatility Model
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">{vol?.description}</p>
+                  <span className="corridor-kicker">{SECTION_TECHNICAL}</span>
+                  <p className="text-sm text-corridor-muted mt-1">{SECTION_TECHNICAL_SUB}</p>
+                  {data.report_meta?.validation_artifacts_as_of && (
+                    <p className="text-xs text-corridor-muted mt-1">
+                      Offline benchmarks last run{' '}
+                      {new Date(data.report_meta.validation_artifacts_as_of).toLocaleString()}
+                    </p>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => load(true)}
-                  disabled={refreshingVol}
-                  className="text-xs px-3 py-1.5 rounded border border-white/20 hover:bg-white/5 disabled:opacity-50"
-                >
-                  {refreshingVol ? 'Running backtest…' : 'Recompute vol backtest'}
-                </button>
+                <ValidationVizPanel checks={data.checks} summary={data.summary} />
+                <QualityCheckTable checks={data.checks} onRefresh={() => load(true)} refreshing={refreshing} />
+                {data.pipeline.ingestion?.feed_health &&
+                  Object.keys(data.pipeline.ingestion.feed_health).length > 0 && (
+                    <FeedHealthTable feedHealth={data.pipeline.ingestion.feed_health} />
+                  )}
               </div>
-              <div className="flex flex-wrap gap-4">
-                <MetricCard
-                  label="Market-only ROC-AUC"
-                  value={vol?.market_only_roc_auc != null ? String(vol.market_only_roc_auc) : '—'}
-                  sub={`${vol?.horizon_days ?? 5}d HIGH_VOL horizon`}
-                />
-                <MetricCard
-                  label="Market + GPR ROC-AUC"
-                  value={vol?.market_plus_gpr_roc_auc != null ? String(vol.market_plus_gpr_roc_auc) : '—'}
-                />
-                <MetricCard
-                  label="GPR incremental AUC"
-                  value={
-                    vol?.gpr_incremental_roc_auc != null
-                      ? `${vol.gpr_incremental_roc_auc > 0 ? '+' : ''}${vol.gpr_incremental_roc_auc}`
-                      : '—'
-                  }
-                  sub={vol?.note}
-                  pass={vol?.gpr_incremental_roc_auc != null ? vol.gpr_incremental_roc_auc > 0 : null}
-                />
-              </div>
-              {vol?.source && (
-                <p className="text-xs text-gray-500">Source: {vol.source.replace(/_/g, ' ')}</p>
-              )}
-            </section>
-          </Reveal>
+            )}
+          </section>
 
-          {drivingMeta && (
-            <Reveal>
-              <section className="glass-panel rounded-xl p-6 space-y-4">
-                <h2 className="text-lg font-semibold text-white">Stress monitor driving headlines</h2>
-                <p className="text-sm text-gray-500">Filter QA from latest dual-signal payload</p>
-                <div className="flex flex-wrap gap-4">
-                  <MetricCard label="Candidates scanned" value={String(drivingMeta.candidates_scanned ?? '—')} />
-                  <MetricCard label="Geo + market pass" value={String(drivingMeta.geo_market_pass ?? '—')} />
-                  <MetricCard label="Geo-only fallback" value={String(drivingMeta.geo_only_pass ?? '—')} />
-                  <MetricCard label="Returned" value={String(drivingMeta.returned ?? '—')} />
-                  <MetricCard
-                    label="Gate B relaxed"
-                    value={drivingMeta.gate_b_relaxed ? 'Yes' : 'No'}
-                    pass={drivingMeta.gate_b_relaxed ? false : true}
-                  />
-                </div>
-              </section>
-            </Reveal>
-          )}
-
-          {data.disclaimer && (
-            <p className="text-xs text-gray-600 border-t border-white/5 pt-6">{data.disclaimer}</p>
-          )}
+          <footer className="border-t border-white/5 pt-6 space-y-2">
+            <p className="text-xs text-corridor-muted">{data.disclaimer}</p>
+            <p className="text-xs text-corridor-muted/70">
+              Validation artifacts: gpr_index/outputs/validation/
+            </p>
+          </footer>
         </>
       )}
     </div>

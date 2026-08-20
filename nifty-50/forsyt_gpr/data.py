@@ -17,6 +17,7 @@ India index is ready, wrap it with `as_gpr_frame()` and every model, backtest
 and figure in this package works unchanged.
 """
 from __future__ import annotations
+import functools
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -42,6 +43,9 @@ def as_gpr_frame(df: pd.DataFrame, gpr="gpr", threats=None, acts=None,
     for name, col in [("gpr_threats", threats), ("gpr_acts", acts), ("gpr_oil", oil)]:
         if col is not None:
             out[name] = pd.to_numeric(df[col], errors="coerce").values
+    for extra in ("gpr_7ma", "gpr_30ma"):
+        if extra in df.columns:
+            out[extra] = pd.to_numeric(df[extra], errors="coerce").values
     out = out[~out.index.duplicated(keep="last")].sort_index()
     validate_gpr_frame(out)
     return out
@@ -93,6 +97,7 @@ def load_country_gpr_monthly(country="India") -> pd.DataFrame:
     return out
 
 
+@functools.lru_cache(maxsize=8)
 def load_price(name: str) -> pd.Series:
     """Cached daily close series (see data/)."""
     df = pd.read_csv(DATA / f"{name}.csv")

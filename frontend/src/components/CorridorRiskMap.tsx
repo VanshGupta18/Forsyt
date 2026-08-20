@@ -7,14 +7,15 @@ import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from 'd3-zoom'
 import countries110m from 'world-atlas/countries-110m.json'
 import {
-  CORRIDOR_CATEGORIES,
-  CORRIDOR_PATHS,
+  categoryForCorridor,
   corridorMatchesCategory,
   corridorRiskColor,
+  corridorRouteKeys,
+  corridorWaypoints,
   INDIA,
   type CorridorMapCategory,
 } from '../lib/corridorGeo'
-import { corridorOperationalRisk, formatCorridorName, type CorridorRow } from '../lib/api'
+import { corridorOperationalRisk, formatCorridorName, type CorridorRow, type CorridorsPayload } from '../lib/api'
 import { businessTierLabel, displayStressScore, tierAccentColor } from '../lib/corridorCopy'
 
 const WIDTH = 1000
@@ -80,11 +81,13 @@ type RouteEntry = {
 
 export default function CorridorRiskMap({
   corridors,
+  metadata,
   selected,
   category = 'all',
   onSelect,
 }: {
   corridors: CorridorRow[]
+  metadata?: CorridorsPayload['metadata']
   selected: string | null
   category?: CorridorMapCategory
   onSelect: (key: string) => void
@@ -147,13 +150,14 @@ export default function CorridorRiskMap({
     select(svg).call(behavior.transform, zoomIdentity)
   }
 
-  const routeEntries: RouteEntry[] = Object.entries(CORRIDOR_PATHS)
-    .filter(([key]) => corridorMatchesCategory(key, category))
-    .map(([key, path]) => {
+  const routeEntries: RouteEntry[] = corridorRouteKeys(metadata)
+    .filter((key) => corridorMatchesCategory(metadata, key, category))
+    .map((key) => {
       const row = corridors.find((c) => c.corridor?.toLowerCase() === key)
       const risk = row ? corridorOperationalRisk(row) : 0
       const hasData = Boolean(row)
-      const { d, points } = pathFromWaypoints(path.waypoints)
+      const waypoints = corridorWaypoints(metadata, key)
+      const { d, points } = pathFromWaypoints(waypoints)
       const midIdx = Math.floor(points.length / 2)
       const midpoint = points[midIdx] ?? points[0]
       return {
@@ -163,8 +167,8 @@ export default function CorridorRiskMap({
         d,
         color: corridorRiskColor(risk),
         points,
-        waypoints: path.waypoints,
-        category: CORRIDOR_CATEGORIES[key] ?? 'sea',
+        waypoints,
+        category: categoryForCorridor(metadata, key, row?.category),
         midpoint,
       }
     })

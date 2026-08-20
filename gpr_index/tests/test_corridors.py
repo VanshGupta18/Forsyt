@@ -6,7 +6,7 @@ import unittest
 
 import pandas as pd
 
-from gpr_index.scripts.corridors import CORRIDOR_PLACES, CORRIDORS, tag_corridors
+from gpr_index.scripts.corridors import CORRIDOR_GEO, CORRIDOR_PLACES, CORRIDORS, corridor_metadata, tag_corridors
 from news_dataset.nlp.locations import extract_locations
 
 
@@ -73,6 +73,15 @@ class CorridorTaggerTests(unittest.TestCase):
     def test_empty_and_malformed_input(self) -> None:
         self.assertEqual(tag_corridors(""), [])
         self.assertEqual(tag_corridors("not-a-location"), [])
+
+    def test_corridor_geo_covers_registry(self) -> None:
+        self.assertEqual(set(CORRIDOR_GEO.keys()), set(CORRIDORS.keys()))
+        meta = corridor_metadata()
+        for corridor_id in CORRIDORS:
+            entry = meta[corridor_id]
+            self.assertIn("centroid", entry)
+            self.assertIn("waypoints", entry)
+            self.assertGreaterEqual(len(entry["waypoints"]), 2)
 
 
 if __name__ == "__main__":

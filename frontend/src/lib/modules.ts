@@ -11,6 +11,7 @@ export const modules: {
   icon: string
   tier: ModuleTier
   kicker: string
+  navLabel: string
 }[] = [
   {
     to: '/news',
@@ -19,6 +20,7 @@ export const modules: {
     icon: 'newspaper',
     tier: 'core',
     kicker: 'Headlines',
+    navLabel: 'News',
   },
   {
     to: '/macroeconomics',
@@ -27,6 +29,7 @@ export const modules: {
     icon: 'bar_chart',
     tier: 'core',
     kicker: 'Markets',
+    navLabel: 'Markets',
   },
   {
     to: '/trade-corridor',
@@ -35,6 +38,7 @@ export const modules: {
     icon: 'directions_boat',
     tier: 'core',
     kicker: 'Routes',
+    navLabel: 'Corridors',
   },
   {
     to: '/portfolio-exposure',
@@ -44,6 +48,7 @@ export const modules: {
     icon: 'deployed_code',
     tier: 'advanced',
     kicker: 'Advanced',
+    navLabel: 'Portfolio',
   },
   {
     to: '/quality',
@@ -53,5 +58,8 @@ export const modules: {
     icon: 'verified',
     tier: 'advanced',
     kicker: 'Advanced',
+    navLabel: 'Quality',
   },
 ]
+
+export const MAIN_NAV = modules.map(({ to, navLabel }) => ({ to, label: navLabel }))

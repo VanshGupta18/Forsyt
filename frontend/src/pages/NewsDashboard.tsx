@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import CorridorNewsTicker from '../components/CorridorNewsTicker'
@@ -11,11 +12,11 @@ import NewsSidebar from '../components/NewsSidebar'
 import NewsThemeNav from '../components/NewsThemeNav'
 import {
   fetchEventsFeed,
-  fetchGprCurrent,
-  fetchPlatformStatus,
+  fetchPageNews,
   type GprCurrent,
   type NewsArticle,
 } from '../lib/api'
+import { queryKeys } from '../lib/queryClient'
 import {
   NEWS_EYEBROW,
   NEWS_FEED_TITLE,
@@ -51,6 +52,26 @@ export default function NewsDashboard() {
   const [refreshing, setRefreshing] = useState(false)
   const [pipelineRunAt, setPipelineRunAt] = useState<string | null>(null)
 
+  const hasFilters = Boolean(theme.trim() || tier || corridor.trim())
+
+  const { data: bundle } = useQuery({
+    queryKey: queryKeys.news(50),
+    queryFn: () => fetchPageNews(50),
+    refetchInterval: NEWS_POLL_MS,
+    enabled: !hasFilters,
+  })
+
+  useEffect(() => {
+    if (!bundle || hasFilters) return
+    setArticles(bundle.events ?? [])
+    setGprIndex(bundle.gpr_current?.gpr_index ?? null)
+    setGpr7ma(bundle.gpr_current?.gpr_7ma ?? null)
+    setGpr30ma(bundle.gpr_current?.gpr_30ma ?? null)
+    setGprDate(bundle.gpr_current?.date ?? null)
+    setPipelineRunAt(bundle.status?.last_pipeline_runs?.platform_refresh?.run_at ?? null)
+    setLoading(false)
+  }, [bundle, hasFilters])
+
   const syncUrl = useCallback(
     (nextTheme: string, nextCorridor: string) => {
       const params = new URLSearchParams()
@@ -62,27 +83,30 @@ export default function NewsDashboard() {
   )
 
   const loadFeed = useCallback(() => {
-    setLoading(true)
+    if (!articles.length) setLoading(true)
     setFeedError(null)
     fetchEventsFeed({
       limit: 40,
       theme: theme.trim() || undefined,
       tier: tier || undefined,
       corridor: corridor.trim() || undefined,
+      tagged_only: true,
     })
       .then((payload) => setArticles(payload.events ?? []))
       .catch((err: Error) => setFeedError(err.message))
       .finally(() => setLoading(false))
-  }, [theme, tier, corridor])
+  }, [theme, tier, corridor, articles.length])
 
   useEffect(() => {
+    if (!hasFilters) return
     loadFeed()
-  }, [loadFeed])
+  }, [hasFilters, loadFeed])
 
   useEffect(() => {
+    if (!hasFilters) return
     const id = window.setInterval(loadFeed, NEWS_POLL_MS)
     return () => window.clearInterval(id)
-  }, [loadFeed])
+  }, [hasFilters, loadFeed])
 
   const applyGpr = (gpr: GprCurrent) => {
     setGprIndex(gpr.gpr_index ?? null)
@@ -91,24 +115,23 @@ export default function NewsDashboard() {
     setGprDate(gpr.date ?? null)
   }
 
-  useEffect(() => {
-    fetchGprCurrent()
-      .then(applyGpr)
-      .catch(() => undefined)
-  }, [])
-
-  useEffect(() => {
-    const refreshStatus = () => {
-      fetchPlatformStatus()
-        .then((status) => {
-          setPipelineRunAt(status.last_pipeline_runs?.platform_refresh?.run_at ?? null)
+  const handleRefresh = () => {
+    setRefreshing(true)
+    if (hasFilters) {
+      loadFeed()
+    } else {
+      setLoading(!articles.length)
+      fetchPageNews(50)
+        .then((payload) => {
+          setArticles(payload.events ?? [])
+          applyGpr(payload.gpr_current ?? {})
+          setPipelineRunAt(payload.status?.last_pipeline_runs?.platform_refresh?.run_at ?? null)
         })
-        .catch(() => undefined)
+        .catch((err: Error) => setFeedError(err.message))
+        .finally(() => setLoading(false))
     }
-    refreshStatus()
-    const id = window.setInterval(refreshStatus, NEWS_POLL_MS)
-    return () => window.clearInterval(id)
-  }, [])
+    setTimeout(() => setRefreshing(false), 600)
+  }
 
   const hero = useMemo(() => pickHeroArticle(articles), [articles])
   const topStories = useMemo(() => {
@@ -121,15 +144,6 @@ export default function NewsDashboard() {
 
   const tierOneCount = articles.filter((a) => a.tier === 1).length
   const topTheme = dominantTheme(articles)
-
-  const handleRefresh = () => {
-    setRefreshing(true)
-    loadFeed()
-    fetchGprCurrent()
-      .then(applyGpr)
-      .catch(() => undefined)
-    setTimeout(() => setRefreshing(false), 600)
-  }
 
   const handleThemeChange = (next: string) => {
     setTheme(next)
@@ -145,14 +159,8 @@ export default function NewsDashboard() {
     <div className="news-page corridor-page max-w-container-max mx-auto px-margin-page space-y-4 pb-10">
       <header className="flex flex-wrap items-start justify-between gap-4 pt-8">
         <div className="space-y-2 max-w-2xl">
-          <span
-            className="eyebrow-badge"
-            style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.85)' }}
-          >
-            <span
-              className="eyebrow-dot"
-              style={{ background: '#ffffff', boxShadow: '0 0 8px 2px rgba(255,255,255,0.25)' }}
-            />
+          <span className="eyebrow-badge">
+            <span className="eyebrow-dot" />
             {NEWS_EYEBROW}
           </span>
           <h1 className="corridor-display font-headline-lg text-headline-lg">{NEWS_PAGE_TITLE}</h1>
@@ -210,6 +218,7 @@ export default function NewsDashboard() {
                 gprDate={gprDate}
                 gpr7ma={gpr7ma}
                 gpr30ma={gpr30ma}
+                gprHistory={bundle?.gpr_history?.history ?? []}
               />
             </>
           )}

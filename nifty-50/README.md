@@ -13,7 +13,7 @@
 Wire via `GET /api/market/dual-signal` (see repo root [`docs/PRODUCT.md`](../docs/PRODUCT.md)).
 
 **Headline finding:** GPR adds no OOS forecasting value for NIFTY vol over market-only
-(ROC-AUC ~0.831 vs ~0.815 with GPR). Recompute via `GET /api/metrics/accuracy?refresh_vol=1`
+(ROC-AUC ~0.831 vs ~0.815 with GPR). Recompute via `GET /api/pages/quality?refresh=1`
 or run `vol_model.run_vol_experiment()` directly.
 
 ## Setup
@@ -33,7 +33,7 @@ python -m news_dataset.pipeline.daily_index
 |---|---|
 | GPR vs Caldara | `python gpr_index/scripts/validate_gpr.py` |
 | NIFTY vol walk-forward | `nifty-50/forsyt_gpr/vol_model.py` |
-| Live accuracy metrics | `/quality` or `/api/metrics/accuracy` |
+| Live accuracy metrics | `/quality` or `/api/pages/quality` |
 
 ## Input data (`data/`)
 

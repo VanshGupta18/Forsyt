@@ -399,7 +399,19 @@ body {
   --corridor-accent-clear: #00c853;
   --corridor-focus: rgba(255, 255, 255, 0.25);
   --corridor-radius: 0;
+  --chrome-bg: #0a0a0a;
+  --chrome-border: rgba(255, 255, 255, 0.1);
+  --chrome-muted: #737373;
+  --logo-accent: #ffffff;
   color: var(--corridor-text);
+}
+
+:root {
+  --chrome-height: 3rem;
+}
+
+body[data-home-chrome='true'] {
+  --chrome-height: 5.25rem;
 }
 
 .corridor-page .corridor-display {
@@ -467,6 +479,15 @@ body {
   background: #222222;
 }
 
+.corridor-page .corridor-btn-primary {
+  background: #ffffff;
+  color: #0a0a0a;
+}
+.corridor-page .corridor-btn-primary:hover {
+  background: rgba(255, 255, 255, 0.9);
+  color: #0a0a0a;
+}
+
 .corridor-page .corridor-alert-banner {
   background: #1a0a0a;
   border: none;
@@ -478,7 +499,14 @@ body {
 }
 
 .corridor-page .eyebrow-badge {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.85);
   border: none;
+}
+
+.corridor-page .eyebrow-dot {
+  background: #ffffff;
+  box-shadow: 0 0 8px 2px rgba(255, 255, 255, 0.25);
 }
 
 .corridor-page .text-corridor-muted {
@@ -531,6 +559,62 @@ body {
   }
 }
 
+/* Platform Quality — NERAI-inspired hub, heatmap, flow animations */
+@keyframes quality-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.35); }
+}
+
+@keyframes quality-flow-dot {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes quality-arch-flow {
+  0% { left: 0%; opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+
+@keyframes quality-heatmap-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 0.85; transform: scale(1); }
+}
+
+.corridor-page .quality-flow-dot {
+  animation: quality-flow-dot 2.4s ease-in-out infinite;
+}
+
+.corridor-page .quality-flow-node {
+  animation: quality-pulse 3s ease-in-out infinite;
+}
+
+.corridor-page .quality-arch-dot {
+  animation: quality-arch-flow 2.5s linear infinite;
+}
+
+.corridor-page .quality-heatmap-cell {
+  animation: quality-heatmap-in 0.4s ease-out backwards;
+}
+
+.corridor-page .quality-method-card {
+  transition: border-color 0.2s, background 0.2s;
+}
+.corridor-page .quality-method-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #0d0d0d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .corridor-page .quality-flow-dot,
+  .corridor-page .quality-flow-node,
+  .corridor-page .quality-arch-dot,
+  .corridor-page .quality-heatmap-cell {
+    animation: none;
+  }
+}
+
 /* Macro page — inherits corridor-page utilities via dual class */
 .macro-page.corridor-page {
   --macro-nifty-accent: var(--color-primary, #adc6ff);
@@ -558,11 +642,16 @@ body {
   border-left: 2px solid var(--corridor-accent-alert);
 }
 
-.macro-page .macro-chart-shell {
-  background: #0a0a0a;
+.macro-page .macro-chart-shell,
+.corridor-page .macro-chart-shell {
+  background: transparent;
   border: none;
   border-radius: 0;
   overflow: hidden;
+}
+
+.corridor-panel .macro-chart-shell {
+  background: transparent;
 }
 
 /* News Intelligence — editorial hybrid on corridor system */
@@ -592,6 +681,21 @@ body {
   background: rgba(255, 255, 255, 0.15);
 }
 
+.news-page .news-pulse-track .corridor-panel {
+  background: transparent;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.news-page .news-pulse-track a.corridor-panel:hover {
+  background: transparent;
+}
+
+.news-risk-stat {
+  padding: 0.5rem 0 0.5rem 0.75rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .corridor-page .home-pulse-track {
   overflow-x: auto;
   scrollbar-width: thin;
@@ -604,6 +708,132 @@ body {
 
 .corridor-page .home-pulse-track::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
+}
+
+.app-chrome-ticker {
+  width: 100%;
+}
+
+/* App chrome — corridor nav active state via aria-current */
+.app-header .corridor-tab[aria-current='page'] {
+  border-bottom-color: #ffffff;
+  color: #ffffff;
+}
+
+.app-header nav .corridor-tab {
+  white-space: nowrap;
+}
+
+/* Hero fills first viewport below chrome — modules appear on scroll */
+.home-hero-intro {
+  min-height: calc(100dvh - var(--chrome-height));
+  padding-block: 2rem;
+  display: flex;
+  align-items: center;
+}
+
+.home-hero-intro .home-hero-cluster {
+  width: 100%;
+}
+
+.home-hero-globe {
+  position: relative;
+}
+
+.home-hero-globe::before {
+  content: '';
+  position: absolute;
+  inset: 10%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-hero-globe > * {
+  position: relative;
+  z-index: 1;
+}
+
+.home-hero-stats {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.home-hero-stats .corridor-panel {
+  background: transparent;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.home-hero-stats .corridor-panel:hover,
+.home-hero-stats a.corridor-panel:hover {
+  background: transparent;
+}
+
+.home-hero-stats::-webkit-scrollbar {
+  height: 4px;
+}
+
+.home-hero-stats::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.home-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--corridor-muted);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.home-hero-cta:hover {
+  color: #0a0a0a;
+  background: #ffffff;
+}
+
+.home-modules-section {
+  scroll-margin-top: var(--chrome-height);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-chrome-ticker .animate-marquee {
+    animation: none;
+  }
+
+  .app-chrome-ticker-track {
+    overflow-x: auto;
+    width: 100%;
+    max-width: var(--spacing-container-max, 90rem);
+    margin-inline: auto;
+    padding-inline: var(--spacing-margin-page, 2rem);
+  }
+}
+
+.corridor-page .macro-pulse-track {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.corridor-page .macro-pulse-track::-webkit-scrollbar {
+  height: 4px;
+}
+
+.corridor-page .macro-pulse-track::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.corridor-page .macro-pulse-card-selected {
+  border-left: 3px solid var(--color-primary, #adc6ff);
 }
 
 .news-stories-scroll {

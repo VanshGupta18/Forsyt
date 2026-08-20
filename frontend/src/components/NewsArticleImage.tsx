@@ -12,6 +12,7 @@ const VARIANT_CLASS: Record<NewsArticleImageVariant, string> = {
 
 type Props = {
   link?: string
+  imageUrl?: string | null
   variant?: NewsArticleImageVariant
   className?: string
   loading?: 'lazy' | 'eager'
@@ -19,11 +20,12 @@ type Props = {
 
 export default function NewsArticleImage({
   link,
+  imageUrl,
   variant = 'thumb',
   className = '',
   loading = 'lazy',
 }: Props) {
-  const { src, onImageError } = useArticleImage(link)
+  const { src, onImageError } = useArticleImage(link, imageUrl)
   const shellClass = `${VARIANT_CLASS[variant]} ${className}`.trim()
 
   return (

@@ -89,7 +89,7 @@ def check_statistical_properties(daily_df: pd.DataFrame, use_lag1_autocorr: bool
         ac_pass = lambda v: v > 0.50
 
     checks = [
-        ("mean",             gpr.mean(),        "100 (by construction)",  lambda v: True),
+        ("mean",             gpr.mean(),        "90–110 (product era)",   lambda v: 90 <= v <= 110),
         ("std",              gpr.std(),          "35–70",                  lambda v: 35 <= v <= 70),
         ("skewness",         float(gpr.skew()),  "> 0.5",                  lambda v: v > 0.5),
         ("p01",              gpr.quantile(0.01), "> 0",                    lambda v: v > 0),
@@ -587,6 +587,15 @@ def run(
         (daily_df_for_stats["date"] >= pd.to_datetime(start_date)) &
         (daily_df_for_stats["date"] <= pd.to_datetime(end_date))
     ]
+
+    from .paths import INDIA_GPR_INDEX_START
+    from .split_era import should_split_era
+
+    if should_split_era(daily_df, start_date):
+        product_mask = daily_df_for_stats["date"] >= pd.Timestamp(INDIA_GPR_INDEX_START)
+        if product_mask.any():
+            daily_df_for_stats = daily_df_for_stats[product_mask]
+            stat_df_source += f" (product era >= {INDIA_GPR_INDEX_START.isoformat()})"
 
     n_days = (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days + 1
     use_lag1 = n_days < 1000  # paper lag-90 target requires multi-year history

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchGprHistory, type GprHistoryPoint } from '../lib/api'
+import { useEffect, useRef, useState } from 'react'
+import type { GprHistoryPoint } from '../lib/api'
 import {
   CHART_PALETTE,
   DEFAULT_PADDING,
@@ -55,6 +55,8 @@ type Props = {
   period?: GprChartPeriod
   compact?: boolean
   fill?: boolean
+  history: GprHistoryPoint[]
+  indexDays?: number | null
   onRangeNote?: (note: string | null) => void
 }
 
@@ -74,6 +76,7 @@ function drawGprChart(
   history: GprHistoryPoint[],
   hoverIndex: number | null,
   height: number,
+  indexDays?: number | null,
 ) {
   const setup = setupCanvas(canvas, height)
   if (!setup) return
@@ -96,11 +99,12 @@ function drawGprChart(
   const hasMa7 = ma7.some(Number.isFinite)
   const hasMa30 = ma30.some(Number.isFinite)
 
+  const showBaselineLine = indexDays == null || indexDays >= 30
   const allVals = [
     ...gprVals,
     ...(hasMa7 ? ma7.filter(Number.isFinite) : []),
     ...(hasMa30 ? ma30.filter(Number.isFinite) : []),
-    100,
+    ...(showBaselineLine ? [100] : []),
   ]
   const yMin = Math.min(...allVals) * 0.92
   const yMax = Math.max(...allVals) * 1.08
@@ -112,7 +116,11 @@ function drawGprChart(
   const gprPoints = plotSeries(gprVals, width, height, pad, yMin, yMax)
   const baselineY = pad.top + (height - pad.top - pad.bottom)
 
-  if (gprVals.some((v) => v <= 100) && gprVals.some((v) => v >= 100)) {
+  if (
+    showBaselineLine &&
+    gprVals.some((v) => v <= 100) &&
+    gprVals.some((v) => v >= 100)
+  ) {
     const refY =
       pad.top +
       (height - pad.top - pad.bottom) -
@@ -183,13 +191,12 @@ export default function GprHistoryChart({
   period,
   compact = false,
   fill = false,
+  history,
+  indexDays,
   onRangeNote,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [history, setHistory] = useState<GprHistoryPoint[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [fillHeight, setFillHeight] = useState(FILL_MIN_HEIGHT)
 
@@ -208,15 +215,6 @@ export default function GprHistoryChart({
       ? (((Number(latest.gpr_index) - Number(first.gpr_index)) / Number(first.gpr_index)) * 100).toFixed(1)
       : null
 
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    fetchGprHistory(800)
-      .then((payload) => setHistory(payload.history ?? []))
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [])
-
   useEffect(() => {
     if (!onRangeNote) return
     if (!period || !fullRows.length) {
@@ -231,10 +229,6 @@ export default function GprHistoryChart({
       onRangeNote(null)
     }
   }, [period, rows.length, fullRows, onRangeNote])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   useEffect(() => {
     if (!fill) return
@@ -254,14 +248,14 @@ export default function GprHistoryChart({
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || loading || error) return
+    if (!canvas || !history.length) return
 
-    const render = () => drawGprChart(canvas, filtered, hoverIndex, chartHeight)
+    const render = () => drawGprChart(canvas, filtered, hoverIndex, chartHeight, indexDays)
     render()
     const observer = new ResizeObserver(render)
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [filtered, error, loading, hoverIndex, chartHeight])
+  }, [filtered, history.length, hoverIndex, chartHeight, indexDays])
 
   const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const canvas = canvasRef.current
@@ -279,7 +273,7 @@ export default function GprHistoryChart({
 
   return (
     <div className={fill ? `flex flex-col flex-1 min-h-0 h-full ${className}` : className}>
-      {!isCorridor && !loading && !error && rows.length > 0 && (
+      {!isCorridor && rows.length > 0 && (
         <div className="flex flex-wrap gap-4 mb-3 text-xs">
           <div>
             <span className="text-gray-500 uppercase tracking-wide">Latest</span>
@@ -323,21 +317,12 @@ export default function GprHistoryChart({
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
-        {loading && (
+        {!rows.length && (
           <div className="flex items-center justify-center h-full text-sm text-gray-500">
-            Loading GPR history…
+            No GPR history yet
           </div>
         )}
-        {!loading && error && (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-sm text-gray-400 px-4 text-center">
-            <span>Failed to load GPR history</span>
-            <span className="text-xs text-gray-500">{error}</span>
-            <button type="button" onClick={load} className="text-xs px-3 py-1 rounded border border-white/20 hover:bg-white/5">
-              Retry
-            </button>
-          </div>
-        )}
-        {!loading && !error && (
+        {rows.length > 0 && (
           <>
             <canvas ref={canvasRef} className="w-full h-full" />
             {hoverRow && hoverIndex != null && (
@@ -358,7 +343,7 @@ export default function GprHistoryChart({
         )}
       </div>
 
-      {!loading && !error && rows.length > 0 && !compact && (
+      {rows.length > 0 && !compact && (
         <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-corridor-muted">
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-corridor-alert inline-block" /> GPR</span>
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-primary inline-block" /> 7-day MA</span>

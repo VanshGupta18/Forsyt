@@ -404,10 +404,6 @@ export function formatDateLong(iso: string): string {
   return d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function formatPrice(value: number): string {
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 0 })
-}
-
 export function pctChange(first: number, last: number): number {
   if (!first) return 0
   return ((last - first) / first) * 100

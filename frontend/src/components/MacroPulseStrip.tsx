@@ -1,19 +1,26 @@
-import { MARKET_SYMBOL_ORDER, orderMarketQuotes, type MarketQuote } from '../lib/api'
+import { MARKET_SYMBOL_ORDER, orderMarketQuotes, type MarketHistoryPayload, type MarketQuote } from '../lib/api'
 import {
   computeTransmission,
   transmissionToneClass,
   whatChangedLine,
 } from '../lib/macroCopy'
-import MacroPulseCard from './MacroPulseCard'
+import PulseCard from './PulseCard'
 
 type Props = {
   quotes: MarketQuote[]
   loading?: boolean
   geoChange7d?: number | null
   indexDays?: number | null
+  marketHistories?: Record<string, MarketHistoryPayload>
 }
 
-export default function MacroPulseStrip({ quotes, loading, geoChange7d, indexDays }: Props) {
+export default function MacroPulseStrip({
+  quotes,
+  loading,
+  geoChange7d,
+  indexDays,
+  marketHistories,
+}: Props) {
   const ordered = orderMarketQuotes(quotes)
   const transmission = computeTransmission(
     quotes.map((q) => ({ key: q.key, change_pct: q.change_pct })),
@@ -30,11 +37,13 @@ export default function MacroPulseStrip({ quotes, loading, geoChange7d, indexDay
         {MARKET_SYMBOL_ORDER.map((key) => {
           const quote = ordered.find((q) => q.key === key)
           return (
-            <MacroPulseCard
+            <PulseCard
               key={key}
+              variant="market"
               quote={quote}
               loading={loading}
               selected={key === 'nifty'}
+              history={marketHistories?.[key]}
             />
           )
         })}

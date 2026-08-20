@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchMarketHistory, type MarketHistoryPayload } from '../lib/api'
+import type { MarketHistoryPayload } from '../lib/api'
+import { formatPrice } from '../lib/api'
 import {
   CHART_PALETTE,
   DEFAULT_PADDING,
@@ -9,7 +10,6 @@ import {
   drawXLabels,
   formatDateLong,
   formatDateShort,
-  formatPrice,
   nearestIndex,
   pctChange,
   plotSeries,
@@ -17,8 +17,28 @@ import {
   yAxisTicks,
 } from '../lib/chartCanvas'
 
+const PERIOD_DAYS: Record<string, number> = {
+  '1mo': 31,
+  '3mo': 92,
+  '6mo': 183,
+  '1y': 366,
+}
+
+function filterByPeriod(points: Array<{ date: string; close: number }>, period: string) {
+  if (!points.length) return points
+  const days = PERIOD_DAYS[period] ?? PERIOD_DAYS['3mo']
+  const last = points[points.length - 1]?.date
+  if (!last) return points
+  const end = new Date(`${last}T00:00:00`)
+  if (Number.isNaN(end.getTime())) return points
+  const start = new Date(end)
+  start.setDate(start.getDate() - days)
+  const startIso = start.toISOString().slice(0, 10)
+  return points.filter((p) => p.date >= startIso)
+}
+
 type Props = {
-  symbol?: string
+  data: MarketHistoryPayload | null | undefined
   period?: string
   height?: number
   title?: string
@@ -27,7 +47,7 @@ type Props = {
 }
 
 export default function MarketSparkline({
-  symbol = 'nifty',
+  data,
   period = '3mo',
   height = 280,
   title,
@@ -35,21 +55,9 @@ export default function MarketSparkline({
   variant = 'default',
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [data, setData] = useState<MarketHistoryPayload | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchMarketHistory(symbol, period)
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [symbol, period])
-
-  const points = data?.points ?? []
+  const points = filterByPeriod(data?.points ?? [], period)
   const closes = points.map((p) => p.close)
   const first = closes[0]
   const last = closes[closes.length - 1]
@@ -107,7 +115,7 @@ export default function MarketSparkline({
       ctx.fillStyle = CHART_PALETTE.white
       ctx.font = '600 13px Inter, sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillText(title ?? `${symbol.toUpperCase()} · ${period}`, pad.left, 18)
+      ctx.fillText(title ?? `NIFTY · ${period}`, pad.left, 18)
       ctx.restore()
     }
 
@@ -115,7 +123,7 @@ export default function MarketSparkline({
     const observer = new ResizeObserver(render)
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [data, height, hoverIndex, points, closes, up, symbol, period, title])
+  }, [data, height, hoverIndex, points, closes, up, period, title])
 
   const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const canvas = canvasRef.current
@@ -127,20 +135,19 @@ export default function MarketSparkline({
   }
 
   const hoverPoint = hoverIndex != null ? points[hoverIndex] : points[points.length - 1]
-
   const isCorridor = variant === 'corridor'
 
-  if (error) {
-    return <p className="text-xs text-corridor-watch">{error}</p>
+  if (!data) {
+    return <p className="text-xs text-corridor-muted">Market history unavailable</p>
   }
 
   return (
     <div className={className}>
-      {!isCorridor && !loading && points.length > 0 && (
+      {!isCorridor && points.length > 0 && (
         <div className="flex flex-wrap gap-5 mb-3 text-xs">
           <div>
             <span className="text-gray-500 uppercase tracking-wide">Last</span>
-            <div className="text-white font-semibold text-lg">{formatPrice(last)}</div>
+            <div className="text-white font-semibold text-lg">{formatPrice(last ?? 0)}</div>
           </div>
           {change != null && (
             <div>
@@ -171,13 +178,10 @@ export default function MarketSparkline({
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
-        {loading && (
-          <div className="flex items-center justify-center h-full text-sm text-gray-500">Loading chart…</div>
-        )}
-        {!loading && !points.length && (
+        {!points.length && (
           <div className="flex items-center justify-center h-full text-sm text-gray-500">No market history</div>
         )}
-        {!loading && points.length > 0 && (
+        {points.length > 0 && (
           <>
             <canvas ref={canvasRef} className="w-full h-full" />
             {hoverPoint && hoverIndex != null && (
@@ -190,7 +194,7 @@ export default function MarketSparkline({
         )}
       </div>
 
-      {data?.stale && <p className="text-[10px] text-[#f59e0b] mt-2">Cached / stale data</p>}
+      {data.stale && <p className="text-[10px] text-[#f59e0b] mt-2">Cached / stale data</p>}
     </div>
   )
 }

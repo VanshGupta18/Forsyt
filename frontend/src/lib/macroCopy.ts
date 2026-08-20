@@ -231,6 +231,19 @@ export function verdictToneClass(tone: TodayVerdictTone): string {
   return 'border-white/15 bg-[#0d0d0d]'
 }
 
+export function titleAccent(tone: TodayVerdictTone, mutedClass = 'text-corridor-muted'): string {
+  if (tone === 'alert') return 'text-corridor-alert'
+  if (tone === 'watch') return 'text-corridor-watch'
+  if (tone === 'clear') return 'text-corridor-clear'
+  return mutedClass
+}
+
+export function changeClass(pct: number): string {
+  if (pct > 0) return 'text-corridor-clear'
+  if (pct < 0) return 'text-corridor-alert'
+  return 'text-corridor-muted'
+}
+
 export function corridorPlainEnglish(corridorId?: string | null): string {
   const id = (corridorId ?? '').toLowerCase()
   const lines: Record<string, string> = {

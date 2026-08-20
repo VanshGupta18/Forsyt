@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -31,6 +31,10 @@ ALT_TICKERS: dict[str, list[str]] = {
 }
 
 PERIODS = frozenset({"1mo", "3mo", "6mo", "1y"})
+
+MARKET_SYMBOL_ORDER = list(SYMBOLS.keys())
+
+NSE_KEYS = frozenset({"nifty", "sensex", "india_vix"})
 
 _cache: dict[str, dict] = {}
 _yf = None
@@ -104,6 +108,49 @@ def _nifty_from_csv() -> dict | None:
         return None
 
 
+def _now_ist() -> datetime:
+    return datetime.now(IST)
+
+
+def _nse_session_open() -> bool:
+    now = _now_ist()
+    if now.weekday() >= 5:
+        return False
+    t = now.time()
+    return time(9, 15) <= t <= time(15, 30)
+
+
+def _hist_as_date(hist: pd.DataFrame) -> date | None:
+    if hist.empty:
+        return None
+    ts = hist.index[-1]
+    if hasattr(ts, "date"):
+        return ts.date()
+    try:
+        return datetime.strptime(str(ts)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _finalize_quote(quote: dict, key: str) -> dict:
+    as_of_str = quote.get("as_of") or ""
+    try:
+        as_of_d = datetime.strptime(as_of_str[:10], "%Y-%m-%d").date()
+    except ValueError:
+        quote["stale"] = True
+        return quote
+
+    today = _now_ist().date()
+    if key in NSE_KEYS:
+        if _nse_session_open():
+            quote["stale"] = as_of_d < today
+        else:
+            quote["stale"] = today > as_of_d
+    else:
+        quote["stale"] = (today - as_of_d).days >= 1
+    return quote
+
+
 def _tickers_for_key(key: str) -> list[str]:
     meta = SYMBOLS[key]
     alts = ALT_TICKERS.get(key, [])
@@ -150,11 +197,31 @@ def _quote_from_history(key: str, meta: dict, hist: pd.DataFrame, *, source: str
     }
 
 
-def _quote_from_fast_info(key: str, meta: dict, ticker: str) -> dict | None:
+def _fast_info_as_of(info, daily: pd.DataFrame) -> str:
+    for attr in ("regularMarketTime", "lastMarketTime"):
+        ts = info.get(attr)
+        if ts:
+            try:
+                return datetime.fromtimestamp(int(ts), tz=IST).strftime("%Y-%m-%d")
+            except (TypeError, ValueError, OSError):
+                pass
+    daily_date = _hist_as_date(daily)
+    if daily_date is not None:
+        return daily_date.strftime("%Y-%m-%d")
+    return _now_ist().strftime("%Y-%m-%d")
+
+
+def _quote_from_fast_info(
+    key: str,
+    meta: dict,
+    ticker: str,
+    daily: pd.DataFrame | None = None,
+) -> dict | None:
     yf = _get_yfinance()
     if yf is None:
         return None
 
+    daily = daily if daily is not None else pd.DataFrame()
     try:
         info = yf.Ticker(ticker).fast_info
         price = info.get("lastPrice") or info.get("regularMarketPrice")
@@ -172,7 +239,7 @@ def _quote_from_fast_info(key: str, meta: dict, ticker: str) -> dict | None:
             "change": round(change, 2),
             "change_pct": round(change_pct, 2),
             "currency": meta["currency"],
-            "as_of": datetime.now(IST).strftime("%Y-%m-%d"),
+            "as_of": _fast_info_as_of(info, daily),
             "stale": False,
             "source": "yfinance",
         }
@@ -181,25 +248,76 @@ def _quote_from_fast_info(key: str, meta: dict, ticker: str) -> dict | None:
         return None
 
 
+def _fetch_daily_history(yf, ticker: str, batch_frame: pd.DataFrame | None) -> pd.DataFrame:
+    hist = _history_for_ticker(batch_frame, ticker) if batch_frame is not None else pd.DataFrame()
+    if not hist.empty and "Close" in hist.columns:
+        return hist
+    try:
+        hist = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True)
+    except Exception as exc:
+        logger.debug("daily history failed for %s: %s", ticker, exc)
+        return pd.DataFrame()
+    return hist if not hist.empty and "Close" in hist.columns else pd.DataFrame()
+
+
+def _fetch_live_history(yf, ticker: str, key: str, daily: pd.DataFrame) -> pd.DataFrame:
+    if key in NSE_KEYS and _nse_session_open():
+        try:
+            hist = yf.Ticker(ticker).history(period="1d", interval="5m", auto_adjust=True)
+            if not hist.empty and "Close" in hist.columns:
+                return hist
+        except Exception as exc:
+            logger.debug("intraday history failed for %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+    daily_date = _hist_as_date(daily)
+    today = _now_ist().date()
+    if daily_date is not None and (today - daily_date).days < 1:
+        return pd.DataFrame()
+
+    try:
+        hist = yf.Ticker(ticker).history(period="5d", interval="1h", auto_adjust=True)
+    except Exception as exc:
+        logger.debug("hourly history failed for %s: %s", ticker, exc)
+        return pd.DataFrame()
+    return hist if not hist.empty and "Close" in hist.columns else pd.DataFrame()
+
+
+def _should_prefer_fast(fast: dict, daily: pd.DataFrame, key: str) -> bool:
+    if key in NSE_KEYS:
+        return _nse_session_open()
+    if daily.empty:
+        return True
+    daily_date = _hist_as_date(daily)
+    if daily_date is None:
+        return True
+    try:
+        fast_date = datetime.strptime(fast["as_of"][:10], "%Y-%m-%d").date()
+    except ValueError:
+        return False
+    return fast_date >= daily_date
+
+
 def _quote_for_key(key: str, batch_frame: pd.DataFrame | None) -> dict:
     meta = SYMBOLS[key]
     yf = _get_yfinance()
 
     if yf is not None:
         for ticker in _tickers_for_key(key):
-            hist = _history_for_ticker(batch_frame, ticker) if batch_frame is not None else pd.DataFrame()
-            if hist.empty or "Close" not in hist.columns:
-                try:
-                    hist = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True)
-                except Exception as exc:
-                    logger.debug("history failed for %s (%s): %s", key, ticker, exc)
-                    hist = pd.DataFrame()
-            if not hist.empty and "Close" in hist.columns:
-                return _quote_from_history(key, meta, hist)
+            daily = _fetch_daily_history(yf, ticker, batch_frame)
+            fast = _quote_from_fast_info(key, meta, ticker, daily)
+            if fast and _should_prefer_fast(fast, daily, key):
+                return _finalize_quote(fast, key)
 
-            fast = _quote_from_fast_info(key, meta, ticker)
+            live = _fetch_live_history(yf, ticker, key, daily)
+            if not live.empty:
+                return _finalize_quote(_quote_from_history(key, meta, live), key)
+
+            if not daily.empty:
+                return _finalize_quote(_quote_from_history(key, meta, daily), key)
+
             if fast:
-                return fast
+                return _finalize_quote(fast, key)
 
     if key == "nifty":
         fallback = _nifty_from_csv()
@@ -315,6 +433,24 @@ def fetch_history(symbol: str, period: str = "3mo") -> dict:
     payload = {"symbol": symbol, "points": points, "stale": False, "source": "yfinance"}
     _cache[cache_key] = {"data": payload, "fetched_at": datetime.now(timezone.utc)}
     return payload
+
+
+def fetch_histories_batch(symbols: list[str], period: str = "1mo") -> dict:
+    """Batch market history for sparklines."""
+    if period not in PERIODS:
+        period = "1mo"
+    out: dict[str, dict] = {}
+    errors: list[str] = []
+    for symbol in symbols:
+        if symbol not in SYMBOLS:
+            errors.append(f"unknown symbol: {symbol}")
+            continue
+        try:
+            out[symbol] = fetch_history(symbol, period=period)
+        except Exception as exc:
+            logger.warning("batch history failed for %s: %s", symbol, exc)
+            errors.append(f"{symbol}: {exc}")
+    return {"histories": out, "errors": errors}
 
 
 def compute_indicators(symbol: str = "nifty") -> dict:

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import LoadingSkeleton from '../components/LoadingSkeleton'
@@ -9,16 +10,15 @@ import ScoreBar from '../components/ScoreBar'
 import {
   corridorOperationalRisk,
   corridorRiskLabel,
-  fetchCorridors,
-  fetchEventsFeed,
-  fetchPlatformStatus,
+  fetchPageCorridor,
   formatCorridorName,
   type CargoFocus,
   type CorridorCategory,
   type CorridorsPayload,
   type NewsArticle,
 } from '../lib/api'
-import { CORRIDOR_CATEGORIES, CORRIDOR_SEARCH_TERMS } from '../lib/corridorGeo'
+import { queryKeys } from '../lib/queryClient'
+import { CORRIDOR_SEARCH_TERMS, categoryForCorridor } from '../lib/corridorGeo'
 import {
   businessActionLabel,
   businessTierClass,
@@ -80,47 +80,44 @@ export default function CorridorRiskDashboard() {
   const corridors = payload?.corridors ?? []
   const asOf = payload?.date ?? null
 
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    fetchCorridors()
-      .then(setPayload)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
+  const corridorSearchTerm = selected
+    ? CORRIDOR_SEARCH_TERMS[selected] ?? formatCorridorName(selected)
+    : undefined
+
+  const { data: bundle, error: queryError, isLoading: bundleLoading, refetch } = useQuery({
+    queryKey: queryKeys.corridor(corridorSearchTerm ?? null, 40),
+    queryFn: () => fetchPageCorridor(corridorSearchTerm, 40),
+    refetchInterval: CORRIDOR_POLL_MS,
+  })
 
   useEffect(() => {
-    load()
-  }, [load])
-
-  useEffect(() => {
-    const refreshStatus = () => {
-      fetchPlatformStatus()
-        .then((status) => {
-          setPipelineRunAt(status.last_pipeline_runs?.platform_refresh?.run_at ?? null)
-        })
-        .catch(() => undefined)
+    if (bundle) {
+      setPayload(bundle.corridors)
+      setHeadlines(bundle.events ?? [])
+      setPipelineRunAt(bundle.status?.last_pipeline_runs?.platform_refresh?.run_at ?? null)
+      setLoading(false)
+      setHeadlinesLoading(false)
     }
-    refreshStatus()
-    const id = window.setInterval(refreshStatus, CORRIDOR_POLL_MS)
-    return () => window.clearInterval(id)
-  }, [])
+  }, [bundle])
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      fetchCorridors()
-        .then(setPayload)
-        .catch(() => undefined)
-    }, CORRIDOR_POLL_MS)
-    return () => window.clearInterval(id)
-  }, [])
+    if (queryError instanceof Error) setError(queryError.message)
+  }, [queryError])
+
+  useEffect(() => {
+    if (bundleLoading && !payload) setLoading(true)
+  }, [bundleLoading, payload])
+
+  const load = useCallback(() => {
+    void refetch()
+  }, [refetch])
 
   const filtered = useMemo(() => {
     let rows = [...corridors]
     if (category !== 'all') {
       rows = rows.filter((row) => {
         const key = row.corridor?.toLowerCase() ?? ''
-        const cat = row.category ?? CORRIDOR_CATEGORIES[key] ?? 'sea'
+        const cat = categoryForCorridor(payload?.metadata, key, row.category)
         return cat === category
       })
     }
@@ -128,7 +125,7 @@ export default function CorridorRiskDashboard() {
       rows = rows.filter((row) => watchlist.includes(row.corridor?.toLowerCase() ?? ''))
     }
     return rows.sort((a, b) => corridorOperationalRisk(b) - corridorOperationalRisk(a))
-  }, [corridors, category, watchlistOnly, watchlist])
+  }, [corridors, category, watchlistOnly, watchlist, payload?.metadata])
 
   useEffect(() => {
     if (!corridorParam || !corridors.length) return
@@ -144,29 +141,12 @@ export default function CorridorRiskDashboard() {
     }
   }, [filtered, selected])
 
-  useEffect(() => {
-    if (!selected) return
-    const term = CORRIDOR_SEARCH_TERMS[selected] ?? formatCorridorName(selected)
-
-    const refreshHeadlines = () => {
-      setHeadlinesLoading(true)
-      fetchEventsFeed({ corridor: term, limit: 8 })
-        .then((res) => setHeadlines(res.events ?? []))
-        .catch(() => setHeadlines([]))
-        .finally(() => setHeadlinesLoading(false))
-    }
-
-    refreshHeadlines()
-    const id = window.setInterval(refreshHeadlines, CORRIDOR_POLL_MS)
-    return () => window.clearInterval(id)
-  }, [selected])
-
   const selectedRow =
     filtered.find((c) => c.corridor?.toLowerCase() === selected) ??
     corridors.find((c) => c.corridor?.toLowerCase() === selected) ??
     null
   const operational = corridorOperationalRisk(selectedRow ?? {})
-  const { label: tierLabel } = corridorRiskLabel(operational)
+  const { label: tierLabel } = corridorRiskLabel(operational, selectedRow?.score_status)
   const threat = Number(selectedRow?.threat_index ?? 0)
   const energy = Number(selectedRow?.energy_risk ?? 0)
   const goods = Number(selectedRow?.goods_risk ?? 0)
@@ -205,11 +185,8 @@ export default function CorridorRiskDashboard() {
     <div className="corridor-page pb-10 px-margin-page max-w-container-max mx-auto space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-4 pt-8">
         <div className="space-y-2 max-w-2xl">
-          <span
-            className="eyebrow-badge"
-            style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.85)' }}
-          >
-            <span className="eyebrow-dot" style={{ background: '#ffffff', boxShadow: '0 0 8px 2px rgba(255,255,255,0.25)' }} />
+          <span className="eyebrow-badge">
+            <span className="eyebrow-dot" />
             {CORRIDOR_EYEBROW}
           </span>
           <h1 className="corridor-display font-headline-lg text-headline-lg">Is your trade route at risk?</h1>
@@ -322,6 +299,7 @@ export default function CorridorRiskDashboard() {
         <div className="corridor-panel p-3 min-w-0">
           <CorridorRiskMap
             corridors={listRows}
+            metadata={payload?.metadata}
             selected={selected}
             category={category}
             onSelect={setSelected}
@@ -338,21 +316,19 @@ export default function CorridorRiskDashboard() {
           {selectedRow ? (
             <>
               <div>
-                <span className="corridor-kicker block mb-1">Selected route</span>
-                <div className="flex items-baseline gap-3">
+                <span className="corridor-kicker block mb-2">Selected route</span>
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 items-center">
                   <span
-                    className="corridor-score text-4xl leading-none shrink-0"
+                    className="corridor-score text-4xl leading-none row-span-2 self-center"
                     style={{ color: tierAccentColor(operational) }}
                     title={OPERATIONAL_SCORE_NOTE}
                   >
                     {displayStressScore(selectedRow)}
                   </span>
-                  <div>
-                    <h3 className="corridor-display text-lg leading-snug">
-                      {formatCorridorName(selectedRow.corridor, selectedRow.corridor_name)}
-                    </h3>
-                    <p className="text-[10px] text-corridor-muted/70 mt-0.5">{OPERATIONAL_SCORE_NOTE}</p>
-                  </div>
+                  <h3 className="corridor-display text-lg leading-snug min-w-0">
+                    {formatCorridorName(selectedRow.corridor, selectedRow.corridor_name)}
+                  </h3>
+                  <p className="text-[10px] text-corridor-muted/70 col-start-2">{OPERATIONAL_SCORE_NOTE}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   <span

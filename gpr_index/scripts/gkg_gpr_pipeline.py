@@ -35,7 +35,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from .paths import GKG_PROCESSED_DIR, OUTPUT_DIR
+from .paths import GKG_PROCESSED_DIR, GPR_WARMUP_START, INDIA_GPR_INDEX_START, OUTPUT_DIR
+from .split_era import product_start_date, rolling_product_era, should_split_era
 from .taxonomy import TIER1_CODES, TIER2_CODES, TIER3_CODES
 
 TIER1 = frozenset(TIER1_CODES)
@@ -249,19 +250,52 @@ def _apply_index_transform(ratio: pd.Series) -> pd.Series:
 def normalize_index(daily_df: pd.DataFrame, baseline_start: str, baseline_end: str) -> pd.DataFrame:
     out = daily_df.copy()
     out["date"] = pd.to_datetime(out["date"])
-    mask = (out["date"] >= pd.to_datetime(baseline_start)) & (out["date"] <= pd.to_datetime(baseline_end))
+    baseline_start_ts = pd.to_datetime(baseline_start)
+    baseline_end_ts = pd.to_datetime(baseline_end)
+    mask = (out["date"] >= baseline_start_ts) & (out["date"] <= baseline_end_ts)
 
-    def _bar(col: str) -> float:
-        v = float(out.loc[mask, col].mean()) if mask.any() else float(out[col].mean())
+    def _bar(col: str, row_mask: pd.Series) -> float:
+        bmask = mask & row_mask
+        v = float(out.loc[bmask, col].mean()) if bmask.any() else float(out.loc[row_mask, col].mean())
         return v if v > 0 else 1.0
 
-    out["gpr_index"]         = _apply_index_transform(out["raw_ratio"]    / _bar("raw_ratio"))
-    out["gpr_acts_index"]    = _apply_index_transform(out["acts_ratio"]   / _bar("acts_ratio"))
-    out["gpr_threats_index"] = _apply_index_transform(out["threats_ratio"] / _bar("threats_ratio"))
+    ratio_cols = (
+        ("raw_ratio", "gpr_index"),
+        ("acts_ratio", "gpr_acts_index"),
+        ("threats_ratio", "gpr_threats_index"),
+    )
+
+    if should_split_era(out, baseline_start):
+        product_start_ts = pd.Timestamp(product_start_date())
+        warmup_rows = out["date"] < product_start_ts
+        product_rows = out["date"] >= product_start_ts
+        warmup_baseline = out["date"] < product_start_ts
+        product_baseline = out["date"] >= product_start_ts
+        for ratio_col, index_col in ratio_cols:
+            out[index_col] = np.nan
+            if warmup_rows.any():
+                out.loc[warmup_rows, index_col] = _apply_index_transform(
+                    out.loc[warmup_rows, ratio_col] / _bar(ratio_col, warmup_baseline)
+                )
+            if product_rows.any():
+                out.loc[product_rows, index_col] = _apply_index_transform(
+                    out.loc[product_rows, ratio_col] / _bar(ratio_col, product_baseline)
+                )
+    else:
+        def _single_bar(col: str) -> float:
+            v = float(out.loc[mask, col].mean()) if mask.any() else float(out[col].mean())
+            return v if v > 0 else 1.0
+
+        for ratio_col, index_col in ratio_cols:
+            out[index_col] = _apply_index_transform(out[ratio_col] / _single_bar(ratio_col))
 
     out = out.sort_values("date").reset_index(drop=True)
-    out["gpr_7ma"]    = out["gpr_index"].rolling(7,  min_periods=1).mean()
-    out["gpr_30ma"]   = out["gpr_index"].rolling(30, min_periods=1).mean()
+    if should_split_era(out, baseline_start):
+        out["gpr_7ma"] = rolling_product_era(out, "gpr_index", 7)
+        out["gpr_30ma"] = rolling_product_era(out, "gpr_index", 30)
+    else:
+        out["gpr_7ma"] = out["gpr_index"].rolling(7, min_periods=1).mean()
+        out["gpr_30ma"] = out["gpr_index"].rolling(30, min_periods=1).mean()
     out["year_month"] = out["date"].dt.to_period("M")
     return out
 
@@ -361,6 +395,30 @@ def _clear_checkpoint(output_dir: Path) -> None:
 # Incremental helper (only_dirty_days shortcut)
 # ---------------------------------------------------------------------------
 
+def _ensure_ratio_fields(row: dict) -> dict:
+    """Rebuild ratio inputs for normalize_index from saved CSV rows."""
+    out = dict(row)
+    total = float(out.get("total_articles") or 0)
+    if total <= 0:
+        out["raw_ratio"] = 0.0
+        out["acts_ratio"] = 0.0
+        out["threats_ratio"] = 0.0
+        return out
+    if out.get("raw_ratio") is None or pd.isna(out.get("raw_ratio")):
+        out["raw_ratio"] = float(out.get("gpr_sum") or 0) / total
+    else:
+        out["raw_ratio"] = float(out["raw_ratio"])
+    if out.get("acts_ratio") is None or pd.isna(out.get("acts_ratio")):
+        out["acts_ratio"] = float(out.get("acts_sum") or 0) / total
+    else:
+        out["acts_ratio"] = float(out["acts_ratio"])
+    if out.get("threats_ratio") is None or pd.isna(out.get("threats_ratio")):
+        out["threats_ratio"] = float(out.get("threats_sum") or 0) / total
+    else:
+        out["threats_ratio"] = float(out["threats_ratio"])
+    return out
+
+
 def _run_incremental(
     processed_dir: Path,
     output_dir: Path,
@@ -415,8 +473,14 @@ def _run_incremental(
         return
 
     # Merge and re-normalize
-    all_rows = history_rows + new_daily_rows
-    daily_df = normalize_index(pd.DataFrame(all_rows), baseline_start, baseline_end)
+    all_rows = [_ensure_ratio_fields(r) for r in history_rows + new_daily_rows]
+    row_dates = pd.to_datetime([r["date"] for r in all_rows])
+    norm_baseline = (
+        GPR_WARMUP_START.isoformat()
+        if (row_dates < pd.Timestamp(INDIA_GPR_INDEX_START)).any()
+        else baseline_start
+    )
+    daily_df = normalize_index(pd.DataFrame(all_rows), norm_baseline, baseline_end)
     daily_df = daily_df.sort_values("date")
 
     monthly_df = (
@@ -426,7 +490,8 @@ def _run_incremental(
     )
 
     save_cols = ["date","total_articles","candidate_count","gpr_positive_count",
-                 "positive_share","mean_score","gpr_sum",
+                 "positive_share","mean_score","gpr_sum","acts_sum","threats_sum",
+                 "raw_ratio","acts_ratio","threats_ratio",
                  "gpr_index","gpr_acts_index","gpr_threats_index","gpr_7ma","gpr_30ma"]
     daily_df[[c for c in save_cols if c in daily_df.columns]].to_csv(daily_csv, index=False)
     monthly_df.to_csv(output_dir / "gpr_monthly_index.csv", index=False)
@@ -564,7 +629,8 @@ def run(
 
     # Save
     save_cols = ["date","total_articles","candidate_count","gpr_positive_count",
-                 "positive_share","mean_score","gpr_sum",
+                 "positive_share","mean_score","gpr_sum","acts_sum","threats_sum",
+                 "raw_ratio","acts_ratio","threats_ratio",
                  "gpr_index","gpr_acts_index","gpr_threats_index","gpr_7ma","gpr_30ma"]
     daily_df[[c for c in save_cols if c in daily_df.columns]].to_csv(output_dir / "gpr_daily_index.csv", index=False)
     monthly_df.to_csv(output_dir / "gpr_monthly_index.csv", index=False)
@@ -683,6 +749,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--resume",             action="store_true", help="Resume from last checkpoint")
     p.add_argument("--no-fill-gaps",       action="store_true", help="Skip gap-fill after GPR run")
     p.add_argument("--fill-method",        default="caldara", choices=["forward", "linear", "caldara"])
+    p.add_argument(
+        "--only-dirty-days",
+        nargs="+",
+        metavar="YYYY-MM-DD",
+        help="Re-score only these days; merge with existing gpr_daily_index.csv",
+    )
     return p.parse_args()
 
 
@@ -700,6 +772,7 @@ def main() -> None:
         resume=args.resume,
         fill_gaps=not args.no_fill_gaps,
         fill_method=args.fill_method,
+        only_dirty_days=args.only_dirty_days,
     )
 
 

@@ -3,7 +3,8 @@ import { geoOrthographic, geoPath, geoGraticule10, geoInterpolate, geoDistance, 
 import { feature } from 'topojson-client'
 import type { Topology } from 'topojson-specification'
 import landTopology from 'world-atlas/land-110m.json'
-import { fetchCorridors, corridorOperationalRisk } from '../lib/api'
+import { corridorOperationalRisk, type CorridorRow, type CorridorsPayload } from '../lib/api'
+import { corridorCentroidLonLat, corridorRiskColor } from '../lib/corridorGeo'
 
 const SIZE = 640
 const GRATICULE = geoGraticule10()
@@ -11,21 +12,7 @@ const LAND = feature(landTopology as unknown as Topology, (landTopology as unkno
 
 // [lon, lat] — d3-geo's coordinate convention (not [lat, lon])
 const INDIA: [number, number] = [78.9629, 20.5937]
-const CORRIDOR_LOCATIONS: Record<string, [number, number]> = {
-  strait_of_hormuz: [56.25, 26.5],
-  red_sea_suez: [38.0, 20.0],
-  strait_of_malacca: [101.0, 2.5],
-  cape_of_good_hope: [18.5, -34.0],
-  danish_straits_baltic: [11.0, 56.0],
-  taiwan_south_china_sea: [113.0, 12.0],
-  india_china_lac: [78.5, 34.0],
-  india_pakistan_attari: [74.6, 31.6],
-  india_bangladesh_petrapole: [88.4, 23.0],
-  india_nepal_raxaul: [84.9, 27.0],
-  imec: [55.3, 25.2],
-  instc_chabahar: [60.6, 25.3],
-}
-const MAX_NODES = 1 + Object.keys(CORRIDOR_LOCATIONS).length
+const MAX_GLOBE_NODES = 13
 const GLOBE_SCALE = SIZE / 2.05
 const INDIA_PHI = (-INDIA[0] * Math.PI) / 180
 const INDIA_THETA = -INDIA[1]
@@ -63,19 +50,42 @@ function riskDotRadius(node: GlobeNode): number {
   return node.isHub ? 4 : 2.5 + (Math.min(node.risk, 100) / 100) * 3
 }
 
+function riskDotColors(risk: number, isHub: boolean): { fill: string; stroke: string } {
+  if (isHub) return { fill: 'rgba(255,255,255,0.95)', stroke: 'rgba(255,255,255,0.9)' }
+  const color = corridorRiskColor(risk)
+  return { fill: color, stroke: color }
+}
+
+function riskArcStroke(risk: number, isHighest: boolean): string {
+  if (isHighest) return corridorRiskColor(50)
+  return corridorRiskColor(risk)
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-export default function HeroGlobe({ className }: { className?: string }) {
+export default function HeroGlobe({
+  className,
+  corridors = [],
+  metadata,
+}: {
+  className?: string
+  corridors?: CorridorRow[]
+  metadata?: CorridorsPayload['metadata']
+}) {
   const graticuleRef = useRef<SVGPathElement>(null)
   const landRef = useRef<SVGPathElement>(null)
   const nodeRefs = useRef<(SVGGElement | null)[]>([])
   const dotRefs = useRef<(SVGCircleElement | null)[]>([])
+  const ringRefs = useRef<(SVGCircleElement | null)[]>([])
   const lineRefs = useRef<(SVGPathElement | null)[]>([])
 
   const nodesRef = useRef<GlobeNode[]>([{ location: INDIA, risk: 0, isHub: true }])
   const highestRiskIndexRef = useRef<number>(-1)
+
+  const metadataRef = useRef(metadata)
+  metadataRef.current = metadata
 
   useEffect(() => {
     let destroyed = false
@@ -96,10 +106,11 @@ export default function HeroGlobe({ className }: { className?: string }) {
       graticuleRef.current?.setAttribute('d', path(GRATICULE) ?? '')
       landRef.current?.setAttribute('d', path(LAND) ?? '')
 
-      for (let i = 0; i < MAX_NODES; i++) {
+      for (let i = 0; i < MAX_GLOBE_NODES; i++) {
         const node = nodesRef.current[i]
         const g = nodeRefs.current[i]
         const dot = dotRefs.current[i]
+        const ring = ringRefs.current[i]
         const line = lineRefs.current[i]
 
         if (!node) {
@@ -118,6 +129,11 @@ export default function HeroGlobe({ className }: { className?: string }) {
           }
         }
         if (dot) dot.setAttribute('r', String(riskDotRadius(node)))
+        if (dot && ring) {
+          const colors = riskDotColors(node.risk, node.isHub)
+          dot.setAttribute('fill', colors.fill)
+          ring.setAttribute('stroke', colors.stroke)
+        }
 
         if (line) {
           if (node.isHub) {
@@ -125,7 +141,7 @@ export default function HeroGlobe({ className }: { className?: string }) {
           } else {
             const isHighest = i === highestRiskIndexRef.current
             line.setAttribute('d', buildArcPath(INDIA, node.location, rotation, projection))
-            line.setAttribute('stroke', isHighest ? 'var(--color-tertiary)' : 'rgba(255,255,255,0.35)')
+            line.setAttribute('stroke', riskArcStroke(node.risk, isHighest))
             line.setAttribute('stroke-dasharray', isHighest ? 'none' : '2 4')
             line.setAttribute('stroke-width', isHighest ? '1.5' : '1')
           }
@@ -143,11 +159,11 @@ export default function HeroGlobe({ className }: { className?: string }) {
     render()
     if (!reducedMotion) frame = requestAnimationFrame(tick)
 
-    function applyCorridorPayload(payload: Awaited<ReturnType<typeof fetchCorridors>>) {
-      const corridorNodes: GlobeNode[] = (payload.corridors ?? [])
+    function applyCorridorRows(rows: CorridorRow[]) {
+      const corridorNodes: GlobeNode[] = rows
         .map((c): GlobeNode | null => {
           const key = c.corridor?.toLowerCase()
-          const location = key ? CORRIDOR_LOCATIONS[key] : undefined
+          const location = key ? corridorCentroidLonLat(metadataRef.current, key) : undefined
           const risk = corridorOperationalRisk(c)
           if (!location || !Number.isFinite(risk)) return null
           return { location, risk, isHub: false }
@@ -167,28 +183,13 @@ export default function HeroGlobe({ className }: { className?: string }) {
       render()
     }
 
-    fetchCorridors()
-      .then((payload) => {
-        if (destroyed) return
-        applyCorridorPayload(payload)
-      })
-      .catch(() => undefined)
-
-    const pollId = window.setInterval(() => {
-      fetchCorridors()
-        .then((payload) => {
-          if (destroyed) return
-          applyCorridorPayload(payload)
-        })
-        .catch(() => undefined)
-    }, 15 * 60 * 1000)
+    applyCorridorRows(corridors)
 
     return () => {
       destroyed = true
       cancelAnimationFrame(frame)
-      window.clearInterval(pollId)
     }
-  }, [])
+  }, [corridors, metadata])
 
   return (
     <div
@@ -199,7 +200,7 @@ export default function HeroGlobe({ className }: { className?: string }) {
         <circle cx={SIZE / 2} cy={SIZE / 2} r={GLOBE_SCALE} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={1} />
         <path ref={graticuleRef} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={0.6} />
         <path ref={landRef} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={1} />
-        {Array.from({ length: MAX_NODES }).map((_, i) => (
+        {Array.from({ length: MAX_GLOBE_NODES }).map((_, i) => (
           <path
             key={`line-${i}`}
             ref={(el) => {
@@ -208,7 +209,7 @@ export default function HeroGlobe({ className }: { className?: string }) {
             fill="none"
           />
         ))}
-        {Array.from({ length: MAX_NODES }).map((_, i) => (
+        {Array.from({ length: MAX_GLOBE_NODES }).map((_, i) => (
           <g
             key={`node-${i}`}
             style={{ opacity: 0 }}
@@ -216,7 +217,15 @@ export default function HeroGlobe({ className }: { className?: string }) {
               nodeRefs.current[i] = el
             }}
           >
-            <circle r={7} fill="#05070d" stroke="rgba(255,255,255,0.9)" strokeWidth={1} />
+            <circle
+              ref={(el) => {
+                ringRefs.current[i] = el
+              }}
+              r={7}
+              fill="#05070d"
+              stroke="rgba(255,255,255,0.9)"
+              strokeWidth={1}
+            />
             <circle
               ref={(el) => {
                 dotRefs.current[i] = el

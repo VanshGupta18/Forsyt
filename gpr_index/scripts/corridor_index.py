@@ -27,7 +27,13 @@ from .gkg_gpr_pipeline import (
     list_processed_files,
     score_articles,
 )
-from .paths import GKG_PROCESSED_DIR, OUTPUT_DIR
+from .paths import GKG_PROCESSED_DIR, GPR_WARMUP_START, INDIA_GPR_INDEX_START, OUTPUT_DIR
+from .split_era import (
+    product_start_date,
+    rolling_product_era,
+    rolling_product_era_grouped,
+    should_split_era,
+)
 
 CORRIDOR_TAIL_EXPONENT = float(os.environ.get("CORRIDOR_TAIL_EXPONENT", "1.5"))
 CORRIDOR_UPPER_TAIL_STRETCH = float(os.environ.get("CORRIDOR_UPPER_TAIL_STRETCH", "1.05"))
@@ -168,21 +174,52 @@ def normalize_corridor_index(
     out = corridor_df.copy()
     out["date"] = pd.to_datetime(out["date"])
     start, end = pd.to_datetime(baseline_start), pd.to_datetime(baseline_end)
+    split_era = should_split_era(out, baseline_start)
+    product_start_ts = pd.Timestamp(product_start_date()) if split_era else None
 
     def normalize(group: pd.DataFrame) -> pd.DataFrame:
         group = group.sort_values("date").copy()
         baseline_rows = group.loc[group["date"].between(start, end)]
-        baseline = baseline_rows["raw_ratio"]
         hit_days = int((baseline_rows["corridor_hit_count"] > 0).sum())
-        scale = float(baseline.mean()) if not baseline.empty else float(group["raw_ratio"].mean())
-        if hit_days < MIN_BASELINE_HIT_DAYS or scale <= 0:
+        if hit_days < MIN_BASELINE_HIT_DAYS:
             group["score_status"] = "insufficient_history"
             group["threat_index"] = 0.0
+            return group
+
+        group["score_status"] = "ok"
+        if split_era and product_start_ts is not None:
+            warmup_baseline = baseline_rows.loc[
+                baseline_rows["date"] < product_start_ts, "raw_ratio"
+            ]
+            product_baseline = baseline_rows.loc[
+                baseline_rows["date"] >= product_start_ts, "raw_ratio"
+            ]
+            warmup_scale = float(warmup_baseline.mean()) if not warmup_baseline.empty else 0.0
+            product_scale = float(product_baseline.mean()) if not product_baseline.empty else 0.0
+            group["threat_index"] = 0.0
+            warmup_rows = group["date"] < product_start_ts
+            product_rows = group["date"] >= product_start_ts
+            if warmup_scale > 0 and warmup_rows.any():
+                group.loc[warmup_rows, "threat_index"] = _apply_corridor_index_transform(
+                    group.loc[warmup_rows, "raw_ratio"] / warmup_scale
+                ).clip(0, 100)
+            if product_scale > 0 and product_rows.any():
+                group.loc[product_rows, "threat_index"] = _apply_corridor_index_transform(
+                    group.loc[product_rows, "raw_ratio"] / product_scale
+                ).clip(0, 100)
         else:
-            group["score_status"] = "ok"
-            group["threat_index"] = _apply_corridor_index_transform(
-                group["raw_ratio"] / scale
-            ).clip(0, 100)
+            scale = (
+                float(baseline_rows["raw_ratio"].mean())
+                if not baseline_rows.empty
+                else float(group["raw_ratio"].mean())
+            )
+            if scale <= 0:
+                group["score_status"] = "insufficient_history"
+                group["threat_index"] = 0.0
+            else:
+                group["threat_index"] = _apply_corridor_index_transform(
+                    group["raw_ratio"] / scale
+                ).clip(0, 100)
         return group
 
     parts: list[pd.DataFrame] = []
@@ -201,15 +238,68 @@ def normalize_corridor_index(
     out["energy_risk"] = (out["threat_index"] * out["energy_exposure"]).clip(0, 100)
     out["goods_risk"] = (out["threat_index"] * out["goods_exposure"]).clip(0, 100)
     out["corridor_risk"] = out[["energy_risk", "goods_risk"]].max(axis=1)
-    out["corridor_risk_7ma"] = (
-        out.groupby("corridor", sort=False)["corridor_risk"]
-        .transform(lambda values: values.rolling(7, min_periods=1).mean())
-    )
-    out["corridor_risk_30ma"] = (
-        out.groupby("corridor", sort=False)["corridor_risk"]
-        .transform(lambda values: values.rolling(30, min_periods=1).mean())
-    )
+    if split_era:
+        out["corridor_risk_7ma"] = rolling_product_era_grouped(
+            out, "corridor", "corridor_risk", 7
+        )
+        out["corridor_risk_30ma"] = rolling_product_era_grouped(
+            out, "corridor", "corridor_risk", 30
+        )
+    else:
+        out["corridor_risk_7ma"] = (
+            out.groupby("corridor", sort=False)["corridor_risk"]
+            .transform(lambda values: values.rolling(7, min_periods=1).mean())
+        )
+        out["corridor_risk_30ma"] = (
+            out.groupby("corridor", sort=False)["corridor_risk"]
+            .transform(lambda values: values.rolling(30, min_periods=1).mean())
+        )
     return out.sort_values(["date", "corridor"]).reset_index(drop=True)
+
+
+def _merge_prior_corridor_hits(
+    hits: pd.DataFrame,
+    output_dir: Path,
+    scored_start: pd.Timestamp,
+) -> pd.DataFrame:
+    """Keep warmup-era hits when doing a product-only corridor rescore."""
+    if scored_start < pd.Timestamp(INDIA_GPR_INDEX_START):
+        return hits
+    hits_path = output_dir / "corridor_article_hits.parquet"
+    if not hits_path.exists():
+        return hits
+    prior = pd.read_parquet(hits_path)
+    if prior.empty:
+        return hits
+    prior = prior[prior["date"] < scored_start]
+    if prior.empty:
+        return hits
+    if hits.empty:
+        return prior
+    return pd.concat([prior, hits], ignore_index=True)
+
+
+def _merge_corridor_totals(
+    totals: pd.DataFrame,
+    output_dir: Path,
+    scored_start: pd.Timestamp,
+) -> pd.DataFrame:
+    """Reuse denominator metadata for days we did not rescan."""
+    daily_path = output_dir / "gpr_corridor_daily.csv"
+    if not daily_path.exists() or scored_start < pd.Timestamp(INDIA_GPR_INDEX_START):
+        return totals
+    prior = pd.read_csv(daily_path, parse_dates=["date"])
+    keep_cols = [
+        "date",
+        "total_articles",
+        "positive_articles",
+        "matched_positive_articles",
+    ]
+    prior = prior[prior["date"] < scored_start][keep_cols]
+    if prior.empty:
+        return totals
+    merged = pd.concat([prior, totals[keep_cols]], ignore_index=True)
+    return merged.drop_duplicates(subset=["date"], keep="last").sort_values("date")
 
 
 def reaggregate_saved_hits(
@@ -361,9 +451,17 @@ def run(
         if checkpoint_hits
         else pd.DataFrame(columns=HIT_COLUMNS)
     )
+    scored_start = pd.Timestamp(start_date)
+    hits = _merge_prior_corridor_hits(hits, output_dir, scored_start)
     totals = pd.DataFrame(daily_totals)
+    totals = _merge_corridor_totals(totals, output_dir, scored_start)
     daily = aggregate_corridor_hits(hits, totals)
-    daily = normalize_corridor_index(daily, baseline_start, baseline_end)
+    norm_baseline = (
+        GPR_WARMUP_START.isoformat()
+        if (daily["date"] < pd.Timestamp(INDIA_GPR_INDEX_START)).any()
+        else baseline_start
+    )
+    daily = normalize_corridor_index(daily, norm_baseline, baseline_end)
     hits.to_parquet(
         output_dir / "corridor_article_hits.parquet",
         index=False,
