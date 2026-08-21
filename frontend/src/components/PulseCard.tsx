@@ -1,3 +1,6 @@
+// Small stat-tile card used across Home/News/Macro pulse strips. Two modes
+// via the `variant` prop: a generic label+value ('stat', optionally
+// clickable) or a market-quote card with its own sparkline ('market').
 import { Link } from 'react-router-dom'
 import { formatPrice, type MarketHistoryPayload, type MarketQuote } from '../lib/api'
 import { changeClass } from '../lib/macroCopy'

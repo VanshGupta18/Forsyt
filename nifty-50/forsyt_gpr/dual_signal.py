@@ -1,4 +1,21 @@
-"""Dual-signal product layer: geopolitical risk + NIFTY vol side by side."""
+"""Dual-signal product layer: geopolitical risk + NIFTY vol side by side.
+
+BEGINNER NOTE -- this is the file that actually powers the live dashboard.
+Everything above it in this package (`data.py`, `features.py`,
+`vol_model.py`) is plumbing and research machinery; this file is where it
+gets turned into the actual JSON payload the React frontend renders (see
+`GET /api/market/dual-signal`, wired up in
+`news_dataset/api/gpr_service.py::build_dual_signal_payload()`).
+
+The product idea, in plain language: rather than claiming "geopolitical risk
+X means NIFTY will do Y" (a claim the research in `vol_model.py` shows isn't
+actually supported out-of-sample), the dashboard instead shows TWO
+independent readings side by side -- how tense does the geopolitical news
+look right now, and how turbulent does the market look right now -- plus a
+combined "how worried should I be, overall" score. `build_dual_signal()` at
+the bottom of this file assembles all four pieces below into that one
+payload.
+"""
 
 from __future__ import annotations
 
@@ -67,7 +84,22 @@ def _gpr_moving_average(gf: pd.DataFrame, gpr: pd.Series, column: str, window: i
 
 
 def geo_regime(gf: pd.DataFrame) -> dict[str, Any]:
-    """Build the geopolitical half of the dual signal."""
+    """Build the geopolitical half of the dual signal.
+
+    In plain language: this takes today's GPR risk reading and asks "is
+    that actually high, historically speaking, or just a normal day?" It
+    does this by converting the raw index value into a z-score (how many
+    standard deviations away from a baseline average it is -- the Caldara
+    benchmark's own long-run average of 100 and spread of 35, since
+    Forsyt's own India index doesn't have enough history yet to compute a
+    reliable average of its own -- see `_gpr_baseline()`), then buckets that
+    z-score into a plain-English regime label (LOW / MODERATE / ELEVATED /
+    HIGH). It also reports a percentile (what fraction of all known days
+    were calmer than today), a 7-day % change, and the raw
+    threats/acts sub-scores when available. This whole function only ever
+    looks BACKWARD at history that has already happened -- it is not making
+    any prediction about the future.
+    """
     data.validate_gpr_frame(gf)
     gpr = gf["gpr"].astype(float)
     as_of = gpr.index[-1]
@@ -140,7 +172,21 @@ def _trailing_vol_fallback(nifty: pd.Series, horizon: int, reason: str) -> dict[
 
 
 def nifty_vol_signal(gf: pd.DataFrame, nifty: pd.Series, horizon: int = 5) -> dict[str, Any]:
-    """Market-only NIFTY volatility signal (GPR is shown separately)."""
+    """Market-only NIFTY volatility signal (GPR is shown separately).
+
+    In plain language: this is the "how choppy is the stock market likely
+    to be over the next 5 trading days?" half of the dashboard. It tries
+    the real forecasting model first (`vol_model.latest_market_forecast()`,
+    market-data-only -- see that function's docstring for why GPR is
+    deliberately excluded from this forecast), and if that model can't run
+    for any reason (not enough price history, etc. -- it raises
+    `ValueError`), it silently falls back to a much simpler rule based on
+    trailing volatility (`_trailing_vol_fallback()`), so the dashboard
+    always has SOMETHING to show rather than an error. Either way, the
+    result also includes a plain trailing-volatility reading and a
+    percentile, and buckets the forecast's HIGH_VOL probability into a
+    NORMAL / ELEVATED / HIGH_VOL label for the "vol dial" on the dashboard.
+    """
     trailing = realized_vol(nifty, 22)
     trailing_val = float(trailing.dropna().iloc[-1]) if trailing.notna().any() else None
     return_7d = None
@@ -177,7 +223,22 @@ def nifty_vol_signal(gf: pd.DataFrame, nifty: pd.Series, horizon: int = 5) -> di
 
 
 def joint_stress(geo: dict[str, Any], nifty: dict[str, Any]) -> dict[str, Any]:
-    """Transparent composite stress score (60% geo, 40% vol percentile)."""
+    """Transparent composite stress score (60% geo, 40% vol percentile).
+
+    In plain language: this blends the two independent readings above
+    (geopolitical percentile and market-volatility percentile) into ONE
+    "how worried should I be right now, overall" number between 0 and 100,
+    weighted 60% geopolitics / 40% market volatility -- an intentionally
+    simple, fixed, and fully transparent formula (no machine learning here
+    at all), so anyone reading the dashboard can recompute it by hand from
+    the two percentiles shown elsewhere on the page. The narrative text is
+    just a plain-English gloss on the same numbers -- e.g. calling out when
+    geopolitics is elevated but markets are still calm, which is arguably
+    the most useful case to flag (a risk that hasn't yet shown up in prices).
+    "Percentile" here means "higher than what % of days on record" -- e.g.
+    a geo_percentile of 90 means today's geopolitical reading is tenser than
+    90% of days in the available history.
+    """
     geo_pct = float(geo.get("geo_percentile", 50.0))
     vol_pct = float(nifty.get("vol_percentile", 50.0))
     score = round(0.6 * geo_pct + 0.4 * vol_pct, 1)
@@ -213,7 +274,24 @@ def historical_analog(
     tolerance: float = ANALOG_TOLERANCE,
     horizon: int = ANALOG_HORIZON,
 ) -> dict[str, Any]:
-    """What NIFTY did on past days with similar GPR levels (native index days only)."""
+    """What NIFTY did on past days with similar GPR levels (native index days only).
+
+    In plain language: this answers "the last time geopolitical risk looked
+    about like it does today, what actually happened to NIFTY afterwards?"
+    It searches history for days where the GPR reading was within
+    `tolerance` (default +/-10) of today's value, then reports the MEDIAN
+    (the middle value, resistant to a couple of extreme outlier days
+    skewing the picture) forward volatility and forward return over the
+    next `horizon` (default 5) trading days across all of those matching
+    days. This is a purely descriptive, look-up-the-history-books exercise
+    -- NOT a model and NOT a prediction -- which is why it's presented
+    separately from `nifty_vol_signal()`'s actual forecast. If any of the
+    matched days fall in a month with a well-known past crisis (see
+    `NOTABLE_EVENTS` above, e.g. Pulwama/Balakot or Galwan), that event's
+    name is surfaced too, purely for context. "Native index days only" means
+    this only looks at days where Forsyt's own GPR index actually has a
+    real reading -- it does not borrow or extrapolate from the benchmark.
+    """
     gpr_native = gf["gpr"].astype(float)
     fwd_vol = forward_realized_vol(nifty, horizon).reindex(gpr_native.index)
     fwd_ret = _forward_return_pct(nifty, horizon).reindex(gpr_native.index)

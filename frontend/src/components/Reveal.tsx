@@ -1,3 +1,6 @@
+// Wraps its children in a fade-up-into-view animation, triggered once when
+// the element scrolls into the viewport (via IntersectionObserver) — used on
+// the Portfolio page's sections.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export default function Reveal({

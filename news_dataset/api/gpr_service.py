@@ -1,4 +1,15 @@
-"""Data access layer for Forsyt product API (DB with CSV fallbacks)."""
+"""Data access layer for Forsyt product API (DB with CSV fallbacks).
+
+Beginner note — what is a "service layer"?
+    api/server.py only wires HTTP routes to functions; it doesn't know how to
+    actually fetch or compute anything. This file is where that real work
+    happens: reading rows from Postgres (via news_dataset/db.py), and falling
+    back to reading the GPR pipeline's raw CSV output files directly when
+    Postgres doesn't have what's needed yet (or is unavailable, if
+    ALLOW_CSV_FALLBACK is set — meant for offline/local development only,
+    never production). Every function in this file returns plain Python
+    dicts/lists that api/server.py just hands to jsonify() unchanged.
+"""
 
 from __future__ import annotations
 
@@ -226,6 +237,13 @@ def gpr_frame_from_db_or_csv() -> pd.DataFrame:
 
 
 def get_gpr_current(*, skip_cache: bool = False) -> dict | None:
+    """Return today's (or the most recent) India GPR risk score as a dict, or None if no data exists yet.
+
+    Tries the in-memory cache first, then Postgres, then falls back to the
+    GPR pipeline's CSV output if Postgres is missing/stale and CSV fallback
+    is allowed. This is what /api/pages/home and /api/pages/macro show as
+    the headline risk number.
+    """
     if not skip_cache:
         hit = cache_get("gpr:current", ttl_seconds=300)
         if hit is not _MISSING:
@@ -301,6 +319,10 @@ def get_gpr_history(
     *,
     skip_cache: bool = False,
 ) -> list[dict]:
+    """Return a list of past daily GPR scores (newest-first from the DB, reversed to oldest-first here) for chart lines.
+
+    Powers the risk-over-time chart on the Macro and News dashboard pages.
+    """
     cache_key = f"gpr:history:{start}:{end}:{limit}"
     if not skip_cache:
         hit = cache_get(cache_key, ttl_seconds=900)
@@ -390,6 +412,12 @@ def _corridors_payload(date_val, rows: list[dict], *, data_source: str = "postgr
 
 
 def get_corridors(*, skip_cache: bool = False) -> dict:
+    """Return today's risk score for every tracked trade corridor (e.g. Suez, Malacca), sorted riskiest-first.
+
+    Each corridor entry is enriched with display metadata (name, description)
+    and an "action_label" like "Monitor closely" derived from its risk level.
+    This is what the Corridor board page renders as its main table.
+    """
     if not skip_cache:
         hit = cache_get("corridors:latest", ttl_seconds=300)
         if hit is not _MISSING:
@@ -479,6 +507,7 @@ def _fetch_corridors() -> dict:
 
 
 def get_corridor_history(corridor_id: str, start: str | None = None, end: str | None = None) -> list[dict]:
+    """Return one corridor's daily risk score over time — the chart line when drilling into a single corridor."""
     rows = db.get_corridor_history(corridor_id, start=start, end=end)
     if rows:
         return serialize_rows([_enrich_corridor_row(dict(row)) for row in reversed(rows)])
@@ -513,6 +542,11 @@ def get_corridor_history(corridor_id: str, start: str | None = None, end: str | 
 
 
 def get_events_feed(limit=100, theme=None, corridor=None, tier=None, start=None, end=None, tagged_only=False) -> list[dict]:
+    """Return a list of recent news articles (title, source, link, NLP tags), optionally filtered.
+
+    This is the data behind /api/events/feed and the News dashboard page's
+    article list.
+    """
     start_dt = datetime.combine(date.fromisoformat(start), dt_time.min, tzinfo=timezone.utc) if start else None
     end_dt = datetime.combine(date.fromisoformat(end), dt_time.min, tzinfo=timezone.utc) if end else None
     rows = db.get_recent_news(
@@ -540,6 +574,11 @@ def get_news_stats() -> dict:
 
 
 def get_platform_status(*, skip_cache: bool = False) -> dict:
+    """Return a dict describing pipeline freshness: latest dates, which data source served each field, and any staleness warnings.
+
+    This is what /api/status exposes, and get_platform_status_slim() below
+    trims it down to just the fields the page bundles need.
+    """
     if not skip_cache:
         hit = cache_get("platform:status", ttl_seconds=120)
         if hit is not _MISSING:
@@ -560,6 +599,10 @@ def get_platform_status_slim(*, skip_cache: bool = False) -> dict:
 
 
 def get_health_snapshot(*, skip_cache: bool = False) -> dict:
+    """Return a simple "is everything alive" dict: total article count, latest GPR/corridor dates, last platform_refresh run.
+
+    Backs the plain /health endpoint used for uptime monitoring.
+    """
     if not skip_cache:
         hit = cache_get("platform:health", ttl_seconds=120)
         if hit is not _MISSING:
@@ -702,6 +745,14 @@ def _dual_signal_cache_stale(cached: dict) -> bool:
 
 
 def build_dual_signal_payload(*, refresh: bool = False) -> dict:
+    """Return the combined "geopolitical risk + NIFTY market volatility" reading, using a cached copy unless refresh=True.
+
+    Combines the GPR index history with NIFTY price data (via the sibling
+    forsyt_gpr package) plus a short list of "driving events" — the specific
+    news articles judged most responsible for the current reading (see
+    api/stress_news.py). This is the core payload behind
+    /api/market/dual-signal and the stress-monitor dashboard views.
+    """
     if not refresh:
         cached = db.get_dual_signal()
         if cached and not _dual_signal_cache_stale(cached):

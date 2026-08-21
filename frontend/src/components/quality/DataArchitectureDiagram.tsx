@@ -1,3 +1,5 @@
+// Quality page diagram: a 4-box "Sources → Processing → Index → Delivery"
+// pipeline strip with small animated dots between boxes, purely decorative/illustrative.
 import { DATA_ARCHITECTURE_LAYERS } from '../../lib/qualityCopy'
 
 const LAYER_COLORS = ['#4a90d9', '#4edea3', '#f5b800', '#adc6ff']

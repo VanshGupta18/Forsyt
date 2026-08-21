@@ -1,3 +1,5 @@
+// A UTC clock string that ticks once per second. Not currently rendered by
+// any page (kept here as a small reusable building block).
 import { useEffect, useState } from 'react'
 
 function formatUTC(date: Date) {

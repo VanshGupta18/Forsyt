@@ -1,3 +1,11 @@
+// ---------------------------------------------------------------------------
+// Powers the "Find a route" box on the Corridor Risk page: the user types an
+// origin/destination (free text, e.g. "Mumbai" → "Rotterdam") and this file
+// guesses which of the 12 tracked corridors that shipment would pass
+// through. This is intentionally simple — plain keyword matching, no
+// geocoding or real routing engine (see the "v1, no ML" comment below) — so
+// treat its suggestions as a rough hint, not authoritative routing.
+// ---------------------------------------------------------------------------
 export type RouteMode = 'sea' | 'road' | 'rail'
 
 const SEA_EUROPE = ['red_sea_suez', 'strait_of_hormuz', 'cape_of_good_hope', 'danish_straits_baltic']
@@ -15,6 +23,12 @@ function includesAny(text: string, terms: string[]): boolean {
 }
 
 /** Rule-based lane → corridor mapping (v1, no ML). */
+// Both origin and destination text are lower-cased and mashed together into
+// one `blob` string, then checked for keywords (city/country names). This
+// means it can't tell origin from destination, and only recognizes the
+// place names hard-coded in `includesAny(...)` calls below — anything else
+// falls through to a generic guess (all land corridors, or all sea
+// corridors, depending on `mode`).
 export function suggestCorridors(origin: string, destination: string, mode: RouteMode): string[] {
   const from = origin.trim()
   const to = destination.trim()

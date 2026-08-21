@@ -1,3 +1,6 @@
+// Quality page's "Proven checks" section: plain-English cards for the
+// headline-tier validation checks (via lib/qualityPlain.ts's translations),
+// hidden entirely if none are available yet.
 import type { QualityCheck, QualityReport } from '../../lib/api'
 import { plainCheckExplainer, plainCheckTitle, STATUS_PLAIN } from '../../lib/qualityPlain'
 import QualityPassBadge from './QualityPassBadge'

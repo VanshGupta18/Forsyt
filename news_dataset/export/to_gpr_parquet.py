@@ -1,4 +1,22 @@
-"""Export daily news populations to GPR-compatible Parquet files."""
+"""Export daily news populations to GPR-compatible Parquet files.
+
+Beginner note — what is Parquet, and why "filler rows"?
+    Parquet is just a file format for storing tables of data efficiently
+    (like a compressed CSV, but faster to read for the pandas/analysis code
+    downstream). Each day gets one Parquet file with one row per article.
+
+    The "filler rows" trick (see FILLER_SOURCE below) exists because of how
+    the GPR risk score is calculated elsewhere (gpr_index/): the score for a
+    day is roughly "how many articles about conflict, out of everyone we
+    looked at that day". Tier 2 articles that get rejected by the keyword
+    filter (see ingestion/geo_pipeline.py's match_keywords()) were still
+    "looked at" — they just didn't make it into the dataset as full articles.
+    If we only counted the KEPT articles, the day's "everyone we looked at"
+    denominator would be wrong (too small), making the risk score
+    artificially high. So process_day() below adds one blank/empty filler
+    row per rejected article, just to keep that denominator honest, without
+    those filler rows contributing any theme/tone/location content.
+"""
 
 from __future__ import annotations
 
@@ -141,6 +159,12 @@ def process_day(
         }
         for link, article in by_link.items()
     ]
+    # These "filler" rows represent Tier-2 articles that were fetched but
+    # rejected by the geopolitics keyword filter (see module docstring above
+    # for why we need them at all). They carry no theme/tone/location content
+    # — their only job is to make the row count for this day match how many
+    # articles were actually observed, so scoring's "share of the day's news
+    # that was about conflict" denominator is accurate.
     filler_count = max(0, seen_count - ingested_count)
     rows.extend(
         {

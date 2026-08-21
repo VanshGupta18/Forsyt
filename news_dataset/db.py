@@ -1,4 +1,16 @@
-"""PostgreSQL storage for scraped geopolitical news articles."""
+"""PostgreSQL storage for scraped geopolitical news articles.
+
+Beginner note — what is a "connection pool"?
+    Opening a new database connection is relatively slow (network handshake,
+    authentication, etc.), so instead of opening/closing one every time a
+    function in this file needs to talk to Postgres, we keep a small pool of
+    already-open connections ready to go (`_ensure_pool()` below creates 2-5
+    of them). get_connection() borrows one from the pool, and
+    release_connection() returns it when the caller is done — like a shared
+    car pool instead of everyone buying their own car. Every function below
+    follows the same pattern: get_connection() -> run a query -> commit if
+    writing -> release_connection().
+"""
 
 from __future__ import annotations
 
@@ -44,6 +56,19 @@ if DATABASE_URL.startswith("postgres://"):
 
 HINDI_SOURCES = {"AU", "BBC", "OI", "LH", "N18"}
 
+# Tables created in public schema — enable RLS so Supabase PostgREST (anon key)
+# cannot read/write them. Backend uses DATABASE_URL (postgres role, bypasses RLS).
+PUBLIC_TABLES = (
+    "articles",
+    "geo_feed_health",
+    "geo_cycle_stats",
+    "geo_seen_links",
+    "gpr_daily",
+    "corridor_daily",
+    "dual_signal_daily",
+    "pipeline_runs",
+)
+
 _pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
 
@@ -65,9 +90,18 @@ def release_connection(conn) -> None:
         _ensure_pool().putconn(conn)
 
 
+def _enable_rls(cur) -> None:
+    """Enable row-level security on app tables (fixes Supabase 'RLS disabled' lint)."""
+    for table in PUBLIC_TABLES:
+        cur.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY;')
+
+
 def init_db():
     conn = get_connection()
     cur = conn.cursor()
+    # "articles" — one row per scraped news article: raw scraped fields
+    # (title, content, source, link, time) plus columns added later by
+    # ALTER TABLE below for tiering/dedup/NLP tags.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS articles (
             id SERIAL PRIMARY KEY,
@@ -106,6 +140,9 @@ def init_db():
     )
     cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;")
 
+    # "geo_feed_health" — one row per RSS feed, tracking when it last
+    # succeeded/failed so geo_scheduler.py can decide when a feed is "due"
+    # for a re-fetch and flag ones that have gone quiet.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS geo_feed_health (
             source_code TEXT PRIMARY KEY,
@@ -115,6 +152,9 @@ def init_db():
             consecutive_failures INTEGER NOT NULL DEFAULT 0
         );
     """)
+    # "geo_cycle_stats" — one row per feed per scrape cycle: how many
+    # articles were fetched/ingested/discarded, for monitoring scrape yield
+    # over time.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS geo_cycle_stats (
             id SERIAL PRIMARY KEY,
@@ -127,6 +167,9 @@ def init_db():
         );
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_geo_cycle_stats_run_at ON geo_cycle_stats(run_at);")
+    # "geo_seen_links" — every RSS entry ever observed (even ones the
+    # keyword filter rejected), used as the "denominator" so export scripts
+    # know the true total volume of news seen, not just what was kept.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS geo_seen_links (
             link TEXT PRIMARY KEY,
@@ -141,6 +184,9 @@ def init_db():
         "ON geo_seen_links ((COALESCE(published_at, first_seen_at)));"
     )
 
+    # "gpr_daily" — one row per calendar day: the final India Geopolitical
+    # Risk (GPR) index score and its moving averages, for the product era
+    # (>= INDIA_GPR_INDEX_START) only.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS gpr_daily (
             date DATE PRIMARY KEY,
@@ -154,6 +200,9 @@ def init_db():
             updated_at TIMESTAMP DEFAULT NOW()
         );
     """)
+    # "corridor_daily" — one row per (day, trade-corridor) pair: risk score
+    # for that specific shipping/trade route (e.g. Strait of Malacca) on
+    # that day.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS corridor_daily (
             date DATE NOT NULL,
@@ -176,6 +225,9 @@ def init_db():
     cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS corridor_risk_7ma REAL;")
     cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS corridor_risk_30ma REAL;")
     cur.execute("ALTER TABLE corridor_daily ADD COLUMN IF NOT EXISTS score_status TEXT;")
+    # "dual_signal_daily" — one cached JSON blob per day combining the GPR
+    # score with NIFTY market volatility, so the API doesn't have to
+    # recompute that combination on every request.
     cur.execute("""
         CREATE TABLE IF NOT EXISTS dual_signal_daily (
             as_of DATE PRIMARY KEY,
@@ -183,6 +235,10 @@ def init_db():
             updated_at TIMESTAMP DEFAULT NOW()
         );
     """)
+    # "pipeline_runs" — a log/history row per pipeline stage execution
+    # (scrape, nlp, export, gpr_corridor, daily_index, platform_refresh...),
+    # so /api/status can show "when did each stage last run, and did it
+    # succeed?".
     cur.execute("""
         CREATE TABLE IF NOT EXISTS pipeline_runs (
             id SERIAL PRIMARY KEY,
@@ -192,6 +248,7 @@ def init_db():
             details JSONB
         );
     """)
+    _enable_rls(cur)
     conn.commit()
     cur.close()
     release_connection(conn)

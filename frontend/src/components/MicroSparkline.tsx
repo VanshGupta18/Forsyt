@@ -1,3 +1,6 @@
+// Tiny inline sparkline (just a colored polyline, no axes/labels) drawn
+// directly as an SVG — used inside PulseCard, so no <canvas> setup is needed
+// for something this small.
 type Props = {
   points: Array<{ date: string; close: number }>
   height?: number

@@ -1,3 +1,5 @@
+// The "FORSYT" brand logo, in three variants: just the mark (icon), just the
+// wordmark (text), or both together ("lockup", the default).
 import ForsytLogoMark from './ForsytLogoMark'
 
 type Props = {

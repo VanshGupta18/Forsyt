@@ -1,3 +1,6 @@
+// Horizontal scrollable strip of corridor "chip" buttons (below the map on
+// the Corridor Risk page) — click one to select it, or the star to pin/unpin
+// it on the user's watchlist.
 import { corridorOperationalRisk, formatCorridorName, type CorridorRow } from '../lib/api'
 import { businessTierClass, tierAccentColor } from '../lib/corridorCopy'
 import { isWatchlisted } from '../lib/corridorWatchlist'

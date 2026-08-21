@@ -1,3 +1,24 @@
+// ---------------------------------------------------------------------------
+// This file has no dependency on any charting library (no Chart.js, D3, or
+// Recharts). Instead, GprHistoryChart.tsx and MarketSparkline.tsx each draw
+// their own line/area chart directly onto an HTML <canvas> element using the
+// browser's built-in 2D drawing API (`canvas.getContext('2d')`). A <canvas>
+// is just a rectangle of pixels you draw onto imperatively — there's no DOM
+// element per data point (unlike an SVG chart), which is why this is a nice
+// fit for potentially-long time series without the browser having to manage
+// hundreds of individual SVG nodes.
+//
+// The pattern used by both charts is:
+//   1. `setupCanvas()` sizes the canvas for the device's pixel density.
+//   2. `plotSeries()` converts raw data values (e.g. GPR scores) into pixel
+//      x/y coordinates, given the canvas size and the min/max value range.
+//   3. Various `draw...()` helpers below take those pixel coordinates and
+//      paint lines, filled areas, grid lines, axis labels, etc. with the
+//      Canvas API (`ctx.moveTo`, `ctx.lineTo`, `ctx.fill`, `ctx.stroke`, ...).
+// Every function in this file is a small, reusable piece of that pipeline —
+// shared so the two chart components don't duplicate low-level drawing code.
+// ---------------------------------------------------------------------------
+
 /** Shared corridor / macro chart palette */
 export const CHART_PALETTE = {
   primary: '#adc6ff',
@@ -42,6 +63,18 @@ export type PlottedPoint = {
   index: number
 }
 
+// Prepares a <canvas> element to draw on. This does a bit more than it looks
+// like: a canvas has TWO sizes — its CSS display size (`clientWidth`, set by
+// layout/Tailwind classes) and its internal pixel buffer size (`canvas.width`
+// / `canvas.height`). On high-DPI ("Retina") screens, `devicePixelRatio` is
+// e.g. 2, meaning the screen has 2x as many physical pixels per CSS pixel. If
+// the internal buffer only matched the CSS size, the chart would look blurry
+// on those screens. So this function makes the internal buffer `dpr` times
+// bigger than the CSS size, then uses `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)`
+// to scale all subsequent drawing commands back down — meaning the rest of
+// this file can keep drawing in ordinary "CSS pixel" coordinates and it comes
+// out crisp on every screen. Returns null if the browser couldn't give us a
+// 2D drawing context at all (should basically never happen).
 export function setupCanvas(
   canvas: HTMLCanvasElement,
   height: number,
@@ -59,6 +92,13 @@ export function setupCanvas(
   return { ctx, width, height, dpr }
 }
 
+// Converts a plain array of numbers (e.g. GPR scores for each day) into
+// pixel x/y coordinates on the canvas — this is the "scale" step every chart
+// library does internally, done by hand here. X spreads the values evenly
+// across the available width (`pad` reserves margin for axis labels). Y maps
+// `yMin..yMax` (the data's value range) onto the available height, and flips
+// the direction because canvas y=0 is the TOP of the element, but a bigger
+// data value should draw HIGHER UP (a smaller y pixel coordinate).
 export function plotSeries(
   values: number[],
   width: number,

@@ -1,3 +1,6 @@
+// Auto-scrolling marquee of news headlines, reused on the News, Macro, and
+// Corridor pages. Only animates/loops when the content actually overflows
+// its container, and pauses on hover/touch/scroll for readability.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import { whyIncludedLabel } from '../lib/macroCopy'

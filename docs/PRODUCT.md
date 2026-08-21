@@ -77,4 +77,4 @@ Frontend architecture: [`frontend/docs/ARCHITECTURE.md`](../frontend/docs/ARCHIT
 
 ## Research appendix
 
-Academic validation (VAR, OOS backtest, quantile regression) lives in `nifty-50/research/`. Internal QA only — not the product surface.
+Academic validation (OOS vol backtest, feature/model code) lives in `nifty-50/forsyt_gpr/` (`vol_model.py`, `dual_signal.py`, `features.py`), with results summarized in `nifty-50/README.md` and `nifty-50/docs/INTEGRATION.md`. Internal QA only — not the product surface. (A `nifty-50/research/` directory with a VAR/quantile-regression study existed earlier but was deleted 2026-08-13 — several docs in `nifty-50/` still reference it; see `docs/DISCREPANCIES.md`.)

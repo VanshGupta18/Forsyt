@@ -1,3 +1,5 @@
+// One-line summary bar: overall pass/warn/fail status plus a percentage
+// progress bar of key checks passing.
 import type { QualityReport } from '../../lib/api'
 
 type Props = {

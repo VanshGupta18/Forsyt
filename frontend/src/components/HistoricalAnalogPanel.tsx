@@ -1,3 +1,6 @@
+// Macro page panel: "when news risk looked like this before" — shows median
+// NIFTY return/volatility on past days with a similar risk level. Hides
+// itself entirely if there's too little historical sample data yet.
 import type { DualSignalPayload } from '../lib/api'
 
 type Props = {

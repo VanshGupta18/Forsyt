@@ -1,3 +1,52 @@
+// ---------------------------------------------------------------------------
+// HeroGlobe — the slowly-rotating 3D-look globe on the Home page, centered on
+// India, with thin arcs reaching out to the riskiest trade corridors.
+//
+// BACKGROUND FOR NEWCOMERS: `d3-geo` is a small part of the larger D3.js
+// library that specializes in "geographic projections" — the math for
+// squashing the surface of a sphere (the Earth) onto a flat 2D drawing
+// surface (your screen). There is no single correct way to do this — every
+// world map ever drawn has picked a projection, and each one makes different
+// tradeoffs about what gets distorted. This component uses
+// `geoOrthographic()`, which is the projection that makes the Earth look
+// like a photo taken from space: a circle, with the far side of the globe
+// invisible, and land near the edges visibly curving away — i.e. it looks
+// like an actual 3D globe even though it's drawn as flat 2D shapes. (Compare
+// with CorridorRiskMap.tsx, which uses `geoEquirectangular()` instead — the
+// familiar flat rectangular world map where the whole world is visible at
+// once but sizes near the poles are stretched.)
+//
+// A `GeoProjection` (the `projection` object below) is a function you can
+// call as `projection([longitude, latitude])` to get back `[x, y]` pixel
+// coordinates for that point on the current view of the globe — and
+// `geoPath(projection)` wraps that into a function that converts a whole
+// GeoJSON shape (like the outline of a continent) into an SVG `<path>` `d`
+// attribute string in one call. IMPORTANT: d3-geo always takes coordinates
+// as `[longitude, latitude]` — the opposite order from the everyday
+// "latitude, longitude" you'd say out loud or see in `corridorGeo.ts`'s
+// `INDIA` constant. Watch for `.reverse()`-style swaps around this file's
+// boundary with that other file.
+//
+// WHERE THE LAND SHAPE COMES FROM: `world-atlas` is an npm package that
+// ships pre-built, heavily simplified maps of the world as "TopoJSON" — a
+// compact format that's essentially GeoJSON but with shared borders between
+// countries stored once instead of duplicated. `topojson-client`'s
+// `feature()` function decodes that TopoJSON back into ordinary GeoJSON
+// (the format `geoPath` understands) — here it decodes the single combined
+// landmass shape (`land-110m.json`, "110m" meaning it's simplified to about
+// 1:110,000,000 scale, i.e. deliberately low-detail/small file size, which
+// is plenty for a small hero graphic).
+//
+// WHY REFS INSTEAD OF REACT STATE: This globe redraws every animation frame
+// (~60 times/second) to rotate smoothly. Putting the rotation angle in React
+// state and calling setState 60 times/second would cause 60 full component
+// re-renders/second — wasteful and janky. Instead, this component renders
+// its SVG elements ONCE, keeps direct references to them via `useRef`, and
+// on every animation frame just mutates their attributes directly
+// (`el.setAttribute(...)`) — bypassing React's re-render cycle entirely for
+// the animation, the same way you'd animate with plain DOM APIs. React only
+// re-runs this component when the `corridors`/`metadata` props change.
+// ---------------------------------------------------------------------------
 import { useEffect, useRef } from 'react'
 import { geoOrthographic, geoPath, geoGraticule10, geoInterpolate, geoDistance, type GeoProjection } from 'd3-geo'
 import { feature } from 'topojson-client'
@@ -7,7 +56,14 @@ import { corridorOperationalRisk, type CorridorRow, type CorridorsPayload } from
 import { corridorCentroidLonLat, corridorRiskColor } from '../lib/corridorGeo'
 
 const SIZE = 640
+// geoGraticule10() generates the faint latitude/longitude grid lines (every
+// 10 degrees) drawn on the globe purely for visual texture — it carries no
+// real data.
 const GRATICULE = geoGraticule10()
+// Decode the bundled TopoJSON land data into a GeoJSON shape once, at module
+// load time (not inside the component) — it's the same for every instance
+// of this component and never changes, so there's no reason to redo this
+// decode on every render.
 const LAND = feature(landTopology as unknown as Topology, (landTopology as unknown as Topology).objects.land as never)
 
 // [lon, lat] — d3-geo's coordinate convention (not [lat, lon])
@@ -19,11 +75,30 @@ const INDIA_THETA = -INDIA[1]
 
 type GlobeNode = { location: [number, number]; risk: number; isHub: boolean }
 
+// A globe only ever shows HALF the Earth's surface at once — the near side
+// facing the viewer. `geoDistance` computes the great-circle (shortest path
+// on a sphere) angular distance, in radians, between two [lon, lat] points.
+// The center of the visible hemisphere is the point directly opposite the
+// current rotation, and any point less than 90 degrees (`Math.PI / 2`
+// radians) away from that center is on the near/visible side. This is used
+// both to decide whether to draw a risk dot at all, and to fade an arc in
+// and out as it wraps around the back of the globe.
 function isFrontFacing(point: [number, number], rotation: [number, number, number]): boolean {
   const center: [number, number] = [-rotation[0], -rotation[1]]
   return geoDistance(point, center) < Math.PI / 2
 }
 
+// Builds the SVG path string for one curved arc from India to a corridor's
+// location. `geoInterpolate(from, to)` returns a function that, given a
+// fraction 0..1, gives back the point that fraction of the way along the
+// great-circle route between `from` and `to` — i.e. it traces the *shortest
+// path on the globe's surface*, which curves when projected flat, rather
+// than a straight line. This walks that path in 32 small steps, projecting
+// each step to screen coordinates. Whenever a step falls on the globe's far
+// side (`isFrontFacing` is false), the pen is lifted (`penDown = false`) so
+// the arc visually disappears instead of being drawn straight through the
+// globe — the `M` (move-to, start a new sub-path) vs `L` (line-to, continue
+// the current sub-path) SVG path commands are how that's expressed.
 function buildArcPath(
   from: [number, number],
   to: [number, number],
@@ -90,15 +165,30 @@ export default function HeroGlobe({
   useEffect(() => {
     let destroyed = false
     let frame = 0
+    // `phi` is the current spin angle (in radians) — it increases a tiny bit
+    // every frame in `tick()` below to make the globe rotate. It starts at
+    // INDIA_PHI so the globe opens already facing India instead of snapping
+    // there after a spin.
     let phi = INDIA_PHI
     const reducedMotion = prefersReducedMotion()
 
+    // Build the projection ONCE for this component instance. `.scale()` sets
+    // the globe's pixel radius, `.translate()` centers it in the SIZE x SIZE
+    // SVG viewport, and `.clipAngle(90)` is what makes it a globe instead of
+    // a full flattened sphere — it tells d3 "don't draw anything more than
+    // 90 degrees from the center", i.e. hide the far hemisphere.
     const projection = geoOrthographic()
       .scale(GLOBE_SCALE)
       .translate([SIZE / 2, SIZE / 2])
       .clipAngle(90)
+    // geoPath(projection) turns that projection into a helper that converts
+    // a whole GeoJSON shape (like LAND, the world's landmasses) into one SVG
+    // path `d` string — used just below to draw the outline of the continents.
     const path = geoPath(projection)
 
+    // Draws one frame: re-rotates the projection to the current spin angle,
+    // then repaints the graticule, land outline, and every corridor risk
+    // dot + connecting arc at their new screen positions for that rotation.
     function render() {
       const rotation: [number, number, number] = [(phi * 180) / Math.PI, INDIA_THETA, 0]
       projection.rotate(rotation)
@@ -149,6 +239,14 @@ export default function HeroGlobe({
       }
     }
 
+    // `requestAnimationFrame` asks the browser to call `tick()` again right
+    // before its next screen repaint (typically ~60 times/second) — this is
+    // the standard way to drive smooth animations in the browser, rather
+    // than using `setInterval` with a guessed delay. Each tick nudges `phi`
+    // forward a tiny amount (skipped entirely if the user's OS/browser
+    // requests reduced motion) and redraws. `frame` stores the request's ID
+    // so the cleanup function below can cancel it if this component unmounts
+    // mid-spin.
     function tick() {
       if (destroyed) return
       if (!reducedMotion) phi += 0.0016
@@ -159,6 +257,10 @@ export default function HeroGlobe({
     render()
     if (!reducedMotion) frame = requestAnimationFrame(tick)
 
+    // Recomputes which corridors get a risk dot + arc whenever the
+    // `corridors` prop changes (e.g. a fresh API response comes in) —
+    // separate from the spin animation above, which keeps running
+    // regardless of when new data arrives.
     function applyCorridorRows(rows: CorridorRow[]) {
       const corridorNodes: GlobeNode[] = rows
         .map((c): GlobeNode | null => {

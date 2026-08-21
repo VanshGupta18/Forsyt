@@ -101,12 +101,21 @@ def fill_daily_gaps(
     )
 
     if method == "forward":
+        # "forward": simplest option — just repeat the last known value for
+        # every missing day, like freezing the index until real data resumes.
         for col in INDEX_COLS:
             combined[col] = combined[col].ffill()
     elif method == "linear":
+        # "linear": draw a straight line between the day before the gap and
+        # the day after it, and fill the missing days along that line.
         for col in INDEX_COLS:
             combined[col] = combined[col].interpolate(method="linear")
     elif method == "caldara":
+        # "caldara" (default): use the real Caldara benchmark's daily shape
+        # during the gap, scaled to match our own index level right before
+        # the gap started — i.e. "borrow the ups and downs from the published
+        # index, but keep our own scale." Falls back to linear interpolation
+        # if no local Caldara daily file is found.
         cal = _load_caldara_daily()
         if cal is None:
             tried = ", ".join(str(path) for path in CALDARA_DAILY_CANDIDATES)

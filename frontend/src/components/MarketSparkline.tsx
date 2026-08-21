@@ -1,3 +1,14 @@
+// ---------------------------------------------------------------------------
+// MarketSparkline draws a market price history (e.g. NIFTY 50) as a filled
+// line chart on a plain <canvas>, using the same shared drawing helpers as
+// GprHistoryChart.tsx — see lib/chartCanvas.ts's top-of-file comment for how
+// the setupCanvas → plotSeries → draw... pipeline works and why no charting
+// library is used. This component's specific job: filter the price history
+// down to the selected period (1 month / 3 months / 6 months / 1 year),
+// color the line green or red depending on whether the price went up or
+// down over that window, and show a hover tooltip with the exact
+// date/price under the mouse.
+// ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from 'react'
 import type { MarketHistoryPayload } from '../lib/api'
 import { formatPrice } from '../lib/api'

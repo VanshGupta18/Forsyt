@@ -1,3 +1,5 @@
+// Generic "content is loading" placeholder: a stack of pulsing gray bars,
+// each one a little shorter than the last.
 type Props = {
   className?: string
   lines?: number

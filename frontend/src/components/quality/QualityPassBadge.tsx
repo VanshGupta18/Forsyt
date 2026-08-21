@@ -1,3 +1,5 @@
+// Small colored pill badge for a check's pass/fail/warn/na status, reused
+// across every quality-page component.
 import type { QualityCheckStatus } from '../../lib/api'
 import { STATUS_PLAIN } from '../../lib/qualityPlain'
 

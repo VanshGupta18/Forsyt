@@ -1,3 +1,5 @@
+// A labeled horizontal progress bar (0-100) colored by risk tier — used for
+// the corridor detail panel's threat/goods/energy scores.
 import { businessTierClass, businessTierLabel } from '../lib/corridorCopy'
 
 export default function ScoreBar({

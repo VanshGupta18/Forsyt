@@ -1,15 +1,42 @@
 """
 Indian geopolitical / defence / foreign-policy RSS ingestion pipeline.
 
+Beginner note — what is an RSS feed?
+    Most news sites publish a small, constantly-updated XML file (their
+    "RSS feed") listing their latest articles: title, link, publish time,
+    and a short summary. Instead of visiting each news website and scraping
+    HTML, we just fetch that XML file every few minutes and read the new
+    entries out of it. The `feedparser` library (used in feed_utils.py)
+    turns that XML into simple Python objects we can loop over.
+
 Polls two tiers of feeds:
   Tier 1 — dedicated geopolitics/defence sources: ingested unfiltered.
   Tier 2 — mainstream general-news sources: ingested only when title+description
            match the geopolitics keyword list.
 
+Why two tiers instead of one list of feeds?
+    Tier 1 sources (StratNews Global, Bharat Shakti, Gateway House, ThePrint
+    Defence) publish almost nothing BUT geopolitics/defence news, so we trust
+    every article they publish and take it as-is ("unfiltered").
+    Tier 2 sources (India Today, The Hindu, Times of India, NDTV, Hindustan
+    Times) are big general-interest outlets that also cover cricket,
+    Bollywood, and local politics. Taking everything from their feeds would
+    flood the dataset with irrelevant stories, so those articles must first
+    match at least one word/phrase in KEYWORDS (see match_keywords() below)
+    before they're kept.
+
 Fuzzy title dedup (SequenceMatcher ratio >= DEDUP_THRESHOLD) within a rolling
 time window keeps the earliest instance of a story as canonical and tags
 later instances with duplicate_of=<canonical id>, so they can be excluded
 from "final dataset" reads while remaining in the table for auditability.
+
+What is "fuzzy" dedup?
+    The same real-world event is often reported by 2-3 outlets with slightly
+    different headlines (e.g. "India, China hold border talks" vs "India-China
+    border talks held in Delhi"). An exact string match would miss these as
+    duplicates. SequenceMatcher (from Python's stdlib `difflib`) instead
+    computes how *similar* two titles are as a 0.0-1.0 ratio, so near-identical
+    headlines about the same story are still caught. See find_duplicate() below.
 """
 
 import html
@@ -32,6 +59,9 @@ logger = logging.getLogger(__name__)
 # Feed configuration
 # ============================================================
 
+# Tier 1 = "trusted specialists". Every feed below is a site that ONLY
+# publishes defence/foreign-policy/strategic-affairs content, so we don't
+# need to filter anything — every article that comes out is relevant.
 TIER1_FEEDS = [
     {"source": "StratNews Global", "source_code": "SNG", "url": "https://stratnewsglobal.com/feed/"},
     {"source": "Bharat Shakti", "source_code": "BS", "url": "https://bharatshakti.in/feed/"},
@@ -45,6 +75,12 @@ TIER1_FEEDS = [
     {"source": "ThePrint Defence", "source_code": "TPD", "url": "https://theprint.in/category/defence/feed/"},
 ]
 
+# Tier 2 = "general news, filtered". These are big mainstream Indian outlets
+# that cover everything (sports, entertainment, local politics, etc.), so a
+# raw feed from them would be mostly noise for this dataset. Two things keep
+# Tier 2 relevant: (1) we pull their World/International section feed instead
+# of their homepage feed, and (2) every candidate article must also match one
+# of the KEYWORDS below (see match_keywords()) before it's kept.
 TIER2_FEEDS = [
     # Each outlet's World/International section is used instead of its general
     # homepage feed — same 5 outlets as requested, but pre-narrowed to the
@@ -94,14 +130,22 @@ KEYWORDS = [
     "external affairs",
 ]
 
+# Pre-compile each keyword into a regex once (instead of re-compiling it for
+# every article) for speed. \b...\b means "word boundary", so the keyword
+# "war" matches the word "war" but not part of a longer word like "warranty".
 _KEYWORD_PATTERNS = [(kw, re.compile(r"\b" + re.escape(kw) + r"\b", re.IGNORECASE)) for kw in KEYWORDS]
 
-DEDUP_THRESHOLD = 0.85
-DEDUP_WINDOW = timedelta(hours=2)
+DEDUP_THRESHOLD = 0.85  # title-similarity ratio (0-1) above which two articles count as the same story
+DEDUP_WINDOW = timedelta(hours=2)  # only compare against articles published within this many hours
 
 
 def match_keywords(text):
-    """Return the list of keywords (original casing from the list) found in text."""
+    """Return the list of keywords (original casing from the list) found in text.
+
+    Beginner note: this just checks "does any KEYWORDS entry appear as a
+    whole word in this text?" — there's no scoring or ranking, a single hit
+    is enough to pass the Tier 2 filter.
+    """
     if not text:
         return []
     return [kw for kw, pattern in _KEYWORD_PATTERNS if pattern.search(text)]
@@ -232,6 +276,14 @@ def fetch_tier(tier):
 
 
 def _title_similarity(a, b):
+    """How alike are two titles, from 0.0 (nothing in common) to 1.0 (identical)?
+
+    Uses Python's built-in difflib.SequenceMatcher, which finds the longest
+    common pieces of the two strings and turns that into a ratio. It's not
+    smart about meaning (it doesn't know "PM" means "Prime Minister") — it's
+    purely comparing the characters — but for near-identical headlines from
+    different outlets covering the same event, that's usually enough.
+    """
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
 
@@ -241,6 +293,14 @@ def find_duplicate(candidate_title, candidate_published_dt, recent_articles):
     recent_articles: iterable of dicts with 'id', 'title', 'published_at' (already
     filtered to duplicate_of IS NULL / canonical entries), sorted ascending by
     published_at so the first match found is the earliest (canonical) one.
+
+    Beginner walk-through: for each existing article published within
+    DEDUP_WINDOW of this new candidate, compute _title_similarity(). If it's
+    >= DEDUP_THRESHOLD (0.85), we treat the new article as a re-report of that
+    same story and return the existing article's id (the caller then marks
+    the new row's duplicate_of = that id, instead of treating it as fresh
+    news). Because recent_articles is sorted oldest-first, the very first
+    match we find is guaranteed to be the earliest ("canonical") version.
     """
     if candidate_published_dt is None:
         return None

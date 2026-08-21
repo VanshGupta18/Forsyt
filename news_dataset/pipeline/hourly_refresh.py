@@ -1,4 +1,26 @@
-"""Hourly platform refresh: NLP batch → parquets → GPR/corridors → Postgres + dual-signal."""
+"""Hourly platform refresh: NLP batch → parquets → GPR/corridors → Postgres + dual-signal.
+
+Beginner note — the full order of operations for run_platform_refresh():
+    Runs hourly via .github/workflows/platform_refresh.yml (20 minutes after
+    the NLP scheduler, so freshly-tagged articles are ready). Unlike
+    daily_index.py (which finalizes ONE past day), this job keeps TODAY and
+    YESTERDAY's numbers current throughout the day:
+    1. If any articles are still missing NLP tags, run a small batch
+       (run_nlp(), default 200 articles — see PLATFORM_REFRESH_NLP_BATCH).
+    2. backfill_missing_parquets() + re-export today's and yesterday's
+       Parquet files (via run_daily_index(..., skip_gpr=True) reused from
+       pipeline/daily_index.py) so they reflect the newest articles.
+    3. run_gpr_range() re-scores GPR + corridor risk, but only marks
+       yesterday/today as "dirty" (dirty_days) so gpr_index/ doesn't have to
+       recompute the whole history every hour — just the days that changed.
+    4. sync_all() (export/to_db.py) pushes the updated CSV rows into Postgres.
+    5. refresh_dual_signal() recomputes the cached geo+market combined signal.
+    6. _warm_api_caches() pre-computes the "quality report" (so the first
+       visitor of the hour doesn't wait on it) and tries to resolve article
+       thumbnail images for up to 20 articles missing one.
+    Every run's summary is logged via db.log_pipeline_run(STAGE, ...) for the
+    /api/status and /api/pages/quality endpoints to report on.
+"""
 
 from __future__ import annotations
 

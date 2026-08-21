@@ -1,4 +1,25 @@
-"""Lexicon-density tone and GCAM extraction."""
+"""Lexicon-density tone and GCAM extraction.
+
+Beginner note — this is NOT a trained sentiment-analysis model.
+    There's no neural network here, unlike nlp/themes.py. Instead, this
+    module has two hand-written word lists (NEGATIVE_WORDS, POSITIVE_WORDS)
+    and simply counts: "out of all the words in this article, what fraction
+    are in the negative list? What fraction are in the positive list?" That
+    fraction (times 100) is the "tone" score. It's simple, fast, has no
+    external dependencies, and is easy for a human to audit (you can read
+    every word in the list yourself) — the tradeoff is it can't understand
+    context, sarcasm, or negation the way a trained model might.
+
+    What is "GCAM emulation"?
+    GDELT (the academic geopolitical-risk dataset this project is modeled
+    on) publishes a "Global Content Analysis Measures" (GCAM) score per
+    article, built from dozens of proprietary emotion/topic dictionaries.
+    We don't have access to GDELT's exact dictionaries, so extract_gcam()
+    below builds a similar-shaped output (four conflict-related dimensions,
+    each a 0-1 density score) using our own small hand-picked word lists —
+    "emulating" GCAM's output format and rough scale, not reproducing its
+    exact lexicons.
+"""
 
 from __future__ import annotations
 
@@ -57,7 +78,13 @@ def _words(text: str) -> list[str]:
 
 
 def extract_tone(text: str) -> tuple[float, float]:
-    """Return (negative density, tonal density), each as a 0-100 percentage."""
+    """Return (negative density, tonal density), each as a 0-100 percentage.
+
+    "negative density" = what % of all words are in NEGATIVE_WORDS.
+    "tonal density" = what % of all words are in EITHER word list (negative
+    or positive) — i.e. how emotionally/conflict-charged the text is overall,
+    regardless of which direction. Both are plain word counts, no weighting.
+    """
     words = _words(text)
     if not words:
         return 0.0, 0.0
@@ -71,7 +98,18 @@ def extract_tone(text: str) -> tuple[float, float]:
 
 
 def extract_gcam(text: str) -> str:
-    """Return four conflict dimensions in GDELT's GCAM key:value format."""
+    """Return four conflict dimensions in GDELT's GCAM key:value format.
+
+    Each of the four dimensions (c18.1 = "conflict/military", c18.2 =
+    "danger/threat", c18.3 = "violence/attack", c9.1 = "hostility/anger" —
+    see _GCAM_LEXICONS above for the exact word lists) is scored as: how many
+    words from that dimension's list appear, divided by a reference density
+    (_GCAM_REFERENCE_DENSITY) meant to land typical GDELT-scale articles
+    around a comparable 0-1 range, capped at 1.0. The result is serialized as
+    a comma-separated "key:value" string because that's the plain-text format
+    GDELT itself uses for GCAM columns, which keeps this dataset compatible
+    with the same downstream GPR-scoring code GDELT data uses.
+    """
     words = _words(text)
     if not words:
         values = {dimension: 0.0 for dimension in _GCAM_LEXICONS}

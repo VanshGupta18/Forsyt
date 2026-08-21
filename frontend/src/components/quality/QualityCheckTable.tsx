@@ -1,3 +1,6 @@
+// Quality page's "technical details" table: every validation check, grouped
+// by category, filterable, with expandable rows for extra per-check detail
+// (e.g. a mini table of per-corridor results).
 import { Fragment, useMemo, useState } from 'react'
 import type { QualityCheck } from '../../lib/api'
 import { CATEGORY_INTROS, CHECK_CATEGORIES, type CheckCategoryFilter } from '../../lib/qualityCopy'

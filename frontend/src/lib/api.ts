@@ -1,5 +1,27 @@
+// ---------------------------------------------------------------------------
+// This file is the app's DATA LAYER: every network request the frontend
+// makes to the backend API goes through the `fetchJSON` helper below, and
+// every function exported from this file wraps one specific API endpoint.
+// Pages and components never call `fetch()` directly — they import one of
+// the `fetch...` functions from here instead. That keeps "how do I talk to
+// the backend" in one place, and gives every response a TypeScript type (see
+// the `export type ...` blocks further down) so mistakes like typo'd field
+// names get caught while you're writing code, not at runtime.
+//
+// `API_BASE` is either empty (local dev — see vite.config.ts's proxy, which
+// forwards "/api" and "/health" straight to the Python backend) or a full
+// URL like "https://api.example.com" (production — set via the VITE_API_BASE
+// environment variable in frontend/.env). Every request below is built as
+// `${API_BASE}${path}`, so in dev it's just a relative path like "/health".
+// ---------------------------------------------------------------------------
 const API_BASE = String(import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 
+// Shared fetch wrapper used by every function below. `<T>` is a TypeScript
+// "generic" — it lets each caller say "I expect the JSON back to look like
+// type X", e.g. `fetchJSON<HealthPayload>('/health')`. This function itself
+// doesn't validate the shape of the response (the backend is trusted to
+// return what it promises); it just does the actual `fetch()` call, throws a
+// helpful Error if the HTTP status isn't ok (2xx), and parses the body as JSON.
 export async function fetchJSON<T>(path: string): Promise<T> {
   const url = `${API_BASE}${path}`
   const res = await fetch(url)
@@ -122,12 +144,6 @@ export type PortfolioPageBundle = {
   gpr_history: GprHistoryPayload
 }
 
-export type StatsPayload = {
-  total_articles?: number
-  recent_cycles?: unknown[]
-  feed_health?: Record<string, unknown>
-}
-
 export type NewsArticle = {
   title?: string
   link?: string
@@ -216,12 +232,6 @@ export type CorridorsPayload = {
   stale_warning?: string | null
 }
 
-export type CorridorHistoryPayload = {
-  corridor?: string
-  history?: CorridorRow[]
-  error?: string
-}
-
 export type DualSignalPayload = {
   index_start?: string
   geopolitical?: {
@@ -306,10 +316,17 @@ export function formatPrice(price: number, currency?: string): string {
   return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// Calls GET /health — a lightweight "is the backend alive and how fresh is
+// its data" check. Returns overall status plus the latest dates for each
+// data type (GPR score, corridor scores, news). Used by AppChrome/Footer to
+// show the "Live" / "Degraded" status dot.
 export function fetchHealth() {
   return fetchJSON<HealthPayload>('/health')
 }
 
+// Calls GET /api/events/feed — the raw, filterable news feed (by theme,
+// corridor, priority tier, result limit). Returns a list of NewsArticle
+// objects. Used by the News page whenever the user applies a filter.
 export function fetchEventsFeed(params: EventsFeedParams = {}) {
   const qs = new URLSearchParams()
   if (params.theme) qs.set('theme', params.theme)
@@ -321,6 +338,9 @@ export function fetchEventsFeed(params: EventsFeedParams = {}) {
   return fetchJSON<{ events: NewsArticle[]; source?: string }>(`/api/events/feed${q ? `?${q}` : ''}`)
 }
 
+// Calls GET /api/news/image?link=... — asks the backend to look up (or
+// scrape) a thumbnail image URL for one article, given its link. Returns just
+// the image URL (or null if none was found). Used by useArticleImage.ts.
 export function fetchNewsImage(link: string) {
   const qs = new URLSearchParams({ link })
   return fetchJSON<{ image_url: string | null }>(`/api/news/image?${qs}`).then((r) => r.image_url)
@@ -344,6 +364,10 @@ export function corridorOperationalRisk(row: CorridorRow): number {
   return Number.isFinite(Number(value)) ? Number(value) : 0
 }
 
+// Calls GET /api/market/dual-signal — the combined "news risk + market
+// volatility" signal used on the Macro page (geopolitical score, NIFTY vol
+// forecast, joint stress score, historical analog). Pass `refresh: true` to
+// force the backend to recompute instead of serving a cached value.
 export function fetchDualSignal(refresh = false) {
   const qs = refresh ? '?refresh=1' : ''
   return fetchJSON<DualSignalPayload>(`/api/market/dual-signal${qs}`)
@@ -475,28 +499,46 @@ export type QualityReport = {
   health?: HealthSnapshot | null
 }
 
+// The six functions below each call one "page bundle" endpoint. Rather than
+// having a page fire off five separate requests (health, quotes, corridors,
+// news, ...), the backend pre-joins everything one page needs into a single
+// JSON response — so each page component only needs ONE useQuery() call.
+
+// Calls GET /api/pages/home — everything the Home page needs in one request:
+// health, current GPR score, corridor list, market quotes, dual signal.
 export function fetchPageHome() {
   return fetchJSON<HomePageBundle>('/api/pages/home')
 }
 
+// Calls GET /api/pages/macro — everything the Market Stress Monitor page
+// needs: dual signal, market quotes + indicators, GPR history, corridors.
 export function fetchPageMacro() {
   return fetchJSON<MacroPageBundle>('/api/pages/macro')
 }
 
+// Calls GET /api/pages/news?limit=N — the News page's headline feed plus the
+// current GPR score/history, capped at `limit` articles (default 50).
 export function fetchPageNews(limit = 50) {
   return fetchJSON<NewsPageBundle>(`/api/pages/news?limit=${limit}`)
 }
 
+// Calls GET /api/pages/corridor?corridor=X&limit=N — corridor risk scores
+// plus recent headlines, optionally scoped to one `corridor` search term.
 export function fetchPageCorridor(corridor?: string, limit = 40) {
   const qs = new URLSearchParams({ limit: String(limit) })
   if (corridor) qs.set('corridor', corridor)
   return fetchJSON<CorridorPageBundle>(`/api/pages/corridor?${qs}`)
 }
 
+// Calls GET /api/pages/portfolio — GPR score, dual signal, and market quotes
+// used to drive the (illustrative) Portfolio Exposure page.
 export function fetchPagePortfolio() {
   return fetchJSON<PortfolioPageBundle>('/api/pages/portfolio')
 }
 
+// Calls GET /api/pages/quality — the full data-quality/validation report
+// shown on the Accuracy/Quality page. Pass `refresh: true` to make the
+// backend recompute the live checks instead of returning a cached report.
 export function fetchPageQuality(refresh = false) {
   const qs = refresh ? '?refresh=1' : ''
   return fetchJSON<QualityReport>(`/api/pages/quality${qs}`)

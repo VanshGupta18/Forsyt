@@ -25,6 +25,8 @@ Place Caldara benchmark files in `gpr_index/data/`:
 - `caldara_gpr_monthly.xls`
 - `caldara_gpr_daily.xls`
 
+(`scripts/paths.py` also accepts the filenames Iacoviello's site actually exports as — `data_gpr_export (1).xls` and `data_gpr_daily_recent.xls` — as fallbacks, and that's what's currently sitting in `gpr_index/data/` in this repo. Either naming works; `data/benchmarks/` is a third fallback location, not required.)
+
 ## Run (2025 full year)
 
 ```bash
@@ -88,3 +90,17 @@ Merged symlinks: `data/index_processed/`. Set `GPR_INDEX_PROCESSED_DIR` to that 
 | `scripts/diagnose_gpr_scoring.py` | Sample scoring diagnostics |
 | `scripts/plot_gpr.py` | Charts |
 | `scripts/merge_processed_dirs.py` | Symlink GKG warmup + India parquets into `index_processed/` |
+
+## Known quirks (harmless, not cleaned up yet)
+
+A few leftover files in this module are stale but not deleted — see the
+repo-root `docs/DISCREPANCIES.md` for the full list. In short:
+
+- `outputs/india_smoke/` — a small one-off smoke-test snapshot from an early
+  run, unreferenced by any script or doc. Safe to ignore.
+- `data/gkg_processed/data_gpr_daily_recent.xls` — a stray duplicate of the
+  Caldara benchmark spreadsheet that ended up inside the Parquet output
+  folder; the real copy used by the pipeline lives directly under `data/`.
+- Files named `._*` anywhere under this module (e.g. `docs/._README.md`) are
+  macOS "AppleDouble" metadata created when copying files onto/off an
+  external drive — not real content, safe to ignore or delete.

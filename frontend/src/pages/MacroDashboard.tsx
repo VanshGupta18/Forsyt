@@ -1,3 +1,8 @@
+// Route: "/macroeconomics" (Indian Market Stress Monitor). Combines the
+// news-risk score with NIFTY market volatility into a single "today's
+// verdict", plus a joint-stress gauge, per-signal metric tables, driving
+// headlines, a dual-signal chart, and a stress quadrant map. See
+// lib/macroCopy.ts for the logic behind the labels/colors shown here.
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ApiErrorBanner from '../components/ApiErrorBanner'

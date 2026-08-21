@@ -1,3 +1,8 @@
+// Quality page's "technical details" visuals: a color-coded heatmap grid of
+// every check's status, plus a short list of key checks shown as progress
+// bars. `barWidth()` below picks a sensible bar length per check since
+// checks report wildly different kinds of numbers (a 0-1 correlation, a
+// percentage, a pass/fail with no number at all).
 import { useMemo } from 'react'
 import type { QualityCheck, QualityCheckStatus } from '../../lib/api'
 

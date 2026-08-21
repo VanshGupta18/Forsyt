@@ -1,3 +1,6 @@
+// Reusable card for the Macro page's two side-by-side metric panels (news
+// risk / market volatility): a kicker + title, an optional "spot price" box,
+// an optional big primary number + regime badge, and a list of label/value rows.
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 

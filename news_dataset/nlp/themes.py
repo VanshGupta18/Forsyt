@@ -1,4 +1,27 @@
-"""Semantic theme extraction using GPR taxonomy prototypes."""
+"""Semantic theme extraction using GPR taxonomy prototypes.
+
+Beginner note — what is a "sentence-transformer embedding"?
+    A neural network model (MODEL_ID below) reads a piece of text and turns
+    it into a list of a few hundred numbers (a "vector" or "embedding").
+    Texts with similar MEANING end up with similar vectors, even if they
+    don't share any exact words — e.g. "troops crossed the border" and
+    "soldiers entered enemy territory" would land close together, because
+    the model was trained on huge amounts of text to learn meaning, not just
+    spelling. This is different from the keyword matching used elsewhere in
+    this codebase (see ingestion/geo_pipeline.py's KEYWORDS) — no exact word
+    has to match.
+
+    How we use that here ("prototype" comparison):
+    For every GPR theme code (ARMEDCONFLICT, TERROR_ATTACK, etc.) we wrote a
+    short hand-picked description of what that theme looks like
+    (CODE_DESCRIPTIONS below) and turned each description into its own
+    embedding — its "prototype" vector. Then, for a real article, we embed
+    its title+body text the same way and measure how close (cosine
+    similarity, a number from -1 to 1) that article's vector is to each
+    theme's prototype vector. If the similarity clears SIMILARITY_THRESHOLD
+    (0.34), we say the article has that theme. An article can match zero,
+    one, or several themes.
+"""
 
 from __future__ import annotations
 
@@ -8,8 +31,8 @@ from gpr_index.scripts.taxonomy import TIER1_CODES, TIER2_CODES, TIER3_CODES
 
 MODEL_ID = "sentence-transformers/distiluse-base-multilingual-cased-v2"
 # Coverage-aware calibration on 234 canonical articles: 58 positive, score-shape PASS.
-SIMILARITY_THRESHOLD = 0.34
-MAX_CHARS = 4_000
+SIMILARITY_THRESHOLD = 0.34  # cosine-similarity cutoff (see module docstring) — tuned by nlp/calibrate.py, not something to hand-edit casually
+MAX_CHARS = 4_000  # truncate very long articles before embedding — the model has a fixed input-size limit and longer text doesn't reliably improve results here
 
 ALL_CODES = [*TIER1_CODES, *TIER2_CODES, *TIER3_CODES]
 
@@ -66,7 +89,16 @@ def _get_prototypes() -> Any:
 
 
 def theme_similarities(title: str, body: str) -> dict[str, float]:
-    """Return one cosine similarity per GPR theme code."""
+    """Return one cosine similarity per GPR theme code.
+
+    Beginner note: the title is repeated twice in the text below (title +
+    title + body) so the headline counts for a bit more than the body text
+    when the model builds the embedding — a cheap way to weight the part of
+    the article that's usually most on-topic. `_get_prototypes() @ embedding`
+    is a matrix multiplication that computes the similarity between this
+    one article's vector and every theme prototype's vector all in one
+    step (much faster than comparing one at a time in a loop).
+    """
     text = f"{title or ''} {title or ''} {body or ''}"[:MAX_CHARS]
     if not text.strip():
         return {code: 0.0 for code in ALL_CODES}
@@ -86,7 +118,12 @@ def themes_at_threshold(
     similarities: dict[str, float],
     threshold: float = SIMILARITY_THRESHOLD,
 ) -> list[str]:
-    """Return theme codes meeting a threshold from cached similarities."""
+    """Return theme codes meeting a threshold from cached similarities.
+
+    Split out from extract_themes() so nlp/calibrate.py can re-use the same
+    (expensive-to-compute) similarity scores while testing many different
+    threshold values, instead of re-running the neural network every time.
+    """
     return [
         code
         for code in ALL_CODES
@@ -100,7 +137,12 @@ def extract_themes(
     *,
     similarities: dict[str, float] | None = None,
 ) -> list[str]:
-    """Return every GPR theme whose prototype clears the production threshold."""
+    """Return every GPR theme whose prototype clears the production threshold.
+
+    This is the function the rest of the pipeline calls (see
+    nlp/run_extraction.py): give it an article's title/body, get back a list
+    of matched theme codes like ["ARMEDCONFLICT", "BORDER_DISPUTE"].
+    """
     return themes_at_threshold(
         similarities if similarities is not None else theme_similarities(title, body)
     )

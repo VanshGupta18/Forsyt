@@ -1,3 +1,6 @@
+// Macro page's row of live market-quote PulseCards, plus a "what changed"
+// summary line and transmission-channel badges (oil-rupee / risk-off — see
+// lib/macroCopy.ts's computeTransmission).
 import { MARKET_SYMBOL_ORDER, orderMarketQuotes, type MarketHistoryPayload, type MarketQuote } from '../lib/api'
 import {
   computeTransmission,

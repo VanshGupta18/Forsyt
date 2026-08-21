@@ -1,3 +1,7 @@
+// Route: "/quality" (Platform Quality & Accuracy — "Can you trust these
+// numbers?"). Shows live data-freshness status, headline trust cards, a
+// plain-English "how we build scores" methodology section, and a togglable
+// "technical details" section with the full validation check table.
 import { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ApiErrorBanner from '../components/ApiErrorBanner'

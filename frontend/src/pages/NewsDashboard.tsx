@@ -1,3 +1,8 @@
+// Route: "/news" (News Intelligence). Shows a filterable feed of tracked
+// geopolitical headlines: a hero story + "top stories today" rail, a risk
+// context chart, a filterable grid of all headlines, and a scrolling ticker
+// at the bottom. Filters (theme/tier/corridor) are kept in the URL query
+// string so a filtered view can be shared/bookmarked.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'

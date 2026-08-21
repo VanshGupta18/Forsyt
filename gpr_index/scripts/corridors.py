@@ -121,6 +121,14 @@ CORRIDOR_PLACES: dict[str, PlaceSpec] = {
 }
 
 
+
+# energy_exposure / goods_exposure are fractions from 0.0 to 1.0 (not
+# percentages, and not corridor-specific probabilities) representing the
+# share of India's total crude-oil imports (energy) or merchandise trade
+# (goods) that depends on that corridor, per the cited government/industry
+# source. 0.0 means "no current quantified throughput," not "zero strategic
+# importance" — see corridor_index.py for how these combine with the news-
+# derived threat_index to produce corridor_risk.
 CORRIDORS: dict[str, CorridorSpec] = {
     "strait_of_hormuz": {
         "name": "Strait of Hormuz",
@@ -250,7 +258,29 @@ def _name_matches(fullname: str, corridor: str) -> bool:
 
 
 def tag_corridors(v2locations: str) -> list[str]:
-    """Return corridor IDs matched by a GDELT-format V2Locations string."""
+    """Return corridor IDs matched by a GDELT-format V2Locations string.
+
+    An article's V2Locations field can list several place mentions (city,
+    region, country...); this checks each one against every registered
+    corridor using three fallback rules, in order, and a corridor "matches"
+    if ANY location mention satisfies ANY rule:
+
+      1. Name match — the place's full name matches one of the corridor's
+         known aliases (e.g. "Hormuz Strait" or "Bab el-Mandeb"). Most
+         precise: this is a real place name, not just a country mention.
+      2. Country + ADM1 match — the place's GDELT country code is one of the
+         corridor's registered countries. For LAND corridors (borders like
+         Ladakh or Attari-Wagah) this additionally requires a matching ADM1
+         (state/province) code — otherwise any article that merely mentions
+         "India" would falsely match every India land-border corridor.
+      3. Maritime bounding box — for SEA corridors only (no ADM1 concept for
+         open water), the place's lat/lon falls inside a hand-drawn
+         rectangle around that strait/route, catching unnamed coastal
+         mentions the alias list didn't anticipate.
+
+    Note: GDELT's country/ADM1 codes are FIPS 10-4, NOT the more familiar
+    ISO codes — e.g. "CH" here means China, not Switzerland.
+    """
     if not isinstance(v2locations, str) or not v2locations:
         return []
 
@@ -259,15 +289,20 @@ def tag_corridors(v2locations: str) -> list[str]:
     for corridor_id, spec in CORRIDORS.items():
         matched = False
         for location in locations:
+            # Rule 1: alias/name match.
             if _name_matches(location.fullname, corridor_id):
                 matched = True
                 break
 
+            # Rule 2: country match, with an extra ADM1 (state/province) check
+            # for land corridors so a country-wide mention doesn't leak in.
             if location.country in spec["countries"]:
                 if not spec["adm1"] or location.adm1 in spec["adm1"]:
                     matched = True
                     break
 
+            # Rule 3: maritime bounding-box fallback (sea corridors have a
+            # `bounds` rectangle; land corridors leave this None).
             bounds = spec["bounds"]
             if bounds and location.lat is not None and location.lon is not None:
                 min_lat, max_lat, min_lon, max_lon = bounds

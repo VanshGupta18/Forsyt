@@ -1,5 +1,26 @@
 """Build daily geopolitical-risk indices for India-relevant trade corridors.
 
+Beginner explanation of the "threat x exposure" idea this whole file
+implements: a corridor (say, the Strait of Hormuz) can be all over the news
+(high "threat") without that automatically meaning much India trade actually
+flows through it. So this module keeps two separate numbers and multiplies
+them together:
+  threat  = how much risky news is currently about this corridor (0-100 scale, from the same
+            article-scoring logic as the main GPR index, just restricted to articles tagged
+            to this corridor)
+  exposure = a fixed, hand-researched percentage of India's energy or goods trade that
+             physically depends on that corridor (see corridors.py CORRIDORS for the sourced
+             percentages, e.g. Hormuz = 33.6% of India's crude oil imports)
+  risk = threat x exposure, clamped to [0, 100]
+
+A corridor can have 100/100 threat (constant alarming news) but 0% exposure
+(no real India trade runs through it) — its risk score stays 0, correctly
+reflecting that the news doesn't matter operationally. Energy and goods use
+different real-world denominators (e.g. crude-oil-import share vs.
+merchandise-trade share), so they're tracked as two separate risk numbers and
+the LARGER of the two is reported — that avoids double-counting or adding
+together two percentages that aren't measuring the same thing.
+
 Score semantics (supplier-facing):
   raw_ratio       — sum of geo-positive article scores for a corridor / daily article count
   threat_index    — raw_ratio normalized to ~100 on the corridor baseline (NOT disruption probability)
@@ -35,8 +56,20 @@ from .split_era import (
     should_split_era,
 )
 
+# Same tail-exponent/upper-stretch idea as the main GPR index
+# (gkg_gpr_pipeline.py's _apply_index_transform — see that function's
+# docstring for the plain-language walkthrough), but softer numbers: a
+# corridor sees far fewer matching articles per day than the whole world, so
+# a strong exponent would make single-article days spike wildly. 1.5 and 1.05
+# (vs. the parent index's 2.45 and 1.08) keep the shape less jumpy while
+# still restoring some right-skew.
 CORRIDOR_TAIL_EXPONENT = float(os.environ.get("CORRIDOR_TAIL_EXPONENT", "1.5"))
 CORRIDOR_UPPER_TAIL_STRETCH = float(os.environ.get("CORRIDOR_UPPER_TAIL_STRETCH", "1.05"))
+# A corridor needs at least this many days with a real article hit inside the
+# baseline window before it gets a real score. Below that, there isn't enough
+# history to compute a trustworthy baseline average, so the corridor is
+# marked score_status="insufficient_history" and reported as 0 instead of a
+# number that could be wildly wrong from just 1 lucky/unlucky article.
 MIN_BASELINE_HIT_DAYS = int(os.environ.get("CORRIDOR_MIN_BASELINE_HIT_DAYS", "2"))
 
 CORRIDOR_SCORE_DISCLAIMER = (
@@ -235,6 +268,13 @@ def normalize_corridor_index(
     out["goods_exposure"] = out["corridor"].map(
         lambda value: CORRIDORS[value]["goods_exposure"]
     )
+    # The threat x exposure multiply described at the top of this file:
+    # energy_exposure/goods_exposure are fractions between 0 and 1 (e.g. 0.336
+    # for Hormuz's 33.6% share of India's crude imports), so multiplying a
+    # 0-100 threat_index by a 0-1 fraction naturally lands back in 0-100.
+    # corridor_risk keeps whichever channel (energy or goods) is larger,
+    # since a corridor can matter a lot for oil and not at all for general
+    # merchandise trade (or vice versa) — adding the two would double-count.
     out["energy_risk"] = (out["threat_index"] * out["energy_exposure"]).clip(0, 100)
     out["goods_risk"] = (out["threat_index"] * out["goods_exposure"]).clip(0, 100)
     out["corridor_risk"] = out[["energy_risk", "goods_risk"]].max(axis=1)

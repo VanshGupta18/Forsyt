@@ -1,3 +1,18 @@
+// ---------------------------------------------------------------------------
+// Like macroCopy.ts, this file is pure logic + copywriting — no UI — for the
+// Trade & Corridor Risk page. A "corridor" is a shipping lane or land border
+// crossing (e.g. Strait of Hormuz, India–Pakistan Attari). Each one gets a
+// 0-100+ "operational risk" score from the backend (see corridorOperationalRisk
+// in api.ts). The functions below translate that raw number into the plain
+// business language shown on screen: a risk TIER ("Normal"/"Watch"/"High
+// alert"), a text color class, an accent color for chart lines, and advisory
+// copy. The tier thresholds — used consistently everywhere in this file — are:
+//   risk >= 50  → "High"   (shown to users as "High alert")
+//   risk >= 20  → "Medium" (shown to users as "Watch")
+//   otherwise   → "Low"    (shown to users as "Normal")
+// (The actual >= 50 / >= 20 cutoffs live in `corridorRiskLabel()` in api.ts —
+// everything here just re-labels/re-colors whatever tier that function picks.)
+// ---------------------------------------------------------------------------
 import { corridorOperationalRisk, corridorRiskLabel, type CorridorRow } from './api'
 
 export const CORRIDOR_PAGE_DISCLAIMER =
@@ -46,6 +61,11 @@ export const SCORE_LABELS = {
   energy: 'Fuel & energy impact',
 } as const
 
+// Turns a raw risk tier ("High"/"Medium"/"Low", from corridorRiskLabel in
+// api.ts) into the friendlier word shown in the UI. `scoreStatus ===
+// 'insufficient_history'` overrides everything else — a corridor with too
+// little historical data yet is "Calibrating" regardless of its raw score,
+// so a noisy early number can't be mistaken for a confident "High alert".
 export function businessTierLabel(risk: number, scoreStatus?: string | null): string {
   const { label } = corridorRiskLabel(risk, scoreStatus)
   if (label === 'Calibrating') return 'Calibrating'
@@ -98,17 +118,9 @@ export function tierAccentColor(risk: number, scoreStatus?: string | null): stri
   return 'var(--corridor-accent-clear)'
 }
 
+// Rounds the corridor's operational risk score to a whole number for
+// display (the underlying score can have decimals; showing "42" reads
+// cleaner on a dashboard than "42.37").
 export function displayStressScore(row: CorridorRow | Record<string, unknown>): number {
   return Math.round(corridorOperationalRisk(row as CorridorRow))
-}
-
-export function routeStressTier(row: CorridorRow | Record<string, unknown>): string {
-  const typed = row as CorridorRow
-  const op = Number(
-    typed.operational_risk ??
-      typed.corridor_risk_7ma ??
-      typed.corridor_risk ??
-      0,
-  )
-  return businessTierLabel(op, typed.score_status)
 }

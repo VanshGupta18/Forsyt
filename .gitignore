@@ -22,7 +22,8 @@ news.db
 .cursor/
 .claude/
 CLAUDE.md
-docs/
 report/
 # pipeline intermediate cache (too large for GitHub)
 gpr_index/outputs/_scores_batch_*.parquet
+
+.pytest_cache/

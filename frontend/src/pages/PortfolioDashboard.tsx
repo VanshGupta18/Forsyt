@@ -1,3 +1,8 @@
+// Route: "/portfolio-exposure" (Portfolio Exposure & GPR Analytics). An
+// illustrative page: live GPR/stress/market tiles at the top, then a
+// regime-driven sector-sensitivity table and a GPR history chart. The
+// sample allocation and scenario tables further down are static demo data
+// (no real holdings are connected yet) — search for "Demo" in this file.
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'

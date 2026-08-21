@@ -1,3 +1,37 @@
+// ---------------------------------------------------------------------------
+// CorridorRiskMap — the pannable/zoomable flat world map on the Trade &
+// Corridor Risk page, showing all 12 tracked shipping lanes/border crossings
+// as colored lines radiating out from (or through) India.
+//
+// PROJECTION: unlike HeroGlobe.tsx's `geoOrthographic()` (a 3D-look sphere,
+// only half the world visible at once), this map uses
+// `geoEquirectangular()` — the familiar flat rectangular world map you'd see
+// on a classroom wall, where every line of longitude is an evenly-spaced
+// vertical line and every line of latitude is an evenly-spaced horizontal
+// line. It's simple and shows the WHOLE world in one view (good for a
+// filterable list of global trade routes), at the cost of visibly
+// stretching land area near the poles (Greenland looks much bigger than it
+// really is, etc.) — a tradeoff, not a bug.
+//
+// LAND DATA: same idea as HeroGlobe.tsx, but this map draws individual
+// COUNTRY borders (`world-atlas/countries-110m.json`, decoded by
+// `topojson-client`'s `feature()`) instead of one single landmass blob —
+// needed here so each country can get its own faint outline/hover title.
+//
+// PAN & ZOOM: `d3-zoom` and `d3-selection` are two more small pieces of the
+// D3.js toolkit. `d3-selection`'s `select(element)` wraps a real DOM element
+// (here, the `<svg>`) so d3's other modules can attach event listeners and
+// read/write attributes on it in D3's own style — this file only uses that
+// wrapping, not D3's broader data-binding features. `d3-zoom`'s `zoom()`
+// creates a reusable "zoom behavior" that, once attached to the SVG via
+// `.call(behavior)`, listens for the mouse wheel, drag, and pinch gestures
+// on its own and reports back a `ZoomTransform` (an x/y pan offset plus a
+// scale factor) any time the user zooms or pans. This component stores that
+// transform in React state (`transform`) and applies it to the map's
+// contents with a plain SVG `transform="translate(...) scale(...)"`
+// attribute on a wrapping `<g>` element — so d3-zoom only handles gesture
+// *detection*, React still owns what actually gets drawn.
+// ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from 'react'
 import { geoEquirectangular, geoInterpolate, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
@@ -22,17 +56,43 @@ const WIDTH = 1000
 const HEIGHT = 460
 const SAMPLES_PER_LEG = 28
 
+// All of this runs ONCE at module load (not inside the component, and not
+// on every render) because the world's country borders never change while
+// the app is running — there's no reason to re-decode the TopoJSON or
+// recompute every country's SVG path string more than once.
 const topo = countries110m as unknown as Topology
 const allCountries = (feature(topo, topo.objects.countries) as FeatureCollection).features
+// Antarctica is dropped — it takes up a lot of visual space at the bottom of
+// an equirectangular map for no benefit here, since no tracked corridor goes near it.
 const countries = allCountries.filter((f) => f.properties?.name !== 'Antarctica')
+// `.fitSize([WIDTH, HEIGHT], ...)` auto-picks a scale/center so the whole
+// `countries` shape fits exactly inside a WIDTH x HEIGHT box — simpler than
+// hand-tuning a scale/translate like HeroGlobe.tsx does for its fixed globe.
 const projection = geoEquirectangular().fitSize([WIDTH, HEIGHT], { type: 'FeatureCollection', features: countries })
 const pathGenerator = geoPath(projection)
+// Precompute every country's outline as an SVG path `d` string up front —
+// this list is rendered directly in JSX further down, one <path> per country.
 const countryPaths = countries.map((f, i) => ({ key: `country-${i}`, name: f.properties?.name ?? '', d: pathGenerator(f) ?? '' }))
 
+// Small convenience wrapper: this whole file otherwise deals in the
+// everyday [lat, lon] order (matching corridorGeo.ts's data), so this
+// function does the swap to d3-geo's [lon, lat] order in one place. Falls
+// back to [0, 0] (map's top-left-ish origin) if the projection can't place
+// the point, which shouldn't normally happen for real coordinates.
 function project([lat, lon]: [number, number]): [number, number] {
   return projection([lon, lat]) ?? [0, 0]
 }
 
+// Turns a corridor's list of [lat, lon] waypoints into a smooth-looking SVG
+// path plus the individual projected points (the points are reused
+// elsewhere to place start/end dots and the midpoint label). Straight lines
+// between waypoints would look wrong on a map of a round Earth — e.g. a
+// "straight" line from Mumbai to Rotterdam should visibly curve on this flat
+// projection because the real shortest route curves on the globe. So each
+// pair of consecutive waypoints is joined with `geoInterpolate` (same great-
+// circle interpolation trick as HeroGlobe.tsx's buildArcPath) sampled in
+// SAMPLES_PER_LEG small steps, then all the steps are projected to screen
+// coordinates and joined into one path.
 function pathFromWaypoints(waypoints: [number, number][]): { d: string; points: [number, number][] } {
   if (waypoints.length < 2) {
     const p = project(waypoints[0] ?? INDIA)
@@ -105,23 +165,35 @@ export default function CorridorRiskMap({
     setTransform(next)
   }
 
+  // Sets up d3-zoom exactly once when the map mounts (empty dependency
+  // array), since it attaches raw DOM event listeners directly to the SVG
+  // element rather than going through React's synthetic event system.
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
 
+    // Wrap the real <svg> DOM node so d3-zoom can attach its listeners to it.
     const svgSelection = select(svg)
     const behavior = zoom<SVGSVGElement, unknown>()
+      // Don't allow zooming out past the original size (1x) or in past 8x.
       .scaleExtent([1, 8])
+      // Don't allow panning the map completely off-screen — keep the pan
+      // within the original WIDTH x HEIGHT bounds.
       .translateExtent([
         [0, 0],
         [WIDTH, HEIGHT],
       ])
       .filter((event) => {
+        // Mouse-wheel zoom would otherwise also scroll the surrounding page
+        // — stop that default browser behavior while zooming the map.
         if (event.type === 'wheel') event.preventDefault()
         // Ignore right-click / ctrl+click so route selection stays predictable.
         if (event.type === 'mousedown' && (event.button === 2 || event.ctrlKey)) return false
         return true
       })
+      // Fires continuously while the user drags/scrolls/pinches. Each event
+      // carries the new `transform` (pan x/y + scale) — save it into React
+      // state via applyTransform so the component re-renders with it applied.
       .on('zoom', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
         applyTransform(event.transform)
         // d3-zoom writes transform on the SVG root; we render on the inner <g> instead.
@@ -129,13 +201,23 @@ export default function CorridorRiskMap({
       })
 
     zoomBehaviorRef.current = behavior
+    // `.call(behavior)` attaches all the drag/wheel/pinch listeners to the
+    // SVG. The second `.call(behavior.transform, ...)` immediately applies
+    // whatever transform was already in state — so if this effect re-runs
+    // (it currently can't, given the empty deps, but this pattern is
+    // defensive) the map doesn't visually snap back to the original zoom.
     svgSelection.call(behavior).call(behavior.transform, transformRef.current)
 
+    // Cleanup when the component unmounts: remove d3's listeners and clear
+    // any transform attribute it might have set directly on the <svg>.
     return () => {
       svgSelection.on('.zoom', null).attr('transform', null)
     }
   }, [])
 
+  // The on-screen +/- buttons drive the same d3-zoom behavior programmatically
+  // (rather than the user dragging/scrolling) by calling its `.scaleBy` /
+  // `.transform` methods through the same d3 selection.
   const zoomBy = (factor: number) => {
     const svg = svgRef.current
     const behavior = zoomBehaviorRef.current

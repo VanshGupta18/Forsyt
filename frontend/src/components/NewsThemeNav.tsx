@@ -1,3 +1,6 @@
+// News page's filter bar: theme tabs (All/Conflict/Military/...), a
+// high-priority-only toggle, and a "clear route filter" chip when a corridor
+// filter is active. Purely controlled — all filter state lives in the parent page.
 import { NEWS_THEME_PRESETS, themeDisplayLabel } from '../lib/newsCopy'
 
 type Props = {

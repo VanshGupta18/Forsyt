@@ -1,3 +1,6 @@
+// Macro page section pairing a NIFTY price sparkline with the GPR history
+// chart side by side, sharing one time-range picker (1M/3M/6M/1Y) so both
+// charts always show the same window.
 import { useEffect, useState } from 'react'
 import GprHistoryChart, { type GprChartPeriod } from './GprHistoryChart'
 import MarketSparkline from './MarketSparkline'

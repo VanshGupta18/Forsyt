@@ -43,20 +43,33 @@ TIER1 = frozenset(TIER1_CODES)
 TIER2 = frozenset(TIER2_CODES)
 TIER3 = frozenset(TIER3_CODES)
 
-# Score component caps and floors
-THEME_CAP    = 0.50
-TONE_NEG_CAP = 0.20
-TONE_POL_CAP = 0.10
-TONE_NEG_MIN = 5.0   # tone_neg must exceed this before contributing
-GCAM_CAP     = 0.20
-GCAM_DIM_MIN = 0.15  # GCAM dimension must exceed this before contributing
+# --- Score component caps and floors ------------------------------------
+# Every article's final gpr_score is built from three ingredients (theme +
+# tone + GCAM), each capped at its own maximum so no single signal can drown
+# out the others. The three caps below add up to exactly 1.0 (0.50 + 0.30 +
+# 0.20), which is why gpr_score always lands in [0, 1].
+THEME_CAP    = 0.50  # theme-code matching alone can supply at most half of an article's total score
+TONE_NEG_CAP = 0.20  # "how negative the tone is" can supply at most 0.20
+TONE_POL_CAP = 0.10  # "how polarized/one-sided the tone is" can supply at most 0.10
+                      # (TONE_NEG_CAP + TONE_POL_CAP = 0.30, the tone component's overall cap)
+TONE_NEG_MIN = 5.0   # tone_neg must exceed this before contributing (filters out mildly negative articles)
+GCAM_CAP     = 0.20  # the GCAM conflict-emotion signal can supply at most 0.20
+GCAM_DIM_MIN = 0.15  # GCAM dimension must exceed this before contributing (filters weak signal noise)
 
+# An article only counts toward the daily index if its total score clears this
+# bar. The paper's target is that 10-25% of all articles end up "GPR-positive"
+# on a typical day (see docs/gpr-theory.md section 5.4).
 GPR_POSITIVE_THRESHOLD = 0.20
 
-# Index shape calibration (single-year samples have lower variance than multi-decade
-# paper benchmarks; tail expansion restores right-skewed distribution — see plan/validation_next_steps.md)
-INDEX_TAIL_EXPONENT = 2.45
-UPPER_TAIL_STRETCH  = 1.08   # stretch upper half above median after tail exponent
+# --- Index shape calibration ---------------------------------------------
+# A single year of GDELT data is much less spread out (lower variance) than
+# Caldara's original multi-decade series, so a plain ratio-to-baseline index
+# would look too flat/smooth compared to the real GPR index (which has rare
+# but large spikes). These two constants "stretch" the distribution back into
+# that same rare-but-large-spikes shape. See docs/gpr-theory.md section 7 for
+# the full walkthrough with worked numbers.
+INDEX_TAIL_EXPONENT = 2.45  # raising values to this power exaggerates high days much more than average days
+UPPER_TAIL_STRETCH  = 1.08  # then multiply everything already above the median by 8% more, to widen the top half further
 
 # 8 event-category sub-indices
 EVENT_CATEGORIES: Dict[str, frozenset] = {
@@ -124,15 +137,29 @@ def _extract_countries(v2loc: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 def score_articles(df: pd.DataFrame) -> pd.DataFrame:
-    """Add theme_score, tone_score, gcam_score, gpr_score, gpr_type, event_category."""
+    """Add theme_score, tone_score, gcam_score, gpr_score, gpr_type, event_category.
+
+    This is the heart of the whole pipeline: it turns one row per news article
+    into a single risk number (gpr_score, between 0 and 1) plus a rough
+    category label. Everything downstream (daily totals, the index, the
+    charts) is built by summing/averaging this per-article output.
+
+    gpr_score = theme_score + tone_score + gcam_score, each piece computed
+    below and then added together (and capped at 1.0 overall).
+    """
     out = df.copy()
     n   = len(out)
 
+    # V2Themes is a semicolon-separated list of GDELT theme codes, e.g.
+    # "ARMEDCONFLICT;SANCTION;TAX_FNCACT_MILITARY". Splitting it gives us a
+    # list of codes per article to check against the TIER1/2/3 sets.
     themes_list = out["V2Themes"].fillna("").astype(str).str.upper().str.split(";")
 
     t1 = np.zeros(n); t2 = np.zeros(n); t3 = np.zeros(n)
     gpr_type = np.full(n, "none", dtype=object)
 
+    # Count how many TIER1/2/3 codes each article has, weighting act-level
+    # codes (TIER1) heaviest and context-level codes (TIER3) lightest.
     for i, themes in enumerate(themes_list):
         for t in themes:
             t = t.strip()
@@ -140,15 +167,26 @@ def score_articles(df: pd.DataFrame) -> pd.DataFrame:
             elif t in TIER2: t2[i] += 0.6
             elif t in TIER3: t3[i] += 0.3
 
+    # Divide by 3.0 and cap at THEME_CAP (0.50) so even an article stuffed
+    # with many matching theme codes can't exceed the theme component's ceiling.
     raw_theme   = t1 + t2 + t3
     theme_score = np.minimum(THEME_CAP, raw_theme / 3.0)
 
+    # gpr_type is a label for humans/reports, not part of the score math.
+    # Priority order act > threat > context: an article with any TIER1 hit is
+    # always labeled "act" even if it also has TIER2/TIER3 codes.
     gpr_type[t3 > 0] = "context"
     gpr_type[t2 > 0] = "threat"
     gpr_type[t1 > 0] = "act"
 
+    # --- Tone component (max TONE_NEG_CAP + TONE_POL_CAP = 0.30) ---
+    # tone_neg = how negative the article's language is; tone_polarity = how
+    # one-sided/emotionally charged it is (vs. balanced/neutral reporting).
+    # Both are 0 for calm, neutral articles and grow for alarming ones.
     tone_neg = pd.to_numeric(out.get("tone_neg", 0),      errors="coerce").fillna(0.0).abs().to_numpy()
     tone_pol = pd.to_numeric(out.get("tone_polarity", 0), errors="coerce").fillna(0.0).abs().to_numpy()
+    # Below TONE_NEG_MIN (5.0) the article isn't negative enough to count at
+    # all; above it, scale linearly up to the TONE_NEG_CAP ceiling.
     neg_component = np.where(
         tone_neg < TONE_NEG_MIN,
         0.0,
@@ -157,14 +195,24 @@ def score_articles(df: pd.DataFrame) -> pd.DataFrame:
     pol_component = np.minimum(TONE_POL_CAP, tone_pol / 20.0 * TONE_POL_CAP)
     tone_score = neg_component + pol_component
 
+    # --- GCAM component (max GCAM_CAP = 0.20) ---
+    # GCAM dimensions are GDELT's own emotion/topic scores; c18.x are conflict-
+    # related dimensions and c9.1 is a supporting one. A dimension below
+    # GCAM_DIM_MIN (0.15) is treated as noise and zeroed out.
     gcam = _parse_gcam_series(out["GCAM"])
     c18_3 = np.where(gcam["c18_3"].to_numpy() > GCAM_DIM_MIN, gcam["c18_3"].to_numpy(), 0.0)
     c18_2 = np.where(gcam["c18_2"].to_numpy() > GCAM_DIM_MIN, gcam["c18_2"].to_numpy(), 0.0)
     c18_1 = np.where(gcam["c18_1"].to_numpy() > GCAM_DIM_MIN, gcam["c18_1"].to_numpy(), 0.0)
     c9_1  = np.where(gcam["c9_1"].to_numpy()  > GCAM_DIM_MIN, gcam["c9_1"].to_numpy(),  0.0)
     gcam_raw   = c18_3 * 0.40 + c18_2 * 0.30 + c18_1 * 0.20 + c9_1 * 0.10
+    # GCAM only counts on articles that already have a TIER1 "act" theme —
+    # it's meant to add extra weight to real conflict events, not to boost
+    # generic threat/context coverage that merely sounds emotional.
     gcam_score = np.where(t1 > 0, np.minimum(GCAM_CAP, gcam_raw), 0.0)
 
+    # Final score: sum the three components, but force it to exactly 0 if the
+    # article had no geopolitical theme match at all (theme_score == 0) —
+    # tone/GCAM alone can't make an unrelated article "geopolitical."
     gpr_score = np.where(theme_score == 0, 0.0,
                          np.minimum(1.0, theme_score + tone_score + gcam_score))
 
@@ -174,7 +222,10 @@ def score_articles(df: pd.DataFrame) -> pd.DataFrame:
     out["gpr_score"]   = gpr_score
     out["gpr_type"]    = gpr_type
 
-    # Event category (first match wins in priority order)
+    # Event category (first match wins in priority order): a coarser label
+    # used only for the 8 event-type sub-index charts, e.g. "sanctions" or
+    # "nuclear_threat". Falls back to "other" if positive but uncategorized,
+    # or "none" if the article never scored above 0 at all.
     event_cat = np.full(n, "other", dtype=object)
     for cat, cat_themes in EVENT_CATEGORIES.items():
         for i, themes in enumerate(themes_list):
@@ -191,8 +242,15 @@ def score_articles(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def aggregate_day(scored: pd.DataFrame, date_val: pd.Timestamp) -> dict:
+    """Collapse one day's per-article scores (from score_articles) into one row of totals.
+
+    This is where "thousands of articles" becomes "one number per day."
+    raw_ratio (positive scores summed, divided by ALL articles that day) is
+    the single most important output here — it's what normalize_index()
+    later rescales into the public gpr_index.
+    """
     total   = len(scored)
-    pos     = scored["gpr_score"] > GPR_POSITIVE_THRESHOLD
+    pos     = scored["gpr_score"] > GPR_POSITIVE_THRESHOLD  # only "GPR-positive" articles count toward the sums below
     acts    = scored["gpr_type"] == "act"
     threats = scored["gpr_type"] == "threat"
 
@@ -206,6 +264,10 @@ def aggregate_day(scored: pd.DataFrame, date_val: pd.Timestamp) -> dict:
         "gpr_sum":            float(scored.loc[pos, "gpr_score"].sum()) if pos.any() else 0.0,
         "acts_sum":           float(scored.loc[acts & pos, "gpr_score"].sum()) if (acts & pos).any() else 0.0,
         "threats_sum":        float(scored.loc[threats & pos, "gpr_score"].sum()) if (threats & pos).any() else 0.0,
+        # raw_ratio = (sum of positive scores) / (all articles that day). Dividing
+        # by total_articles is what keeps a busy news day from automatically
+        # scoring "riskier" just because more articles were published overall.
+        # This is the number normalize_index() turns into the public gpr_index.
         "raw_ratio":          float(scored.loc[pos, "gpr_score"].sum()) / total if total > 0 and pos.any() else 0.0,
         "acts_ratio":         float(scored.loc[acts & pos, "gpr_score"].sum()) / total if total > 0 and (acts & pos).any() else 0.0,
         "threats_ratio":      float(scored.loc[threats & pos, "gpr_score"].sum()) / total if total > 0 and (threats & pos).any() else 0.0,
@@ -238,7 +300,33 @@ def aggregate_country_day(scored: pd.DataFrame, date_val: pd.Timestamp, total: i
 # ---------------------------------------------------------------------------
 
 def _apply_index_transform(ratio: pd.Series) -> pd.Series:
-    """Tail exponent + upper-half stretch, renormalized to mean=100."""
+    """Tail exponent + upper-half stretch, renormalized to mean=100.
+
+    Plain-language walkthrough of what this does to a series of daily ratios:
+
+    1. `rel = ratio / ratio.mean()` — express each day as "how many times the
+       average day" it is. An average day becomes 1.0, a quiet day is < 1.0,
+       a tense day is > 1.0.
+    2. `rel ** INDEX_TAIL_EXPONENT` (2.45) — raising to a power bigger than 1
+       exaggerates the gap between low and high values. Example: a quiet day
+       at 0.5x average becomes 0.5**2.45 ≈ 0.18 (shrinks a lot), while a tense
+       day at 3x average becomes 3**2.45 ≈ 12.9 (grows a lot). This is what
+       turns a smooth, evenly-spread series into one with a few dramatic
+       spikes — matching how the real-world Caldara index behaves (rare but
+       severe geopolitical events, not gently fluctuating risk).
+    3. Rescale so the whole series averages to 100 again (that's the "100 =
+       baseline average" convention this whole index uses).
+    4. `UPPER_TAIL_STRETCH` (1.08) — take everything already above the middle
+       (median) value and multiply it by another 8%, pushing the high end out
+       even further without touching the calmer, below-median days.
+    5. Rescale to mean=100 one final time, since step 4 shifted the average.
+
+    Why bother with all this? A single year of GDELT data naturally has less
+    spread (lower variance) than Caldara's original multi-decade series. Steps
+    2 and 4 together restore that "long calm stretches, occasional big spike"
+    shape so single-year GDELT output is comparable to the published index.
+    See docs/gpr-theory.md section 7 for the full derivation with real numbers.
+    """
     rel = ratio / ratio.mean()
     idx = (rel ** INDEX_TAIL_EXPONENT)
     idx = idx / idx.mean() * 100.0
@@ -248,6 +336,18 @@ def _apply_index_transform(ratio: pd.Series) -> pd.Series:
 
 
 def normalize_index(daily_df: pd.DataFrame, baseline_start: str, baseline_end: str) -> pd.DataFrame:
+    """Turn each day's raw_ratio/acts_ratio/threats_ratio into the public 0-100+ index.
+
+    Two code paths, chosen by should_split_era() (see split_era.py for why):
+      - Single baseline: every day is divided by the SAME baseline-period
+        average, then run through _apply_index_transform(). This is the
+        normal case (e.g. a plain 2025 full-year run, or a batch that is
+        entirely inside the India product era).
+      - Split baseline: warmup-era days and product-era days each get their
+        OWN baseline average and their own transform, because mixing GDELT's
+        huge article volume with India's small article volume in one shared
+        baseline would crush the India-era numbers toward ~0 instead of ~100.
+    """
     out = daily_df.copy()
     out["date"] = pd.to_datetime(out["date"])
     baseline_start_ts = pd.to_datetime(baseline_start)
@@ -255,6 +355,9 @@ def normalize_index(daily_df: pd.DataFrame, baseline_start: str, baseline_end: s
     mask = (out["date"] >= baseline_start_ts) & (out["date"] <= baseline_end_ts)
 
     def _bar(col: str, row_mask: pd.Series) -> float:
+        # The "S-bar" from the Equation 1 formula in docs/gpr-theory.md: the
+        # average raw_ratio over the baseline window, used as the divisor
+        # that makes an average day come out to ~1.0 before the tail transform.
         bmask = mask & row_mask
         v = float(out.loc[bmask, col].mean()) if bmask.any() else float(out.loc[row_mask, col].mean())
         return v if v > 0 else 1.0
@@ -266,6 +369,9 @@ def normalize_index(daily_df: pd.DataFrame, baseline_start: str, baseline_end: s
     )
 
     if should_split_era(out, baseline_start):
+        # Split-era path: warmup (GDELT) days and product (India) days each
+        # get normalized against their OWN era's baseline average, so the
+        # two eras don't contaminate each other's scale.
         product_start_ts = pd.Timestamp(product_start_date())
         warmup_rows = out["date"] < product_start_ts
         product_rows = out["date"] >= product_start_ts
@@ -282,6 +388,7 @@ def normalize_index(daily_df: pd.DataFrame, baseline_start: str, baseline_end: s
                     out.loc[product_rows, ratio_col] / _bar(ratio_col, product_baseline)
                 )
     else:
+        # Normal path: one shared baseline for the whole batch.
         def _single_bar(col: str) -> float:
             v = float(out.loc[mask, col].mean()) if mask.any() else float(out[col].mean())
             return v if v > 0 else 1.0
@@ -290,6 +397,10 @@ def normalize_index(daily_df: pd.DataFrame, baseline_start: str, baseline_end: s
             out[index_col] = _apply_index_transform(out[ratio_col] / _single_bar(ratio_col))
 
     out = out.sort_values("date").reset_index(drop=True)
+    # Moving averages: in split-era batches these are computed only over
+    # product-era rows (rolling_product_era), so the smoothing window never
+    # blends a handful of India-era days together with warmup-era days right
+    # across the era boundary.
     if should_split_era(out, baseline_start):
         out["gpr_7ma"] = rolling_product_era(out, "gpr_index", 7)
         out["gpr_30ma"] = rolling_product_era(out, "gpr_index", 30)

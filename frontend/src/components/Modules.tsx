@@ -1,3 +1,6 @@
+// Home page's module picker: a grid of link-cards, one per page/module,
+// grouped into "core" (bigger, highlighted) and "advanced" (smaller, dimmer)
+// tiers — driven by the list in lib/modules.ts.
 import { Link } from 'react-router-dom'
 import { modules } from '../lib/modules'
 

@@ -1,4 +1,25 @@
-"""Batch NLP extraction for canonical geopolitical news articles."""
+"""Batch NLP extraction for canonical geopolitical news articles.
+
+Beginner note — what does "NLP extraction" mean here, end to end?
+    "NLP" = Natural Language Processing, i.e. having code read text and pull
+    structured information out of it. For every article, this module runs
+    four independent extractors and writes their outputs onto that article's
+    database row:
+      - extract_themes()  (nlp/themes.py)   -> which conflict "themes" apply
+                                                (e.g. ARMEDCONFLICT), using AI
+                                                embeddings
+      - extract_tone()    (nlp/tone.py)     -> how negative/emotionally
+                                                charged the wording is, using
+                                                simple word-list counting
+      - extract_gcam()    (nlp/tone.py)     -> a GDELT-style breakdown of
+                                                which KIND of conflict
+                                                language appears
+      - extract_locations() (nlp/locations.py) -> which countries/places are
+                                                mentioned
+    run() below is the loop that fetches a batch of un-tagged articles from
+    Postgres, calls all four extractors on each one, and saves the results —
+    this is what nlp/scheduler.py runs hourly in production.
+"""
 
 import argparse
 import logging
@@ -45,6 +66,22 @@ def _date_bounds(args):
 
 
 def run(limit=500, start=None, end=None, reprocess=False, until_empty=False):
+    """Fetch a batch of articles missing NLP tags, run the 4 extractors, save results.
+
+    Beginner walk-through of one batch:
+      1. Ask the database for up to `limit` articles that either have never
+         been tagged, or were tagged by an older version of the extractors
+         (see nlp/version.py's EXTRACTOR_VERSION) — unless `reprocess=True`,
+         which re-tags everything regardless of version.
+      2. For each article, combine title+content into one text blob and run
+         all four extractors on it (see module docstring above).
+      3. Save the results back onto that article's row via update_article_nlp().
+      4. If `until_empty=True`, keep repeating steps 1-3 with fresh batches
+         until nothing is left pending (used by one-off backfill scripts);
+         otherwise stop after one batch (used by the hourly cron job).
+    A single article failing (e.g. a weird encoding) is caught and logged,
+    not allowed to crash the whole batch.
+    """
     total_updated = total_failed = 0
     while True:
         articles = get_articles_pending_nlp(

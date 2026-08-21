@@ -1,3 +1,6 @@
+// The fixed header shown on every page: logo, main nav links, a live/degraded
+// health status dot, a mobile hamburger menu, and (home page only) a
+// scrolling marquee of market quotes.
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, NavLink, useLocation } from 'react-router-dom'

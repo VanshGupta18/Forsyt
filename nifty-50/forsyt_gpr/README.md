@@ -6,11 +6,30 @@ Implements `application.md` against **any** geopolitical-risk index.
 data.py       the pluggable GPR-frame contract + loaders
 features.py   MD §1  GPRT / GPRA / benchmark features, and the market baseline
 vol_model.py  MD §2  XGBoost forward-volatility model, purged walk-forward
-macro_var.py  MD §A  VAR → corporate investment & employment impulse responses
-downside.py   MD §A  quantile regression → downside / "disaster" risk
 ```
 
-Run everything: `python run_application.py`
+> **Note (2026-08):** this package used to also ship `macro_var.py` (MD §A,
+> VAR → corporate investment & employment impulse responses), `downside.py`
+> (MD §A, quantile regression → downside / "disaster" risk), and a
+> `run_application.py` entry point that ran everything end to end, all under
+> `nifty-50/research/`. That directory was removed in commit `eff8091`
+> ("nlp scheduler", 2026-08-13) and is no longer part of this repo. The
+> figures/table those scripts produced (`nifty-50/output/figures/B2_*`,
+> `B3_*`, `D1_*`, `D2_*`, and `output/tables/india_regressions.txt`) are
+> still on disk as historical snapshots, but nothing in the current codebase
+> can regenerate them. See the root `docs/DISCREPANCIES.md` for the full
+> cross-module list of stale/orphaned artifacts.
+
+Run the research backtest that's actually still here:
+
+```bash
+python -c "
+from forsyt_gpr import data, vol_model
+gf = data.load_aigpr_daily()
+reg, clf, _ = vol_model.run_vol_experiment(gf, data.load_price('NIFTY'))
+print(reg); print(clf)
+"
+```
 
 ---
 
@@ -32,9 +51,17 @@ Caldara/Iacoviello AI-GPR; when the scraper's India index is ready:
 from forsyt_gpr.data import as_gpr_frame, load_price
 from forsyt_gpr import vol_model
 
-raw = pd.read_sql("select day, india_gpr, threats, acts from gpr_index", con)
-gf  = as_gpr_frame(raw.set_index("day"), gpr="india_gpr",
-                   threats="threats", acts="acts")
+# NOTE: this is an illustrative/simplified example, not the literal query.
+# The real production hand-off lives in news_dataset/api/gpr_service.py
+# (gpr_frame_from_db_or_csv()), which queries a `gpr_daily` table with
+# columns `date`, `gpr_index`, `gpr_threats_index`, `gpr_acts_index` (or
+# falls back to gpr_index/outputs/gpr_daily_index.csv with the same column
+# names) -- the exact table/column names shown here are just placeholders
+# to demonstrate the shape of the hand-off.
+raw = pd.read_sql("select date, gpr_index, gpr_threats_index, gpr_acts_index "
+                  "from gpr_daily", con)
+gf  = as_gpr_frame(raw.set_index("date"), gpr="gpr_index",
+                   threats="gpr_threats_index", acts="gpr_acts_index")
 
 reg, clf, _ = vol_model.run_vol_experiment(gf, load_price("NIFTY"), horizon=5)
 ```

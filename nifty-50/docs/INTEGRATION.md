@@ -146,8 +146,18 @@ Page bundles embed the same payload:
 
 | Artifact | Location | Audience |
 |----------|----------|----------|
-| OOS vol backtest, ROC-AUC tables | `nifty-50/forsyt_gpr/vol_model.py`, `research/` | Internal QA |
+| OOS vol backtest, ROC-AUC tables | `nifty-50/forsyt_gpr/vol_model.py` (`run_vol_experiment()`) | Internal QA |
 | Shipped dual-signal | `dual_signal.py` + API | Product / dashboard |
-| Academic write-up | `nifty-50/research/REPORT.md` | Capstone report |
+| Academic write-up | folded into `nifty-50/README.md`'s findings summary | Capstone report |
+
+> **Note (2026-08):** the `nifty-50/research/` directory (which used to hold
+> `REPORT.md`, `macro_var.py`, `downside.py`, `run_application.py`) was
+> deleted in commit `eff8091` ("nlp scheduler", 2026-08-13) and no longer
+> exists. `vol_model.run_vol_experiment()` is the current OOS-backtest entry
+> point. The figures/table those deleted scripts produced
+> (`nifty-50/output/figures/{B2,B3,D1,D2}*.png`,
+> `output/tables/india_regressions.txt`) are still on disk as historical
+> snapshots with no current regeneration path — see the root
+> `docs/DISCREPANCIES.md` for the full cross-module list.
 
 See also: [`docs/PRODUCT.md`](../../docs/PRODUCT.md), [`nifty-50/README.md`](../README.md).

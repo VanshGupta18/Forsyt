@@ -1,3 +1,5 @@
+// Macro page's headline "today's verdict" card — title + body copy generated
+// by lib/macroCopy.ts's todayVerdict(), with a colored left border matching its tone.
 import {
   stressQuadrantId,
   titleAccent,

@@ -1,3 +1,5 @@
+// Macro page section showing the headlines the backend judged as actually
+// driving today's news-risk score, in a CorridorNewsTicker strip.
 import { Link } from 'react-router-dom'
 import CorridorNewsTicker from './CorridorNewsTicker'
 import { macroNewsEmptyLine } from '../lib/macroCopy'

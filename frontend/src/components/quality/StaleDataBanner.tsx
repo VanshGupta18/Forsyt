@@ -1,3 +1,5 @@
+// Warning banner shown only when the offline validation benchmarks are out
+// of date compared to the live index — hidden otherwise.
 import type { QualityReport } from '../../lib/api'
 
 type Props = {

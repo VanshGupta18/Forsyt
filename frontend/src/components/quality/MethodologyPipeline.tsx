@@ -1,3 +1,6 @@
+// Quality page's "how we build scores" section: 4 numbered step cards
+// (Collect → Tag → Build → Validate) plus a decorative signal-flow strip
+// below them. All copy/colors come from lib/qualityCopy.ts and lib/qualityVisuals.ts.
 import { METHODOLOGY_STEPS } from '../../lib/qualityCopy'
 import { FLOW_PIPELINE_NODES, METHODOLOGY_STEP_THEMES } from '../../lib/qualityVisuals'
 

@@ -22,6 +22,92 @@ DESIGN DECISIONS THAT MAKE THE RESULT TRUSTWORTHY
 
 4. Class imbalance is reported explicitly -- PR-AUC and the base rate, because
    'accuracy' on a rare HIGH_VOL label is just the base rate in disguise.
+
+BEGINNER GLOSSARY -- no statistics background assumed
+--------------------------------------------------------
+This file is the most conceptually dense one in the package. If terms like
+"walk-forward", "ROC-AUC", or "leakage" are new to you, read this block
+first; the functions below refer back to it instead of re-explaining
+themselves every time.
+
+- **Regression vs. classification.** Two different questions we ask of the
+  same data. "Regression" predicts a NUMBER (e.g. "volatility will be
+  18.3% over the next 5 days"). "Classification" predicts a CATEGORY (e.g.
+  "will next-5-day volatility be HIGH or not?", yes/no). This file does
+  both, on the same features, because a number and a yes/no answer serve
+  different purposes on a dashboard.
+
+- **Why we can't just train once and check the answer on the same data.**
+  A model can always get very good scores on data it was trained on --
+  it can effectively "memorize" the answers, the way a student who saw the
+  exact exam questions in advance would ace the exam without having
+  learned anything transferable. To find out if a model actually learned
+  something useful, you must test it on data it never saw during training.
+  That's why every score in this file comes from "out-of-sample" (OOS)
+  predictions only -- rows the model was never trained on.
+
+- **"Leakage" / "look-ahead bias".** The single easiest way to accidentally
+  produce a model that looks great in testing but is useless in the real
+  world: letting information from the future sneak into training, even by
+  accident. Example: if you trained on rows dated up to and including test
+  day t, but the target for day t-2 secretly depends on what happened on
+  day t (because it's a "next 5 days" average -- see
+  `data.forward_realized_vol`), then the model partially "saw the future"
+  during training. This file goes out of its way to prevent that -- see
+  "purged walk-forward" below.
+
+- **Walk-forward validation, in plain terms.** Instead of picking one random
+  train/test split, we replay history in order: train on everything up to
+  some date, test on the next chunk, then slide forward, retrain on
+  everything up to the NEW date (which now includes the previous test
+  chunk), test on the next chunk after that, and so on to the end of the
+  data. This mimics how the model would actually be used in production --
+  it is always trained only on the past relative to whatever it's
+  currently predicting.
+
+- **The "purge" / embargo, and why it's needed.** Because each target value
+  (e.g. "volatility over the next 5 days") is computed from `horizon` days
+  of FUTURE returns, a target dated 3 days before the test block still
+  reaches forward into days that overlap the test block itself. Training
+  right up to the test date would leak those overlapping days backward into
+  the model. The fix: stop training `horizon` days BEFORE the test block
+  starts (an "embargo" or "purge" of that many days), so no training target
+  ever overlaps a testing target. See `purged_walk_forward()` below for the
+  actual mechanics.
+
+- **The metrics, one line each:**
+    * RMSE (Root Mean Squared Error) -- the typical size of the model's
+      prediction error, in the same units as the target (% volatility
+      here). Smaller is better. Big mistakes are penalized extra hard
+      (because the errors are squared before averaging).
+    * MAE (Mean Absolute Error) -- also a typical error size, but treats
+      every mistake equally regardless of how big it is. Easier to read as
+      "on average, the forecast was off by this many percentage points."
+    * R² vs. persistence -- not the textbook R², but "how much better (or
+      worse) is this model than the dumbest possible forecast: just
+      guessing that tomorrow's volatility will equal today's ('persistence')?
+      1.0 = perfect, 0.0 = no better than that naive guess, negative = WORSE
+      than just guessing today's value again.
+    * ROC-AUC (Receiver Operating Characteristic -- Area Under Curve) -- for
+      the yes/no HIGH_VOL prediction: if you grabbed one truly-high-vol day
+      and one truly-normal day at random, ROC-AUC is the probability the
+      model correctly scored the high-vol day as riskier. 0.5 = pure
+      coin-flip (no skill), 1.0 = perfect separation.
+    * PR-AUC (Precision-Recall AUC) -- like ROC-AUC, but more honest when
+      the "yes" category is rare (here, HIGH_VOL days are only ~12% of
+      days by construction -- see `threshold_q`). A model that just always
+      predicts "not high vol" would still get a deceptively decent-looking
+      ROC-AUC; PR-AUC is much harder to fake that way.
+    * base_rate -- literally, what fraction of days in the test set actually
+      were HIGH_VOL. Reported so nobody mistakes "88% accuracy" for skill
+      when the trivial "never predict a spike" rule would already score
+      ~88% (because spikes are rare).
+
+- **Why three model "blocks" (`market_only`, `gpr_only`, `market+gpr`)?**
+  See features.py's beginner note. In short: comparing `market+gpr` against
+  `market_only` (both evaluated the exact same way) is the only way to
+  isolate what GPR itself contributed, because market-only volatility
+  clustering can make a model look skillful on its own.
 """
 from __future__ import annotations
 import numpy as np
@@ -33,6 +119,14 @@ from .features import assemble
 
 
 def _xgb_reg(seed=0):
+    # XGBoost = "gradient-boosted decision trees": it builds many small,
+    # simple decision trees one after another, where each new tree focuses
+    # on correcting the mistakes of the trees built so far. The settings
+    # below (shallow trees `max_depth=3`, a slow `learning_rate`, and only
+    # using 80% of rows/columns per tree via `subsample`/`colsample_bytree`)
+    # are all standard ways to stop the model from just memorizing the
+    # training data ("overfitting") -- important here because financial
+    # history is short and noisy compared to, say, image datasets.
     return XGBRegressor(n_estimators=300, max_depth=3, learning_rate=0.05,
                         subsample=0.8, colsample_bytree=0.8, reg_lambda=2.0,
                         min_child_weight=10, random_state=seed, n_jobs=4,
@@ -40,6 +134,8 @@ def _xgb_reg(seed=0):
 
 
 def _xgb_clf(seed=0):
+    # Same idea as _xgb_reg, but this one predicts a yes/no probability
+    # (HIGH_VOL or not) instead of a number.
     return XGBClassifier(n_estimators=300, max_depth=3, learning_rate=0.05,
                          subsample=0.8, colsample_bytree=0.8, reg_lambda=2.0,
                          min_child_weight=10, random_state=seed, n_jobs=4,
@@ -55,6 +151,29 @@ def purged_walk_forward(X: pd.DataFrame, y: pd.Series, make_model, horizon: int,
     For a test block starting at position i, training uses positions
     [0, i-horizon-1] only: the last usable training target ends at i-1, so no
     training label peeks into the test block. Returns predictions aligned to y.
+
+    Walking through the loop in plain language:
+      - We start once we have `min_train` rows of history (750 trading days,
+        roughly 3 years) -- not enough history yet to trust a model before
+        that.
+      - Each pass through the loop trains ONE model on everything known so
+        far, then uses it to predict the next `refit_every` days (21 trading
+        days, about a month) -- that's the "expanding window, refit
+        periodically" part: the training set keeps growing as we walk
+        forward through history, but we don't bother retraining every single
+        day (too slow, and one day rarely changes the model much).
+      - `tr_end = start - horizon` is the purge described in the module
+        docstring: it chops `horizon` days off the END of the training set
+        so that no training target's forward-looking window overlaps the
+        upcoming test block.
+      - For classification, `thr` (the cutoff that defines "HIGH_VOL") is
+        computed ONLY from the training labels seen so far, then reused to
+        label that block's test rows. This matters because if the cutoff
+        were computed using the full dataset (including future test rows),
+        that would itself be a subtle form of leakage.
+      - Every prediction is written into `out` at the same date it is
+        predicting for, so the returned Series lines up one-to-one with `y`
+        and can be compared to it directly.
     """
     n = len(X)
     out = pd.Series(np.nan, index=y.index, dtype=float)
@@ -87,6 +206,18 @@ def run_vol_experiment(gf: pd.DataFrame, price: pd.Series, horizon: int = 5,
     """Full MD-section-2 experiment. Returns (regression_table, classification_table, detail).
 
     `gf` is any canonical GPR frame -- AI-GPR today, Forsyt's India index later.
+
+    THIS IS THE RESEARCH ENTRY POINT (as opposed to `latest_market_forecast()`
+    below, which is what the live product actually calls). Run this when you
+    want the honest, walk-forward-backtested answer to "does GPR help predict
+    NIFTY volatility, and by how much?" -- it is slower and needs a full GPR
+    history, which is why it isn't called on every dashboard page load.
+    It builds and scores all three feature blocks (`market_only`, `gpr_only`,
+    `market+gpr`) side by side, on identical folds, and returns two small
+    tables: one scoring the plain numeric volatility forecast (RMSE/MAE/R²),
+    one scoring the HIGH_VOL yes/no classification (ROC-AUC/PR-AUC/F1/base
+    rate) -- see the glossary at the top of this file for what each metric
+    means.
     """
     from .data import forward_realized_vol
     y = forward_realized_vol(price, horizon)
@@ -108,6 +239,10 @@ def run_vol_experiment(gf: pd.DataFrame, price: pd.Series, horizon: int = 5,
         print(f"features: market={Xm.shape[1]}  gpr={Xg.shape[1]}\n")
 
     # ---- naive benchmark: forward vol == trailing vol over same window
+    # "Persistence" = the dumbest possible forecast: just assume tomorrow's
+    # (well, next `horizon` days') volatility will look like the recent
+    # trailing volatility. Any model worth using should beat this baseline;
+    # it's what "R2_vs_persistence" below is measured against.
     persistence = Xm[f"rv{horizon}"] if f"rv{horizon}" in Xm else Xm["rv5"]
 
     # ---- regression
@@ -128,6 +263,9 @@ def run_vol_experiment(gf: pd.DataFrame, price: pd.Series, horizon: int = 5,
     reg_tab = pd.DataFrame(rows).set_index("model")
 
     # ---- classification (HIGH_VOL vs NORMAL, Forsyt's stated target)
+    # Same three feature blocks, but now scored as a yes/no prediction
+    # ("will the next `horizon` days be unusually volatile?") instead of a
+    # plain number -- see the ROC-AUC/PR-AUC/base_rate glossary above.
     rows = []
     proba = {}
     for name, X in blocks.items():
@@ -158,6 +296,34 @@ def latest_market_forecast(price: pd.Series, horizon: int = 5,
     """Production forecast using market features only (no GPR required).
 
     Use this for the live product while Forsyt GPR history is still short.
+
+    WHY THIS FUNCTION EXISTS SEPARATELY FROM `run_vol_experiment()` /
+    `latest_forecast()`: this is the version the live dashboard actually
+    calls (via `dual_signal.nifty_vol_signal()`), and it is deliberately
+    kept as simple and low-risk as possible:
+
+      - It only needs a price series -- no GPR data at all, and therefore
+        cannot fail just because the GPR frame is missing, malformed, or too
+        short (a real risk while Forsyt's own India index is still young).
+      - It fits ONE model, ONE time, on all available resolved history, then
+        scores the single most recent day. There is no walk-forward loop
+        here -- that machinery exists purely to produce a trustworthy
+        RESEARCH SCORE (how good is this model, honestly?), not to produce
+        today's forecast. Once you trust the approach (from
+        `run_vol_experiment()`'s backtest), the production forecast can
+        just use ALL the data, because there's no more "held-out test set"
+        to protect -- there IS no ground truth yet for a forecast about the
+        future.
+      - Fewer moving parts means fewer ways this can silently break when run
+        unattended every day by a scheduled job -- see the scheduling table
+        in `nifty-50/docs/INTEGRATION.md`. `dual_signal.py` still keeps an
+        even-simpler trailing-volatility fallback for the rare case this
+        itself raises (too little history).
+
+    In short: `run_vol_experiment()` answers "should we trust this idea at
+    all?" (research, slow, needs a full GPR history); this function answers
+    "given that we trust it, what's today's number?" (production, fast,
+    market-data-only).
     """
     from .data import forward_realized_vol
     from .features import market_features
@@ -206,6 +372,18 @@ def latest_forecast(gf: pd.DataFrame, price: pd.Series, horizon: int = 5,
     Returns a JSON-friendly record: the point vol forecast, the HIGH_VOL
     probability, the (train-derived) high-vol threshold, and -- crucially -- the
     market_only counterpart, so the dashboard can always show what GPR added.
+
+    HOW THIS DIFFERS FROM `latest_market_forecast()` ABOVE: this version
+    needs a valid, sufficiently long GPR frame (it builds and requires
+    `gpr_features()` to succeed), fits THREE models instead of one
+    (`market_only`, `gpr_only`, `market+gpr`), and reports `gpr_added_vol` --
+    the difference between the `market+gpr` and `market_only` point
+    forecasts, so a reader can see exactly how much (if anything) GPR moved
+    the number for today specifically. It is more informative but has more
+    ways to fail (a short or messy GPR history breaks it), which is exactly
+    why the live product defaults to the simpler `latest_market_forecast()`
+    instead and only falls back to trailing volatility, never to this
+    function, if that fails -- see `dual_signal.nifty_vol_signal()`.
     """
     from .data import forward_realized_vol
     from .features import gpr_features, market_features
@@ -249,6 +427,18 @@ def shap_importance(gf, price, horizon=5, top=15):
 
     NB: this is in-sample and says what the model *used*, never whether the
     model is any good. Judge that from run_vol_experiment's walk-forward tables.
+
+    What SHAP actually is, briefly: it's a technique that takes an already-
+    trained model and, for each feature, estimates how much that feature
+    pushed a given prediction up or down. It answers "what did the model pay
+    attention to?" -- a question about the model's internal behaviour. It
+    does NOT answer "is the model actually good at predicting the future?" --
+    that is a completely different question, answered only by the
+    out-of-sample walk-forward tables from `run_vol_experiment()`. A model
+    can rely heavily on GPR features (high SHAP importance) purely because
+    they happen to move together with market volatility clustering, without
+    GPR having any genuine out-of-sample predictive value at all -- which is
+    exactly the trap this whole module is built to avoid falling into.
     """
     import shap
     from .data import forward_realized_vol

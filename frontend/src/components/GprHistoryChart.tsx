@@ -1,3 +1,14 @@
+// ---------------------------------------------------------------------------
+// GprHistoryChart draws the "News risk index" line chart with its 7-day and
+// 30-day moving averages, using a plain HTML <canvas> — see the big comment
+// at the top of lib/chartCanvas.ts for why there's no charting library here
+// and how the drawing pipeline (setupCanvas → plotSeries → draw...) works.
+// This component's own job on top of that shared pipeline is: filter the
+// history to the selected time period, decide the chart's Y-axis min/max,
+// draw the "baseline 100" reference line (only once there's enough history
+// to make it meaningful), and drive a canvas repaint whenever the data,
+// hover position, or size changes.
+// ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from 'react'
 import type { GprHistoryPoint } from '../lib/api'
 import {
@@ -71,6 +82,14 @@ function seriesValues(history: GprHistoryPoint[], key: keyof GprHistoryPoint) {
   })
 }
 
+// The actual paint routine, called from the `useEffect` below and again any
+// time the canvas resizes (via ResizeObserver). It: sizes the canvas
+// (setupCanvas), works out the Y-axis range across all visible series
+// (`gprVals`/`ma7`/`ma30`, plus the value 100 if the "baseline" reference
+// line should be shown), draws grid lines, fills the GPR line as a shaded
+// area, overlays the moving-average lines, drops a vertical marker+label at
+// a few notable historical dates (EVENT_MARKERS), and finally draws a
+// hover crosshair + dot if the mouse is currently over the chart.
 function drawGprChart(
   canvas: HTMLCanvasElement,
   history: GprHistoryPoint[],

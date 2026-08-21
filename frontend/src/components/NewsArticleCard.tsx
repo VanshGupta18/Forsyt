@@ -1,3 +1,6 @@
+// One headline card in the News page's grid: thumbnail + topic badge + title
+// + source/time. Renders as a clickable link if the article has a URL,
+// otherwise as plain non-clickable content.
 import type { ReactNode } from 'react'
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import { articleTopicLabel } from '../lib/newsCopy'

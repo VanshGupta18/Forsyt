@@ -1,3 +1,5 @@
+// Small reusable banner shown when an API call fails, with an optional
+// "Retry" button. Purely presentational — no fetching logic of its own.
 type Props = {
   message: string
   onRetry?: () => void

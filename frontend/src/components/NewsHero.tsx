@@ -1,3 +1,6 @@
+// The big featured-story card at the top of the News page's headline
+// section: full-bleed background image with a dark gradient overlay, title,
+// and an "Open story" link.
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import {
   articleTopicLabel,

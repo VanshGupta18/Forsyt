@@ -1,3 +1,5 @@
+// "Top stories today" list shown next to NewsHero — a scrollable rail of up
+// to 6 ranked headlines (ranking logic lives in lib/newsUtils.ts).
 import { formatArticleTime, type NewsArticle } from '../lib/api'
 import {
   briefWhyLine,

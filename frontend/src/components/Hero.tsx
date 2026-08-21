@@ -1,3 +1,5 @@
+// Home page's top section: lays out HeroVerdictBlock (text + stats) next to
+// HeroGlobe (the spinning globe visual).
 import HeroGlobe from './HeroGlobe'
 import HeroVerdictBlock from './HeroVerdictBlock'
 import type { HomeLiveData } from '../hooks/useHomeLiveData'

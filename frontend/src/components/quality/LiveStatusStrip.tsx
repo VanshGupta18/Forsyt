@@ -1,3 +1,6 @@
+// Quality page's "Right now" section: a row of QualityMetricTiles answering
+// "is data flowing, fresh, and ready to use" (last update, feed health,
+// article counts, NLP coverage).
 import type { QualityReport } from '../../lib/api'
 import QualityMetricTile from './QualityMetricTile'
 

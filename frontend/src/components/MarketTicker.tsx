@@ -1,3 +1,6 @@
+// Simple horizontal row of market quotes (price + %change), shown at the top
+// of the Portfolio page. Not to be confused with CorridorNewsTicker
+// (headlines) or AppChrome's marquee ticker (auto-scrolling).
 import { formatPrice, type MarketQuote } from '../lib/api'
 
 type Props = {

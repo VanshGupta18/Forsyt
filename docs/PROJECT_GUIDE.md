@@ -484,7 +484,9 @@ These are big general news sites. We only read their **World/International** RSS
 | The Hindu | TH | International section |
 | Times of India | TOI | Top stories (keyword filter does the work) |
 | NDTV | NDTV | World news |
-| Indian Express | TIE | World section |
+| Hindustan Times | HT | World section |
+
+(Indian Express/"TIE" was the original 5th mainstream feed; it was replaced by Hindustan Times on 2026-08-13 — see the inline comment in `news_dataset/ingestion/geo_pipeline.py`.)
 
 Checked every **~12 minutes**.
 

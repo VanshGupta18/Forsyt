@@ -1,4 +1,27 @@
-import { businessTierClass, businessTierLabel, formatPipelineRunAt } from './corridorCopy'
+// ---------------------------------------------------------------------------
+// This file has no UI in it — it's pure logic + copywriting for the Macro
+// (Market Stress Monitor) page. Its job is to turn RAW NUMBERS from the API
+// (percentiles, regime codes like "HIGH_STRESS", percent changes) into the
+// plain-English labels, colors, and sentences a non-technical user actually
+// reads on screen. Centralizing this here means the same "what does a geo
+// percentile of 72 actually mean" decision is made once, not re-implemented
+// slightly differently in every component that shows it.
+//
+// The core idea used throughout is a "stress quadrant": the dashboard tracks
+// TWO independent 0-100 percentile scores — how unusual today's NEWS risk is
+// (`geoPercentile`) and how unusual today's MARKET volatility is
+// (`volPercentile`) — each compared against its own history. 50 is the
+// threshold for "elevated" on both axes, which is why you'll see `>= 50`
+// checks everywhere below. Combining the two "high or not" flags gives four
+// possible situations (the "quadrant"):
+//   - neither elevated       → 'calm'  (business-as-usual)
+//   - only news elevated     → 'geo'   (headlines are loud, markets aren't reacting yet)
+//   - only markets elevated  → 'vol'   (markets are nervous, news hasn't caught up)
+//   - both elevated          → 'joint' (the most cautious case)
+// `stressQuadrantId()` below is the one function that makes this decision;
+// almost everything else in this file just picks copy/color based on it.
+// ---------------------------------------------------------------------------
+import { formatPipelineRunAt } from './corridorCopy'
 
 export const MACRO_EYEBROW = 'Live market stress monitoring'
 
@@ -106,44 +129,17 @@ export function volRegimeClass(regime?: string): string {
   return 'text-corridor-watch'
 }
 
-export function percentileTierClass(value: number): string {
-  return businessTierClass(value)
-}
-
-export function percentileTierLabel(value: number): string {
-  return businessTierLabel(value)
-}
-
 export function volUnavailableBanner(reason?: string): string {
   return reason ?? 'Volatility model unavailable — joint stress uses geo signal only.'
 }
 
-export function highStressBanner(): string {
-  return 'Combined stress is elevated — review exposure and corridor links before committing new risk.'
-}
-
-export function stressPositionAdvisory(
-  geoPercentile?: number | null,
-  volPercentile?: number | null,
-  volUnavailable?: boolean,
-): string {
-  const geoHigh = (geoPercentile ?? 0) >= 50
-  const volHigh = volUnavailable ? false : (volPercentile ?? 0) >= 50
-
-  if (!geoHigh && !volHigh) {
-    return 'News risk and market vol are both below typical stress — environment is relatively calm.'
-  }
-  if (geoHigh && !volHigh) {
-    return 'Headlines are elevated but markets are still calm — this gap often closes. Avoid pausing SIPs on news alone.'
-  }
-  if (!geoHigh && volHigh) {
-    return 'Markets are pricing stress ahead of headlines — often a correction, not a geopolitical regime shift.'
-  }
-  return 'Both headlines and market vol are elevated — alignment usually matters more for lump sums than routine SIPs.'
-}
-
 export type StressQuadrantId = 'calm' | 'geo' | 'vol' | 'joint'
 
+// Decides which of the four quadrants (see file header comment) today falls
+// into. Both percentiles use the same >= 50 "elevated" cutoff. If the
+// volatility model isn't available yet (`volUnavailable`), it's treated as
+// "not elevated" here so the quadrant falls back to being driven by news
+// risk alone — the UI shows a separate "partial picture" banner for that case.
 export function stressQuadrantId(
   geoPercentile?: number | null,
   volPercentile?: number | null,
@@ -172,6 +168,11 @@ export type TodayVerdictContent = {
   tone: TodayVerdictTone
 }
 
+// Builds the actual sentence(s) shown in the "Today's verdict" card. It first
+// checks the special case where the volatility model has no data yet, then
+// delegates to stressQuadrantId() for the four normal cases, with an extra
+// check against the backend's own `stressRegime` string ("HIGH_STRESS") to
+// pick a more urgent tone even inside the 'joint' quadrant.
 export function todayVerdict(
   geoPercentile?: number | null,
   volPercentile?: number | null,
@@ -269,6 +270,16 @@ export type TransmissionState = {
   tone: 'clear' | 'watch' | 'alert'
 }
 
+// Looks for two specific "this kind of stress is spreading between markets"
+// patterns using small, hand-picked percent-change thresholds (not derived
+// from any statistical model — just "moved more than a rounding error"):
+//   - 'oil_rupee': Brent crude up >0.3% AND USD/INR up >0.05% together — oil
+//     costlier and the rupee weaker at the same time, which usually feeds
+//     through to import costs / inflation.
+//   - 'risk_off': India VIX up >0.5% while NIFTY is down >0.1% — the classic
+//     signature of investors de-risking out of equities.
+// If both fire at once it's treated as more serious ('alert') than either
+// alone ('watch'); neither firing is 'clear'.
 export function computeTransmission(quotes: Array<{ key: string; change_pct: number }>): TransmissionState {
   const byKey = new Map(quotes.map((q) => [q.key, q.change_pct]))
   const brent = byKey.get('brent') ?? 0
@@ -347,20 +358,3 @@ export function formatGeoChange7d(change?: number | null, indexDays?: number | n
   return `${change > 0 ? '+' : ''}${change}%`
 }
 
-export function topNewsTheme(events?: Array<{ nlp_themes?: string }>): string {
-  const raw = events?.[0]?.nlp_themes?.trim()
-  if (!raw) return '—'
-  const first = raw.split(',')[0]?.trim()
-  return first || raw.slice(0, 48)
-}
-
-export function drivingHeadlineSummary(events?: Array<{ source?: string }>): {
-  count: string
-  latestSource: string
-} {
-  const count = events?.length ?? 0
-  return {
-    count: count ? String(count) : '—',
-    latestSource: events?.[0]?.source ?? '—',
-  }
-}

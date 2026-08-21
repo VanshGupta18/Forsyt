@@ -1,3 +1,6 @@
+// The site footer shown on every page: logo, copyright line, a link to the
+// Quality page, and a live/degraded data-feed status dot (its own small
+// health check, independent of AppChrome's).
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import ForsytLogo from './ForsytLogo'

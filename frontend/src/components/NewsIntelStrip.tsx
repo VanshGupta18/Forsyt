@@ -1,3 +1,5 @@
+// News page's row of quick-glance PulseCard stats: how many stories showing,
+// how many high-priority, current news-risk score, and the most-covered topic.
 import PulseCard from './PulseCard'
 import { NEWS_MOST_COVERED_LABEL } from '../lib/newsCopy'
 

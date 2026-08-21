@@ -1,3 +1,16 @@
+"""Download the Caldara/Iacoviello "AI-GPR" benchmark CSVs into nifty-50/data/.
+
+WHAT: three public, ready-made geopolitical-risk-index files (daily,
+monthly, and per-country monthly) published at matteoiacoviello.com.
+
+WHY: this package (`forsyt_gpr`) is built and tested against that
+well-established, decades-long benchmark index rather than Forsyt's own
+India index, simply because it already has enough history to validate
+models against (see `forsyt_gpr/README.md` and `forsyt_gpr/data.py`'s
+"pluggable contract" note for how the real India index eventually plugs in
+instead). Re-run this script any time you need a fresh copy of these three
+files -- it just overwrites whatever is already in `data/`.
+"""
 import urllib.request
 import os
 

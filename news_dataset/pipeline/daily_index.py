@@ -1,4 +1,29 @@
-"""Daily job: NLP → Parquet → GPR + corridor indices → Postgres."""
+"""Daily job: NLP → Parquet → GPR + corridor indices → Postgres.
+
+Beginner note — the full order of operations for run_daily_index(day):
+    1. backfill_missing_parquets() — make sure recent days that already have
+       DB data but no exported Parquet file yet get one (catches gaps from
+       past failures).
+    2. run_nlp() (nlp/run_extraction.py) — tag any of this day's articles
+       that are still missing theme/tone/location NLP output.
+    3. process_day() (export/to_gpr_parquet.py) — write this day's tagged
+       articles out as india_processed_YYYYMMDD.parquet.
+    4. If enough days of Parquet history exist yet (required_parquet_days()
+       ramps up to 7 days so early on the index doesn't get a shaky score) —
+       run_gpr_range() shells out to gpr_index/main.py to (re)score GPR +
+       corridor risk for every day in range, then sync_all()
+       (export/to_db.py) pushes those CSV results into Postgres.
+    5. _refresh_dual_signal() recomputes the combined geo+market "dual
+       signal" cache the frontend's home page reads.
+    Every stage's outcome (ok/skipped/error) is logged to the pipeline_runs
+    table via db.log_pipeline_run(), which is what api/gpr_service.py's
+    "last_pipeline_runs" status field reads back.
+
+    This file is imported (not just run standalone) by hourly_refresh.py,
+    catch_up_range.py, backfill_nlp_and_gpr.py, and gdelt_warmup.py — they
+    all reuse run_gpr_range()/backfill_missing_parquets() from here rather
+    than duplicating the "shell out to gpr_index/main.py" logic.
+"""
 
 from __future__ import annotations
 

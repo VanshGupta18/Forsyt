@@ -1,3 +1,5 @@
+// Shared page shell used by every route (see App.tsx): header (AppChrome),
+// the page's own content in the middle, and the footer.
 import type { ReactNode } from 'react'
 import AppChrome from './AppChrome'
 import Footer from './Footer'

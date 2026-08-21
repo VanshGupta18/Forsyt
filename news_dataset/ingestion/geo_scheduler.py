@@ -7,6 +7,16 @@ only fetches those. This lets a single `--once` call be driven by a fixed-rate
 cron (e.g. every 5 minutes) while still respecting each tier's own cadence —
 the same stateless-invocation pattern scheduler.py/GitHub Actions already use
 for the main scraper.
+
+Beginner note — what is "one cycle"?
+    GitHub Actions runs `python -m news_dataset.ingestion.geo_scheduler --once`
+    on a timer (every 25 minutes, see .github/workflows/scrape.yml). Each of
+    those runs is one "cycle": check which tiers are overdue for a fetch
+    (tier_due()), download their RSS feeds, filter/dedup the results, save
+    new articles to Postgres, and record stats — then the process exits.
+    There's no long-running background service; the "schedule" lives entirely
+    in the GitHub Actions cron trigger plus the due-time bookkeeping this file
+    does against the database, not in this process staying alive.
 """
 
 import signal
@@ -50,7 +60,16 @@ def _parse_ts(value):
 
 
 def tier_due(tier, health, now):
-    """A tier is due if any of its feeds hasn't been attempted within its interval."""
+    """A tier is due if any of its feeds hasn't been attempted within its interval.
+
+    Beginner note: `health` is a dict (loaded from the geo_feed_health table)
+    mapping each feed's source_code to when it was last attempted/succeeded.
+    This function just asks "has it been long enough since we last tried this
+    feed?" for every feed in the tier, using TIER_INTERVALS (7 min for Tier 1,
+    12 min for Tier 2) as the threshold. If even ONE feed in the tier is
+    overdue (or has never been tried), the whole tier is considered "due" and
+    run_cycle() will fetch every feed in that tier this run.
+    """
     interval = TIER_INTERVALS[tier]
     feeds = TIER1_FEEDS if tier == 1 else TIER2_FEEDS
     for f in feeds:
@@ -74,7 +93,23 @@ def stale_feeds(health, now):
 
 
 def run_cycle(force_tiers=None):
-    """Fetch due tiers, filter, dedup, ingest, and log stats. Returns summary dict."""
+    """Fetch due tiers, filter, dedup, ingest, and log stats. Returns summary dict.
+
+    Beginner walk-through of one cycle:
+      1. Work out which tier(s) are due (tier_due()), unless the caller forced
+         specific tiers via --tier1/--tier2.
+      2. Download every feed in those tiers (fetch_tier()) and record whether
+         each feed succeeded (upsert_geo_feed_health()) — this is what
+         tier_due() reads next time to decide what's overdue.
+      3. Sort every newly-fetched candidate article oldest-published-first,
+         so when two outlets cover the same story, the earliest one becomes
+         canonical (see find_duplicate() in geo_pipeline.py).
+      4. For each candidate, look for a near-duplicate already in the DB
+         within the last 2 hours; insert the article either way, but tag
+         duplicates with duplicate_of so they're excluded from "final" reads.
+      5. Log per-source fetch/ingest/discard counts for monitoring, and warn
+         about any feed that hasn't succeeded in a while ("stale").
+    """
     now = datetime.now(timezone.utc)
     health = get_geo_feed_health()
     due_tiers = force_tiers or [t for t in (1, 2) if tier_due(t, health, now)]

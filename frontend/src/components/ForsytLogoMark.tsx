@@ -1,3 +1,5 @@
+// Hand-drawn inline SVG icon (an "F" stem plus a curved meridian line) — the
+// app's logo is drawn as vector shapes here, not loaded from an image file.
 type Props = {
   className?: string
 }

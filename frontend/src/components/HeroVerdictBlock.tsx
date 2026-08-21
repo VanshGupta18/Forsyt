@@ -1,3 +1,6 @@
+// The text half of the Home hero: headline verdict + body copy (from
+// lib/macroCopy.ts's todayVerdict), a row of PulseCard stats, and CTA links
+// to the most relevant page given today's signals.
 import { Link } from 'react-router-dom'
 import PulseCard from './PulseCard'
 import type { HomeLiveData } from '../hooks/useHomeLiveData'

@@ -1,3 +1,6 @@
+// Macro page panel showing the combined "joint stress" score as a circular
+// gauge (a CSS conic-gradient ring, not a chart library), plus its two
+// contributing percentile bars.
 import type { DualSignalPayload } from '../lib/api'
 import {
   SCORE_LABELS,

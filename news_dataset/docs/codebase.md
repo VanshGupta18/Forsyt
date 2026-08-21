@@ -1,5 +1,32 @@
 # Geopolitical News Dataset — Codebase Architecture
 
+## New here? Start with this
+
+In plain English, this module does five things, in order:
+
+1. **Scrape** — every few minutes, pull the latest articles from 9 Indian
+   news RSS feeds (see `ingestion/`). A handful of dedicated defence/foreign-
+   policy sites are trusted outright; five big mainstream outlets are
+   filtered down to only geopolitics-relevant stories with a keyword list.
+2. **Tag** — run each new article through simple NLP: what conflict-related
+   *themes* does it match, how *negative* is the wording, and which
+   *countries/places* does it mention (see `nlp/`). No article is scored yet
+   at this point, just labeled.
+3. **Export** — bundle each day's tagged articles into a Parquet file shaped
+   exactly like the format the academic GDELT dataset uses (see `export/`),
+   so the same scoring code can process either source.
+4. **Score** — a separate package, `gpr_index/` (not part of this module,
+   but the very next stop after this one), reads those Parquet files and
+   computes the daily India Geopolitical Risk (GPR) index and per-corridor
+   trade-route risk scores.
+5. **Serve** — a small Flask API (see `api/`) reads the scored results back
+   out of Postgres and serves them as JSON to the React frontend.
+
+If you're new to the project, read `ingestion/` → `nlp/` → `export/` → `api/`
+in that order — it matches the order data actually flows through the system.
+The rest of this document is the detailed technical map; `theory.md` explains
+the *reasoning* behind the sourcing/filtering/dedup choices.
+
 Technical map of the `news_dataset` package: ingestion → NLP → index construction → API → cloud automation.
 
 **Theory (sourcing & dedup):** [theory.md](./theory.md)
@@ -115,6 +142,8 @@ For one UTC day (default yesterday):
 
 GKG download → preprocess → `merge_processed_dirs` → full GPR/corridor score → optional Postgres sync. See [`docs/GDELT_WARMUP.md`](../../docs/GDELT_WARMUP.md).
 
+**Manual/dev-only tools (not run by any CI workflow):** `pipeline/backfill_nlp_and_gpr.py` (one-off historical NLP+GPR backfill) and `nlp/calibrate.py` (NLP threshold calibration/diagnostics against labelled fixtures). Both are run by hand from a terminal when needed — grep the `.github/workflows/` directory and you won't find either referenced there.
+
 ---
 
 ## 5. API — `api/server.py`
@@ -186,3 +215,9 @@ curl -s http://127.0.0.1:5001/api/status | python3 -m json.tool
 ```
 
 See also: [`docs/CLOUD_PIPELINE.md`](../../docs/CLOUD_PIPELINE.md), [`docs/PRODUCT.md`](../../docs/PRODUCT.md).
+
+---
+
+## 9. Housekeeping note
+
+This module's directory (e.g. `news_dataset/docs/`, `news_dataset/export/`, and a hidden `.env`) contains a few macOS `._*` "AppleDouble" files (e.g. `docs/._codebase.md`, `export/._to_db.py`). These are metadata artifacts created when files are copied onto this external drive — they are not real Python/Markdown files and are safe to ignore (do not edit or import them). See root [`docs/DISCREPANCIES.md`](../../docs/DISCREPANCIES.md) for the full list found across the repo.

@@ -1,3 +1,6 @@
+// Macro page's 2x2 "stress quadrant" chart: plots today's news-risk vs
+// market-vol percentiles as a dot inside a 4-quadrant box (see
+// lib/macroCopy.ts's stressQuadrantId for the quadrant logic).
 import { SCORE_LABELS, STRESS_MAP_CORNERS, stressQuadrantId, stressQuadrantShortLabel } from '../lib/macroCopy'
 
 type Props = {

@@ -1,3 +1,5 @@
+// Small stat tile (label + big value + optional pass/fail badge) used by
+// LiveStatusStrip.
 import type { QualityCheckStatus } from '../../lib/api'
 import QualityPassBadge from './QualityPassBadge'
 

@@ -1,3 +1,9 @@
+// Route: "/trade-corridor" (Trade & Corridor Risk). Shows an interactive
+// world map of the 12 tracked shipping lanes/border crossings, a filterable
+// route list, a detail panel for the selected route (score, advisory,
+// contingency checklist), a simple origin/destination "route finder", and
+// corridor-linked news. See lib/corridorCopy.ts and lib/corridorGeo.ts for
+// the score-to-label and map-geometry logic used throughout this page.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'

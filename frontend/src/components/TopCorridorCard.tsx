@@ -1,3 +1,5 @@
+// Macro page callout linking to the trade corridor currently under the most
+// stress — only shown when that corridor's risk is elevated.
 import { Link } from 'react-router-dom'
 import { formatCorridorName } from '../lib/api'
 import { corridorPlainEnglish } from '../lib/macroCopy'

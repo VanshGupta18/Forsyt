@@ -1,4 +1,25 @@
-"""Country mention extraction in GDELT V2Locations format."""
+"""Country mention extraction in GDELT V2Locations format.
+
+Beginner note — plain regex matching, not AI.
+    This module just looks for country/place names (and common adjective
+    forms like "Chinese", "Pakistani") as literal text in an article, using
+    a big regex built from COUNTRY_MAP's keys. If the word "China" appears
+    anywhere, we record a mention of China. There's no understanding of
+    context — "china" the crockery would also match, though in practice
+    that's rare enough in geopolitics-filtered news not to matter much.
+
+Why FIPS codes instead of the more common ISO codes?
+    You've probably seen ISO country codes before (IN, CN, PK, US...) — they're
+    what most software uses today. This project instead uses the older FIPS
+    10-4 country codes, because that's what GDELT (the academic dataset this
+    whole pipeline mirrors the format of) uses in its own V2Locations column.
+    Using the same coding scheme means our data lines up with GDELT's without
+    a translation step. FIPS looks identical to ISO for most countries, but a
+    handful differ — CH=China (ISO would be CN), BG=Bangladesh (ISO: BD),
+    CE=Sri Lanka (ISO: LK), JA=Japan (ISO: JP), RP=Philippines (ISO: PH). Do
+    not "fix" these to ISO — that would break compatibility with the GDELT
+    format downstream code expects.
+"""
 
 from __future__ import annotations
 
@@ -120,6 +141,13 @@ _PHRASE_RE = re.compile(
     ) + r")\b",
     re.IGNORECASE,
 )
+# "Corridor places" are specific named locations (ports, straits, cities)
+# that matter for one of the trade corridors tracked in gpr_index/ — e.g.
+# mentioning "Strait of Malacca" is a much stronger, more specific signal
+# than just mentioning "Malaysia". CORRIDOR_PLACES (imported above from
+# gpr_index) lists each such place along with alternate names/spellings
+# ("aliases") people use for it in news writing; this dict flattens that
+# into a simple lowercase-alias -> canonical-place-name lookup.
 _CORRIDOR_ALIAS_TO_PLACE = {
     alias.lower(): canonical
     for canonical, place in CORRIDOR_PLACES.items()
@@ -149,7 +177,18 @@ def _place_block(name: str) -> str:
 
 
 def extract_locations(title: str, body: str) -> str:
-    """Return deduplicated country and corridor-place V2Locations blocks."""
+    """Return deduplicated country and corridor-place V2Locations blocks.
+
+    Beginner note — reading the output format:
+    Each match becomes a "block" like "1#India#IN#IN#20.0#77.0#0" (country,
+    type=1) or "4#Strait of Malacca#...#0" (a specific place, type=4), and
+    every article's blocks are joined with ";". That's GDELT's own
+    V2Locations text format — this function's whole job is to produce a
+    string that looks exactly like what GDELT would have produced, so the
+    same scoring code in gpr_index/ can read either source. type=4 (specific
+    place) blocks are what let gpr_index/scripts/corridors.py know an article
+    is relevant to a particular trade corridor, not just a country in general.
+    """
     text = f"{title or ''} {body or ''}"
     found = {
         COUNTRY_MAP[match.group(1).lower()]

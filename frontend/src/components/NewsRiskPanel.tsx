@@ -1,3 +1,5 @@
+// News page panel showing the current GPR score (latest/7d/30d averages)
+// plus a compact embedded GprHistoryChart and links to the other dashboards.
 import { Link } from 'react-router-dom'
 import { NEWS_RISK_CONTEXT_TITLE } from '../lib/newsCopy'
 import type { GprHistoryPoint } from '../lib/api'

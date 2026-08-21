@@ -1,12 +1,12 @@
+// Shared article-thumbnail box: resolves an image via useArticleImage and
+// falls back to a plain "News" placeholder if none is available. Only the
+// 'card' and 'ticker' variants are currently used by any component.
 import { useArticleImage } from '../lib/useArticleImage'
 
-export type NewsArticleImageVariant = 'thumb' | 'featured' | 'card' | 'hero' | 'ticker'
+export type NewsArticleImageVariant = 'card' | 'ticker'
 
 const VARIANT_CLASS: Record<NewsArticleImageVariant, string> = {
-  thumb: 'w-[72px] aspect-[4/3] shrink-0',
-  featured: 'w-[88px] aspect-[4/3] shrink-0',
   card: 'w-[72px] aspect-[4/3] shrink-0',
-  hero: 'absolute inset-0',
   ticker: 'w-full aspect-[16/10] shrink-0',
 }
 
@@ -21,7 +21,7 @@ type Props = {
 export default function NewsArticleImage({
   link,
   imageUrl,
-  variant = 'thumb',
+  variant = 'card',
   className = '',
   loading = 'lazy',
 }: Props) {

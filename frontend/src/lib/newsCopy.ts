@@ -136,30 +136,6 @@ export function articleTopicLabel(article?: NewsArticle): string {
   return 'General'
 }
 
-/** @deprecated Use articleTopicLabel — kept for existing imports */
-export function primaryTheme(article?: NewsArticle): string {
-  return articleTopicLabel(article)
-}
-
-/** Count editorial buckets across a feed for the pulse strip. */
-export function dominantTopicLabel(articles: NewsArticle[]): string {
-  const counts = new Map<string, number>()
-  for (const article of articles) {
-    const label = articleTopicLabel(article)
-    if (label === 'General') continue
-    counts.set(label, (counts.get(label) ?? 0) + 1)
-  }
-  let best = '—'
-  let max = 0
-  for (const [label, count] of counts) {
-    if (count > max) {
-      max = count
-      best = label
-    }
-  }
-  return best
-}
-
 export function priorityLabel(tier?: number): string {
   if (tier === 1) return 'High priority'
   if (tier === 2) return 'Standard'
