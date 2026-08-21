@@ -2,7 +2,9 @@
 
 This document explains how Forsyt builds the **Geopolitical Risk index** from GDELT Global Knowledge Graph (GKG) data. The implementation follows **Iacoviello & Tong (2026)**, which extends **Caldara & Iacoviello (2022)**.
 
-**Primary source code:** `scripts/gkg_gpr_pipeline.py`
+**Primary source code:** `scripts/gkg_gpr_pipeline.py`, `scripts/split_era.py`, `scripts/paths.py`
+
+**Input paths:** `data/gkg_processed/` (GDELT warmup) and `data/india_processed/` (India news product era). Merged symlink dir: `data/index_processed/` when running local warmup.
 
 ---
 
@@ -16,12 +18,14 @@ This document explains how Forsyt builds the **Geopolitical Risk index** from GD
 6. [Daily aggregation](#6-daily-aggregation)
 7. [Index normalization](#7-index-normalization)
 8. [Sub-indices and country level](#8-sub-indices-and-country-level)
-9. [Gap filling](#9-gap-filling)
-10. [Output files](#10-output-files)
-11. [Log interpretation](#11-log-interpretation)
-12. [Back-calculations](#12-back-calculations)
-13. [Validation benchmarks](#13-validation-benchmarks)
-14. [Constants reference](#14-constants-reference)
+9. [Split-era normalization (2026 product)](#9-split-era-normalization-2026-product)
+10. [Incremental / dirty-day rescoring](#10-incremental--dirty-day-rescoring)
+11. [Gap filling](#11-gap-filling)
+12. [Output files](#12-output-files)
+13. [Log interpretation](#13-log-interpretation)
+14. [Back-calculations](#14-back-calculations)
+15. [Validation benchmarks](#15-validation-benchmarks)
+16. [Constants reference](#16-constants-reference)
 
 ---
 
@@ -94,7 +98,8 @@ flowchart TB
 
     subgraph prep["Preprocessing"]
         C["scripts/preprocess_gkg.py<br/>Merge slots → dedupe → parse fields"]
-        D["data/gkg_processed/<br/>gkg_processed_YYYYMMDD.parquet"]
+        D["gkg_processed_*.parquet<br/>or india_processed_*.parquet"]
+        M["merge_processed_dirs.py<br/>optional: index_processed/"]
     end
 
     subgraph score["GPR scoring"]
@@ -115,6 +120,8 @@ flowchart TB
     end
 
     A --> B --> C --> D
+    D --> M
+    M --> E
     D --> E --> F --> G --> H
     H --> I --> J
     G --> K
@@ -441,7 +448,63 @@ Output: `gpr_country_level.csv`
 
 ---
 
-## 9. Gap filling
+## 9. Split-era normalization (2026 product)
+
+When GDELT GKG warmup (~15k–30k articles/day) and India news (~200–400 articles/day) share **one** baseline mean \(\bar{S}\), product-era scores collapse toward 1–2 instead of ~100. Forsyt fixes this with **split-era normalization** (`scripts/split_era.py`).
+
+### Era boundaries
+
+| Era | Dates (default) | Input parquets | Purpose |
+|-----|-----------------|----------------|---------|
+| **Warmup** | `GPR_WARMUP_START` → day before `INDIA_GPR_INDEX_START` | `gkg_processed_*.parquet` | Internal calibration; builds hit-days and GKG-scale baselines |
+| **Product** | `>= INDIA_GPR_INDEX_START` (default **2026-08-09**) | `india_processed_*.parquet` | Scores shown in UI and synced to Postgres |
+
+Env overrides: `GPR_WARMUP_START`, `INDIA_GPR_INDEX_START` (see `scripts/paths.py`).
+
+### When split-era activates
+
+`should_split_era(daily_df)` is true when the scoring batch contains dates **both before and on/after** `INDIA_GPR_INDEX_START`. Then:
+
+1. **Separate baselines** — warmup rows normalize on GKG-era \(\bar{S}\); product rows on India-only \(\bar{S}\).
+2. **Separate tail transforms** — same exponent (2.45) and stretch (1.08), applied per era.
+3. **Product-only moving averages** — `gpr_7ma` and `gpr_30ma` roll only on rows `>= INDIA_GPR_INDEX_START` (avoids smearing the Aug 8→9 boundary).
+
+If the batch is product-only (cloud hourly/daily jobs), a single India baseline applies — no split.
+
+### Score semantics
+
+| Layer | Warmup era | Product era |
+|-------|------------|-------------|
+| CSV outputs | Present (local rebuild) | Authoritative |
+| Postgres / API | **Not synced** | Synced from Aug 9 |
+| Interpretation | Calibration only | **100 = average India-news stress day** |
+
+See also: [`docs/GDELT_WARMUP.md`](../../docs/GDELT_WARMUP.md) and `gpr_index/README.md`.
+
+---
+
+## 10. Incremental / dirty-day rescoring
+
+Cloud jobs do not re-score the full history every hour. They pass **dirty days** (typically yesterday + today) to `--only-dirty-days`:
+
+```bash
+python main.py gpr --only-dirty-days 2026-08-20,2026-08-21
+```
+
+**Flow (`_run_incremental`):**
+
+1. Load existing `gpr_daily_index.csv` (must include `raw_ratio`, `acts_ratio`, `threats_ratio`).
+2. Re-score only dirty dates from `india_processed_*.parquet`.
+3. Merge with preserved history → re-normalize the **full** series (split-era if applicable).
+4. Re-run `fill_gpr_gaps` for continuous CSVs.
+
+**Critical:** GPR normalization needs a **multi-day batch**. Single-day scoring forces index ≈ 100. Hourly/daily pipelines therefore always score from `INDIA_GPR_INDEX_START` through today while updating only dirty rows.
+
+**Processed-dir rule:** Cloud CI uses `india_processed/` only (`GPR_INDEX_PROCESSED_DIR` unset). Local warmup sets `GPR_INDEX_PROCESSED_DIR` to merged `index_processed/`.
+
+---
+
+## 11. Gap filling
 
 GDELT occasionally has missing days (e.g. **Jun 15 – Jul 1, 2025** → 17 missing days in a 365-day year). The GPR pipeline skips these; `fill_gpr_gaps.py` builds a calendar-complete series.
 
@@ -473,7 +536,7 @@ The original `gpr_daily_index.csv` is **never modified**.
 
 ---
 
-## 10. Output files
+## 12. Output files
 
 | File | Rows | Contents |
 |------|------|----------|
@@ -505,7 +568,7 @@ The original `gpr_daily_index.csv` is **never modified**.
 
 ---
 
-## 11. Log interpretation
+## 13. Log interpretation
 
 ### GPR pipeline startup
 
@@ -584,7 +647,7 @@ Report saved to `outputs/validation/scoring_diagnosis.csv`.
 
 ---
 
-## 12. Back-calculations
+## 14. Back-calculations
 
 ### From saved daily columns (exact)
 
@@ -627,7 +690,7 @@ Reads existing `gpr_daily_index.csv`, recomputes indices and gap-fill — useful
 
 ---
 
-## 13. Validation benchmarks
+## 15. Validation benchmarks
 
 Run: `python main.py validate --start-date 2025-01-01 --end-date 2025-12-31`
 
@@ -658,7 +721,7 @@ Seven of Caldara's top-10 spike days in 2025 fall inside the **Jun 15 – Jul 1 
 
 ---
 
-## 14. Constants reference
+## 16. Constants reference
 
 All defined in `scripts/gkg_gpr_pipeline.py`:
 

@@ -2,6 +2,17 @@
 
 Production data flows through GitHub Actions into Supabase. Your laptop only reads `DATABASE_URL` via the API.
 
+**Related docs:** [PRODUCT.md](./PRODUCT.md) · [GDELT_WARMUP.md](./GDELT_WARMUP.md) · [news_dataset/docs/codebase.md](../news_dataset/docs/codebase.md)
+
+## Cloud vs local scoring
+
+| Environment | Processed parquets | Split-era |
+|-------------|-------------------|-----------|
+| GitHub Actions | `india_processed/` only | Single India baseline (product era) |
+| Local warmup | merged `index_processed/` (GKG + India) | Separate GKG vs India baselines |
+
+Do **not** set `GPR_INDEX_PROCESSED_DIR` in CI unless intentionally running GDELT warmup in Actions.
+
 ## Prerequisites
 
 1. **`DATABASE_URL`** — set in `news_dataset/.env` locally and as a GitHub Actions secret (same Supabase project).

@@ -1,69 +1,188 @@
-# Geopolitical News Dataset: Codebase Documentation
+# Geopolitical News Dataset — Codebase Architecture
 
-This document explains the technical architecture, line-of-code (LOC) flow, and function-level responsibilities of the `news_dataset` generation pipeline.
+Technical map of the `news_dataset` package: ingestion → NLP → index construction → API → cloud automation.
 
-## 1. `ingestion/feed_utils.py`
-This module acts as the low-level network and parsing layer.
-- **`safe_get(url, timeout)`**: Wraps `requests.get()` in a `try-except` block. Uses a spoofed browser `User-Agent` (defined in `HEADERS`) to prevent HTTP 403 blocks from news sites. Returns the response or `None` on failure.
-- **`parse_feed(url, retries, backoff)`**: Uses `feedparser` to read RSS/Atom feeds. Includes an exponential backoff retry loop. This is critical because shared CI/CD IPs (like GitHub Actions) often experience transient rate limits.
-- **`parse_rss_time(entry)`**: A normalizer function. Different news agencies use different time formats (e.g., `published_parsed` vs `updated_parsed`). This function standardizes the feed entry into a clean string.
+**Theory (sourcing & dedup):** [theory.md](./theory.md)
 
-## 2. `ingestion/geo_pipeline.py`
-This is the core business logic layer for data extraction and heuristic filtering.
-- **Data Dictionaries (`TIER1_FEEDS`, `TIER2_FEEDS`)**: Configures the target URLs, source codes (e.g., `TOI`, `TH`), and maps them to their respective frequency tiers.
-- **`matches_geopolitics(text)`**: The heuristic engine. Takes article text and checks it against arrays of keywords (`KEYWORDS_MILITARY`, `KEYWORDS_DIPLOMACY`, etc.). Calculates a `confidence` score (e.g., "HIGH", "MEDIUM") based on term frequency and returns the matched keywords.
-- **`find_duplicate(title, published_at, recent_articles)`**: The fuzzy dedup engine. Uses `difflib.SequenceMatcher` to compare a new title against articles stored in the last 24 hours. Returns the database `id` of the canonical article if a match > 65% is found.
-- **`fetch_tier(tier)`**: Iterates over all feeds in a given tier. For each feed:
-  1. Calls `parse_feed`
-  2. Extracts title, link, and description.
-  3. Passes the text through `matches_geopolitics`.
-  4. Returns a dictionary of valid candidates to the scheduler.
+---
 
-## 3. `ingestion/geo_scheduler.py`
-This is the execution driver. It manages state and triggers `geo_pipeline.py`.
-- **`tier_due(tier, health, now)`**: Checks the database `geo_feed_health` table. Determines if a tier's required interval (e.g., 7 mins) has elapsed since `last_attempt`.
-- **`run_cycle()`**: 
-  1. Determines which tiers are due.
-  2. Calls `fetch_tier()` for due tiers.
-  3. Sorts all fetched candidates chronologically (oldest first) so the *earliest* reporting outlet gets the canonical database entry.
-  4. Calls `find_duplicate()` for each candidate.
-  5. Pushes the article to the database via `insert_geo_article`.
-  6. Logs cycle statistics (`log_geo_cycle_stats`) and health metadata.
-- **`run_continuous()`**: A while-loop wrapper for running locally. Sleeps for `POLL_TICK` (60s) between checking if a tier is due.
+## System overview
 
-## 4. `db.py`
-PostgreSQL-only storage. Requires `DATABASE_URL` at import time.
-- **`init_db()`**: Bootstraps the `articles`, `geo_feed_health`, `geo_cycle_stats`, and `geo_seen_links` tables.
-- **`insert_geo_article(article)`**: Writes the structured dictionary into SQL with `ON CONFLICT (link) DO NOTHING`.
-- **`get_geo_articles(...)`**: Retrieves the dataset. By default uses `duplicate_of IS NULL` for canonical events.
-- **Health & Stats Loggers**: `upsert_geo_feed_health` and `log_geo_cycle_stats` maintain scheduler telemetry.
+```
+RSS feeds (9 sources)
+    → geo_scheduler / scrape.yml
+    → PostgreSQL (articles, feed health)
+    → nlp/scheduler + nlp.yml
+    → india_processed_*.parquet export
+    → daily_index / hourly_refresh
+    → gpr_index scripts (GPR + corridors)
+    → sync_all() → Postgres (gpr_daily, corridor_daily, dual_signal)
+    → api/server.py page bundles → React frontend
+```
 
-## 5. `api/server.py`
-Plain Flask routes exposing the dataset:
-- `/news` and `/news/<tier>`: article JSON
-- `/health`: total article count and DB status
-- `/stats`: recent cycle yields and feed failure rates
+---
 
-## 6. `.github/workflows/scrape.yml`
-The automation engine.
-- Runs on a cron schedule (`*/25 * * * *`). 
-- Changes the working directory to `./news_dataset`.
-- Installs `requirements.txt` with pip caching.
-- Executes `python -m ingestion.geo_scheduler --once`, which lets GitHub Actions trigger the script statelessly while the database maintains the `last_attempt` timing logic.
+## 1. Ingestion layer
 
-## 7. `nlp/scheduler.py`
-Hourly NLP batch driver (mirrors `geo_scheduler` cadence pattern).
-- **`run_cycle()`**: Counts pending tier articles missing current `nlp_model_version`, runs one extraction batch via `run_extraction.run()`, logs to `pipeline_runs` (`stage=nlp_scheduler`).
-- **`--once`**: For cron — always processes one batch when pending > 0, then exits.
-- **Continuous mode** (no flags): Respects `NLP_SCHEDULER_INTERVAL_SECONDS` (default 3600) between batches.
+### `ingestion/feed_utils.py`
 
-## 8. `.github/workflows/nlp.yml`
-- Runs hourly at `:10` UTC.
-- Installs `requirements.txt` + `requirements-nlp.txt` (torch + sentence-transformers).
-- Executes `python -m news_dataset.nlp.scheduler --once`.
+Low-level HTTP and RSS parsing.
 
-The nightly `daily_index.yml` job still runs the full NLP → parquet → GPR pipeline for yesterday; the NLP scheduler keeps the Postgres rows fresh between those runs.
+| Function | Role |
+|----------|------|
+| `safe_get(url, timeout)` | Browser-like `User-Agent`; catches network errors |
+| `parse_feed(url, retries, backoff)` | `feedparser` with exponential backoff (important on GitHub Actions IPs) |
+| `parse_rss_time(entry)` | Normalizes `published_parsed` / `updated_parsed` |
 
-## 9. `.github/workflows/daily_index.yml`
-- Restores/saves `gpr_index/data/india_processed/` via **GitHub Actions cache** (`india-processed-parquets-v1`) so each run scores **all accumulated daily parquets**, not an isolated single day (which forces GPR = 100).
-- `daily_index.py` backfills missing parquets for the last 14 days (when NLP-complete data exists) and skips GPR/`to_db` sync until enough parquet days exist since **`INDIA_GPR_INDEX_START` (2026-08-09)**.
+### `ingestion/geo_pipeline.py`
+
+Core extraction and filtering.
+
+| Symbol | Role |
+|--------|------|
+| `TIER1_FEEDS` | StratNews, Bharat Shakti, Gateway House, ThePrint Defence — **every article ingested** |
+| `TIER2_FEEDS` | India Today, The Hindu, TOI, NDTV, **Hindustan Times** (world RSS) — keyword filter |
+| `matches_geopolitics(text)` | Keyword matrix → confidence + matched terms |
+| `find_duplicate(title, published_at, recent_articles)` | Fuzzy dedup via `SequenceMatcher`; threshold **0.85** |
+| `fetch_tier(tier)` | Poll one tier's feeds → candidate article dicts |
+
+**Dedup window:** 2 hours (`DEDUP_WINDOW`). Duplicates keep `duplicate_of` pointing to the earliest canonical row.
+
+### `ingestion/geo_scheduler.py`
+
+| Function | Role |
+|----------|------|
+| `tier_due(tier, health, now)` | Respects tier intervals (Tier 1 ≈ 7 min, Tier 2 ≈ 12 min) |
+| `run_cycle()` | Fetch due tiers → sort chronologically → dedup → `insert_geo_article` |
+| `run_continuous()` | Local polling loop (`POLL_TICK` 60s) |
+| `--once` | Single cycle for CI |
+
+---
+
+## 2. Database — `db.py`
+
+PostgreSQL only (`DATABASE_URL` required at import).
+
+| Table / helper | Purpose |
+|----------------|---------|
+| `articles` | Raw + NLP-tagged news rows |
+| `geo_feed_health`, `geo_cycle_stats` | Scraper telemetry |
+| `gpr_daily`, `corridor_daily` | Product index rows (≥ `INDIA_GPR_INDEX_START`) |
+| `dual_signal_cache` | Serialized dual-signal JSON |
+| `pipeline_runs` | Stage logs (nlp, hourly, daily) |
+| `init_db()` | Creates schema on first use |
+| `sync_all()` | Upserts GPR/corridor/dual-signal from CSV outputs |
+
+---
+
+## 3. NLP — `nlp/`
+
+| Module | Role |
+|--------|------|
+| `run_extraction.py` | Theme/tone/location/GCAM tagging to article columns |
+| `scheduler.py` | Hourly batch driver (`--once` for cron) |
+| `locations.py` | Emits GDELT-style `V2Locations` blocks; imports `CORRIDOR_PLACES` from `gpr_index/scripts/corridors.py` |
+
+Tagged articles export to **`gpr_index/data/india_processed/india_processed_YYYYMMDD.parquet`** for scoring.
+
+---
+
+## 4. Index pipelines
+
+### `pipeline/daily_index.py` — authoritative end-of-day
+
+For one UTC day (default yesterday):
+
+1. Backfill missing parquets (last 14 days)
+2. NLP batch (500 articles)
+3. Export parquet for target day
+4. If ≥ `required_parquet_days()` since Aug 9: `run_gpr_range()` + `sync_all()`
+5. `refresh_dual_signal()`
+
+**Important:** `run_gpr_range()` always scores **`india_processed/`** on cloud — never the merged GKG dir.
+
+### `pipeline/hourly_refresh.py` — `platform_refresh`
+
+1. NLP batch (200 articles, env `PLATFORM_REFRESH_NLP_BATCH`)
+2. Backfill parquets
+3. Export yesterday + today parquets
+4. GPR/corridor with `dirty_days=[yesterday, today]`
+5. `sync_all()` → Postgres
+6. `refresh_dual_signal()`
+7. Warm API caches (quality report, article images)
+
+### `pipeline/gdelt_warmup.py` — local only
+
+GKG download → preprocess → `merge_processed_dirs` → full GPR/corridor score → optional Postgres sync. See [`docs/GDELT_WARMUP.md`](../../docs/GDELT_WARMUP.md).
+
+---
+
+## 5. API — `api/server.py`
+
+Unified Flask API (port **5001** in dev). Page bundles return one JSON payload per dashboard screen.
+
+| Route | Handler |
+|-------|---------|
+| `GET /health` | Health snapshot |
+| `GET /api/status` | Platform freshness (GPR, corridors, scrape) |
+| `GET /api/events/feed` | Filtered tagged articles |
+| `GET /api/news/image?link=` | Article image resolver |
+| `GET /api/market/dual-signal` | Geo + NIFTY vol + joint stress |
+| `GET /api/pages/home` | Home bundle |
+| `GET /api/pages/macro` | Macro / dual-signal bundle |
+| `GET /api/pages/news` | News feed bundle |
+| `GET /api/pages/corridor` | Corridor board bundle |
+| `GET /api/pages/portfolio` | Portfolio context bundle |
+| `GET /api/pages/quality` | Accuracy / methodology report |
+
+**Data layer:** `gpr_service.py` (Postgres primary, CSV fallback), `market_service.py`, `metrics_service.py`, `page_bundles.py`, `cache.py`.
+
+**Production:** `gunicorn -c news_dataset/gunicorn.conf.py news_dataset.api.server:app`
+
+---
+
+## 6. GitHub Actions workflows
+
+| Workflow | Schedule | Entrypoint |
+|----------|----------|------------|
+| `scrape.yml` | */25 min | `ingestion.geo_scheduler --once` |
+| `nlp.yml` | hourly :10 | `nlp.scheduler --once` |
+| `platform_refresh.yml` | hourly :20 | `pipeline.hourly_refresh` |
+| `daily_index.yml` | 18:30 UTC | `pipeline.daily_index` |
+| `catch_up_index.yml` | manual | Date-range backfill |
+
+**Parquet cache:** `india-processed-parquets-v1` — accumulates daily parquets so GPR normalization has multi-day history.
+
+**Cloud env:** `INDIA_GPR_INDEX_START=2026-08-09`. Do **not** set `GPR_INDEX_PROCESSED_DIR` in CI.
+
+---
+
+## 7. Key environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | — | Supabase Postgres (required) |
+| `INDIA_GPR_INDEX_START` | `2026-08-09` | Product era start; Postgres sync cutoff |
+| `GPR_WARMUP_START` | `2026-01-01` | GDELT warmup baseline (local) |
+| `GPR_INDEX_PROCESSED_DIR` | unset | Set to merged `index_processed/` for local warmup only |
+| `ALLOW_CSV_FALLBACK` | off | Offline dev only — masks stale DB data |
+
+---
+
+## 8. Local development
+
+```bash
+# Terminal 1 — API
+python -m news_dataset.api.server
+
+# Terminal 2 — frontend (proxies /api → :5001)
+cd frontend && npm run dev
+```
+
+Verify freshness:
+
+```bash
+curl -s http://127.0.0.1:5001/api/status | python3 -m json.tool
+```
+
+See also: [`docs/CLOUD_PIPELINE.md`](../../docs/CLOUD_PIPELINE.md), [`docs/PRODUCT.md`](../../docs/PRODUCT.md).

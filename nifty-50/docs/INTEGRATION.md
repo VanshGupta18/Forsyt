@@ -1,188 +1,153 @@
 # Integrating `forsyt_gpr` with the Forsyt daily pipeline
 
-How the modelling package plugs into the Newsemble scraper → GPR-index → API/dashboard
-flow, what a daily run produces, and how the numbers are meant to be displayed.
+How the modelling package plugs into the news → GPR → API/dashboard flow in **2026**.
+
+**Product framing:** Geo GPR and NIFTY vol are shown **side by side** — not a combined "GPR predicts NIFTY" headline model.
 
 ---
 
 ## 1. Where this sits in the pipeline
 
 ```
-  scraper.py (every 15 min)          <- YOU already built this (Newsemble)
+  geo_scheduler (scrape.yml)
         |
         v
-  news.db  (articles)
+  PostgreSQL articles + NLP
         |
         v
-  [ NLP scoring + index construction ]   <- Forsyt Phase 2-3 (to build)
+  india_processed_*.parquet  →  gkg_gpr_pipeline  →  CSV outputs
         |
         v
-  gpr_index table:  day | india_gpr | threats | acts     <- the hand-off point
+  sync_all()  →  gpr_daily / corridor_daily (Postgres)
         |
         v
-  forsyt_gpr.data.as_gpr_frame(...)      <- THIS PACKAGE starts here
+  gpr_service.build_dual_signal_payload()
         |
         v
-  vol_model.latest_forecast(...)  ->  JSON  ->  api/  ->  dashboard/
+  GET /api/market/dual-signal  +  page bundles  →  React dashboard
 ```
 
-The package needs exactly one thing from Forsyt: a table of **daily GPR values**.
-Everything else (features, model, forecast) is internal.
+The package needs a **daily GPR frame** (`gpr`, optional `gpr_7ma`, `gpr_threats`, `gpr_acts`). Everything else is internal to `forsyt_gpr`.
 
 ---
 
 ## 2. The hand-off contract
 
-The only coupling is `as_gpr_frame`. Point it at your columns:
-
 ```python
 import pandas as pd
 from forsyt_gpr.data import as_gpr_frame, load_price
-from forsyt_gpr import vol_model
+from forsyt_gpr.dual_signal import build_dual_signal
 
-# 1. pull your index out of Postgres/SQLite
-raw = pd.read_sql("select day, india_gpr, threats, acts from gpr_index "
-                  "order by day", con)
+# From Postgres or gpr_daily_index.csv
+raw = pd.read_sql(
+    "SELECT date, gpr_index, gpr_7ma, gpr_threats_index, gpr_acts_index "
+    "FROM gpr_daily ORDER BY date",
+    con,
+)
+gf = as_gpr_frame(
+    raw.set_index("date"),
+    gpr="gpr_index",
+    threats="gpr_threats_index",
+    acts="gpr_acts_index",
+)
+nifty = load_price("NIFTY")  # replace with production NSE feed
 
-# 2. coerce to the canonical GPR frame (validates + raises on bad data)
-gf = as_gpr_frame(raw.set_index("day"),
-                  gpr="india_gpr", threats="threats", acts="acts")
-
-# 3. daily NIFTY forecast
-nifty = load_price("NIFTY")           # swap for your own NSE price feed
-record = vol_model.latest_forecast(gf, nifty, horizon=5)
+payload = build_dual_signal(gf, nifty, index_days=len(gf))
 ```
 
-`threats`/`acts` are optional — omit them and only benchmark features are built.
-`as_gpr_frame` raises early on a non-datetime index, unsorted dates, duplicate
-days, negative values, or an all-NaN column, so a broken upstream job fails loudly
-instead of producing a plausible-looking wrong number. Zeros are allowed (a narrow
-India-only corpus will have quiet days; everything uses `log1p`).
+`as_gpr_frame` validates datetime index, sort order, duplicates, and negative values.
 
-### Price feed
-`load_price("NIFTY")` reads a cached Yahoo CSV — fine for development, **not for
-production** (unofficial, ~1-day lag, starts 2007). In production pass your own
-daily close series (NSE Bhavcopy, broker API) as a `pd.Series` indexed by date.
-Any `pd.Series` of daily closes works; nothing else changes.
+**Production note:** `load_price("NIFTY")` uses cached Yahoo CSV for dev only. Pass your own daily close `pd.Series` in production.
 
 ---
 
-## 3. What one daily run returns
+## 3. What `build_dual_signal` returns
 
-`latest_forecast` fits on all history whose 5-day-ahead outcome is already known,
-then scores the newest day. It returns a JSON-ready dict:
+JSON-ready structure with three blocks:
 
-```json
-{
-  "as_of": "2026-04-30",
-  "horizon_days": 5,
-  "target": "annualized realized vol, next 5 trading days (%)",
-  "high_vol_threshold": 17.91,
-  "target_resolves_on": "2026-05-08",
-  "market_only":  { "vol_forecast": 13.56, "high_vol_prob": 0.143 },
-  "gpr_only":     { "vol_forecast": 15.08, "high_vol_prob": 0.222 },
-  "market+gpr":   { "vol_forecast": 14.43, "high_vol_prob": 0.204 },
-  "headline":     { "vol_forecast": 14.43, "high_vol_prob": 0.204 },
-  "gpr_added_vol": 0.87
-}
-```
+### Geopolitical (`geo_regime`)
 
-Every run reports **three models side by side on purpose**. `market_only` has zero
-geopolitical input; `gpr_added_vol` is the honest contribution of your index. Never
-show `headline` alone — the delta is the whole point of the platform.
+- Baseline: Caldara scale **100 / 35** (`caldara` or `caldara_ramp` when &lt; 60 index days)
+- `z_score = (gpr_today - 100) / 35`
+- Regimes: LOW / MODERATE / ELEVATED / HIGH
+- `geo_percentile` over full history; confidence `low` if &lt; 8 index days
 
-`high_vol_prob` is the probability that realized vol over the next 5 trading days
-lands in the top 25% (the "HIGH_VOL regime" Forsyt promises). `high_vol_threshold`
-is the annualized-vol level (%) that defines that regime, learned from training
-data only.
+### NIFTY vol (`nifty_vol_signal`)
+
+- Primary: `vol_model.latest_market_forecast()` — **market-only** XGB (no GPR in forecast features)
+- Fallback: 22-day trailing realized vol if model unavailable
+- Regime from `high_vol_prob`: NORMAL / ELEVATED / HIGH_VOL
+
+### Joint stress (`joint_stress`)
+
+- `stress_score = 0.6 × geo_percentile + 0.4 × vol_percentile`
+- Regimes: CALM / WATCH / HIGH_STRESS
+- Historical analog: past days with similar GPR → median forward 5d NIFTY vol/return
 
 ---
 
-## 4. Wiring it into `app.py`
+## 4. Wiring into the API (shipped)
 
-Add one endpoint. Cache the day's result; do not refit per request (a fit is
-seconds, but there is no reason to repeat it intraday).
+Dual-signal is **already integrated** in `news_dataset/api/gpr_service.py`:
 
 ```python
-# api/forecast.py
-from functools import lru_cache
-import datetime as dt, pandas as pd
-from forsyt_gpr.data import as_gpr_frame, load_price
-from forsyt_gpr import vol_model
-
-@lru_cache(maxsize=1)
-def _todays_forecast(day: str):            # day in the key => auto-invalidates daily
-    raw = pd.read_sql("select day, india_gpr, threats, acts from gpr_index", ENGINE)
-    gf = as_gpr_frame(raw.set_index("day"), gpr="india_gpr",
-                      threats="threats", acts="acts")
-    return vol_model.latest_forecast(gf, load_price("NIFTY"), horizon=5)
-
-@app.route("/api/nifty_vol_forecast")
-def nifty_vol_forecast():
-    return jsonify(_todays_forecast(dt.date.today().isoformat()))
+# news_dataset/api/server.py
+@app.get("/api/market/dual-signal")
+def dual_signal():
+    return jsonify(build_dual_signal_payload(refresh=request.args.get("refresh") == "1"))
 ```
 
-### Scheduling
-Reuse `scheduler.py`. Run the forecast **once per day, after the index updates and
-after NSE close** — realized-vol features need the day's close. A daily cron
-(`.github/workflows/scrape.yml` already runs on a schedule) is the right cadence;
-intraday refits add nothing because the features only move on new daily bars.
+Page bundles embed the same payload:
 
-### Weekly validation job (recommended)
-Once a week, run the real evaluator and store the tables — this is what proves the
-model is (or is not) working, and it is the number an examiner will ask for:
+- `/api/pages/home` — hero dual-signal + joint stress
+- `/api/pages/macro` — full chart context
+- `/api/pages/portfolio` — stress context
 
-```python
-reg, clf, _ = vol_model.run_vol_experiment(gf, load_price("NIFTY"), horizon=5)
-# persist reg / clf to a metrics table; expose on an /api/model_health route
-```
+**Refresh:** Cloud pipelines call `refresh_dual_signal()` after each GPR sync. Pass `?refresh=1` to bypass cache.
 
 ---
 
-## 5. How to show it on the dashboard
+## 5. How to show it on the dashboard (shipped)
 
-The forecast maps to Forsyt's "volatility intelligence" module like this:
+| UI element | Source field | Component |
+|------------|--------------|-----------|
+| Geo dial | `geo_regime.regime`, `gpr_today` | `DualSignalChart`, `HeroVerdictBlock` |
+| Vol dial | `nifty_vol_signal.regime`, `vol_forecast` | `DualSignalChart` |
+| Joint stress gauge | `joint_stress.stress_score`, `regime` | Home hero |
+| Historical analog | `historical_analog` | `HistoricalAnalogPanel` |
+| Honesty | Side-by-side layout | Macro dashboard copy |
 
-| UI element | Field | Note |
-|---|---|---|
-| Big regime badge | `headline.high_vol_prob` | `>0.5` → "HIGH VOL WATCH", else "NORMAL" |
-| Vol gauge | `headline.vol_forecast` vs `high_vol_threshold` | needle vs the red line |
-| "GPR contribution" chip | `gpr_added_vol` | **the differentiator** — +/- pts from geopolitics |
-| Sub-caption | `as_of` → `target_resolves_on` | "forecast for Apr 30 – May 8" |
-| Honesty panel | all three `*_forecast` | market-only vs +gpr, side by side |
-| Model-health page | weekly `run_vol_experiment` tables | ROC-AUC, incremental ΔR² |
-
-**Design rule that protects the project's credibility:** the "GPR contribution"
-chip must be able to show a *negative* number. On current data (AI-GPR) it often
-does — that is a true statement about the index, and hiding it would make the
-dashboard dishonest. When Forsyt's own daily India index makes that chip reliably
-positive and significant in the weekly validation, *that* is your headline result.
-
-Sketch:
-
-```
-┌───────────────────────────────────────────────┐
-│  NIFTY 50 · 5-day volatility        as_of 30 Apr │
-│                                                 │
-│     ┌─────────┐     Forecast   14.4%  ann.       │
-│     │ NORMAL  │     Threshold  17.9%             │
-│     └─────────┘     P(high vol) 20%              │
-│                                                 │
-│  Geopolitical contribution:  +0.9 pts           │
-│  ──────────────────────────────────────────     │
-│  market-only 13.6% | +GPR 14.4% | GPR-only 15.1%│
-└───────────────────────────────────────────────┘
-```
+**Design rule:** Never claim GPR forecasts NIFTY better than market data. OOS backtests show market-only wins — the product shows both signals transparently.
 
 ---
 
-## 6. Operational checklist
+## 6. Scheduling
 
-- [ ] `gpr_index` table populated daily by the scoring job
-- [ ] daily close feed wired into `load_price` replacement
-- [ ] `/api/nifty_vol_forecast` returns the JSON above
-- [ ] result cached per calendar day, refreshed after NSE close
-- [ ] weekly `run_vol_experiment` persisted to a metrics table
-- [ ] dashboard shows all three models, `gpr_added_vol` allowed to be negative
-- [ ] staleness guard: if `gf.index.max()` is > 2 days old, flag on the dashboard
-      rather than silently serving a stale forecast
+| Job | When | Action |
+|-----|------|--------|
+| `platform_refresh.yml` | hourly :20 UTC | GPR dirty-day rescore + `refresh_dual_signal()` |
+| `daily_index.yml` | 18:30 UTC | Authoritative EOD close + dual-signal |
+| `gdelt_warmup` | local only | Full rebuild + dual-signal cache |
+
+---
+
+## 7. Operational checklist
+
+- [x] `gpr_daily` populated from India news pipeline (≥ Aug 9, 2026)
+- [x] `/api/market/dual-signal` returns geo + vol + joint stress
+- [x] Dual-signal cached in Postgres (`dual_signal_cache`)
+- [x] Dashboard shows side-by-side dials (not GPR-only headline)
+- [ ] Production NSE close feed wired (replace Yahoo dev CSV)
+- [ ] Weekly `run_vol_experiment` persisted for examiner metrics (optional QA)
+
+---
+
+## 8. Research vs product
+
+| Artifact | Location | Audience |
+|----------|----------|----------|
+| OOS vol backtest, ROC-AUC tables | `nifty-50/forsyt_gpr/vol_model.py`, `research/` | Internal QA |
+| Shipped dual-signal | `dual_signal.py` + API | Product / dashboard |
+| Academic write-up | `nifty-50/research/REPORT.md` | Capstone report |
+
+See also: [`docs/PRODUCT.md`](../../docs/PRODUCT.md), [`nifty-50/README.md`](../README.md).

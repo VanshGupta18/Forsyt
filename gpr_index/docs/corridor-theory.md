@@ -4,16 +4,19 @@ The corridor index reuses the existing article score and changes only the
 geographic aggregation. It covers 12 India-relevant maritime, land-border,
 and strategic corridors.
 
+**Primary source code:** `scripts/corridor_index.py`, `scripts/corridors.py`, `scripts/split_era.py`
+
 ## Threat × exposure
 
 For corridor \(c\) on day \(t\):
 
 ```text
 raw_ratio(c,t) = sum(positive article scores tagged to c) / total_articles(t)
-Threat(c,t) = the existing GPR index transform applied per corridor (mean 100)
+Threat(c,t) = per-corridor GPR index transform (mean 100 on that corridor's baseline)
 EnergyRisk(c,t) = clamp(Threat × energy_exposure, 0, 100)
 GoodsRisk(c,t) = clamp(Threat × goods_exposure, 0, 100)
 CorridorRisk(c,t) = max(EnergyRisk, GoodsRisk)
+CorridorRisk_7MA(c,t) = 7-day rolling mean of CorridorRisk (product era only when split-era active)
 ```
 
 The output retains `raw_ratio` and `threat_index`; exposure never changes the
@@ -22,9 +25,41 @@ published denominators differ (for example, crude-import share versus
 merchandise-trade share). Taking the larger channel produces one bounded
 operational score without adding incompatible percentages.
 
+**Operational score:** UI and API sort corridors by `corridor_risk_7ma` (smoothed), not raw daily `corridor_risk`.
+
 The denominator is all articles on that day, exactly as in the parent GPR
 index. A single article may tag multiple corridors, but it contributes at most
 once to each corridor.
+
+### Normalization (softer than parent GPR)
+
+Corridor threat uses a **softer** tail than global GPR:
+
+| Parameter | Global GPR | Corridor |
+|-----------|------------|----------|
+| Tail exponent | 2.45 | **1.5** (`CORRIDOR_TAIL_EXPONENT`) |
+| Upper-half stretch | 1.08 | **1.05** |
+
+Each corridor needs at least **2 baseline hit-days** (`MIN_BASELINE_HIT_DAYS`) or it gets `score_status=insufficient_history` and `threat_index=0`.
+
+### Split-era (2026)
+
+When a batch spans GKG warmup and India product eras, corridor normalization mirrors GPR:
+
+- Separate warmup vs product baselines **per corridor**
+- `corridor_risk_7ma` / `_30ma` computed on product-era rows only
+- `hit_days` for baseline eligibility still use full merged history when hits are merged
+
+See [GPR split-era](./gpr-theory.md#9-split-era-normalization-2026-product).
+
+### Incremental merge (hourly / dirty-day rescans)
+
+Product-only rescans must not drop warmup hit history:
+
+- `_merge_prior_corridor_hits()` — keeps prior warmup rows in `corridor_article_hits.parquet` when rescoring `>= INDIA_GPR_INDEX_START`
+- `_merge_corridor_totals()` — reuses denominator metadata from saved `gpr_corridor_daily.csv` for days not rescanned
+
+CLI: `corridor --dates YYYY-MM-DD,...` for specific days; `corridor --from-hits` to rebuild from saved hits without rescanning source parquets.
 
 ## Matching rules
 
