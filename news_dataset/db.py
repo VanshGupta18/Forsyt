@@ -75,7 +75,9 @@ _pool: psycopg2.pool.ThreadedConnectionPool | None = None
 def _ensure_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        _pool = psycopg2.pool.ThreadedConnectionPool(2, 5, DATABASE_URL)
+        pool_min = max(1, int(os.environ.get("DATABASE_POOL_MIN", "2")))
+        pool_max = max(pool_min, int(os.environ.get("DATABASE_POOL_MAX", "20")))
+        _pool = psycopg2.pool.ThreadedConnectionPool(pool_min, pool_max, DATABASE_URL)
     return _pool
 
 

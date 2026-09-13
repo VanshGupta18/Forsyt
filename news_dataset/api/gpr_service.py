@@ -772,5 +772,8 @@ def build_dual_signal_payload(*, refresh: bool = False) -> dict:
     )
     payload["driving_events_meta"] = driving_meta
     as_of = payload["geopolitical"]["as_of"]
-    db.upsert_dual_signal(as_of, payload)
+    try:
+        db.upsert_dual_signal(as_of, payload)
+    except Exception:
+        logger.exception("dual_signal cache write failed — returning computed payload anyway")
     return _normalize_dual_signal(payload)

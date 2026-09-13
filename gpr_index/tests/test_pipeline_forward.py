@@ -134,7 +134,7 @@ class CorridorMergeHelpersTests(unittest.TestCase):
                 }
             )
             merged = _merge_prior_corridor_hits(
-                new, out, pd.Timestamp(INDIA_GPR_INDEX_START)
+                new, out, {pd.Timestamp("2026-08-16")}
             )
             self.assertEqual(len(merged), 2)
             self.assertEqual(
@@ -168,9 +168,79 @@ class CorridorMergeHelpersTests(unittest.TestCase):
                 }
             )
             merged = _merge_corridor_totals(
-                new_totals, out, pd.Timestamp(INDIA_GPR_INDEX_START)
+                new_totals, out, {pd.Timestamp("2026-08-16")}
             )
             self.assertEqual(len(merged), 2)
+
+    def test_merge_helpers_exclude_only_rescored_dates(self) -> None:
+        """Reproduces production geometry: many contiguous already-scored
+        product-era days on disk, plus a narrow hourly-style dirty window
+        where one day overlaps a date already present in prior data. Before
+        the fix, `< scored_start` thresholding could never exclude that
+        overlapping day from `prior`, so it was concatenated in twice.
+        """
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            # 9 contiguous prior days: 2026-08-09 .. 2026-08-17 inclusive.
+            prior_dates = pd.date_range("2026-08-09", periods=9, freq="D")
+            prior_hits = pd.DataFrame(
+                {
+                    "date": prior_dates,
+                    "corridor": ["strait_of_hormuz"] * 9,
+                    "gpr_score": [0.5] * 9,
+                    "event_category": ["sanctions"] * 9,
+                    "gpr_type": ["threat"] * 9,
+                }
+            )
+            prior_hits.to_parquet(out / "corridor_article_hits.parquet", index=False)
+            prior_totals = pd.DataFrame(
+                {
+                    "date": prior_dates,
+                    "total_articles": [100] * 9,
+                    "positive_articles": [10] * 9,
+                    "matched_positive_articles": [1] * 9,
+                }
+            )
+            prior_totals.to_csv(out / "gpr_corridor_daily.csv", index=False)
+
+            # Narrow "--dates <day-2> <day-1>"-style batch: 2026-08-17 was
+            # already scored above (the overlap that caused duplication
+            # before the fix); 2026-08-18 is genuinely new.
+            dirty_dates = pd.to_datetime(["2026-08-17", "2026-08-18"])
+            new_hits = pd.DataFrame(
+                {
+                    "date": dirty_dates,
+                    "corridor": ["strait_of_hormuz"] * 2,
+                    "gpr_score": [0.9, 0.9],
+                    "event_category": ["sanctions"] * 2,
+                    "gpr_type": ["threat"] * 2,
+                }
+            )
+            new_totals = pd.DataFrame(
+                {
+                    "date": dirty_dates,
+                    "total_articles": [120, 120],
+                    "positive_articles": [12, 12],
+                    "matched_positive_articles": [2, 2],
+                }
+            )
+            rescored_dates = {pd.Timestamp(d).normalize() for d in dirty_dates}
+
+            merged_hits = _merge_prior_corridor_hits(new_hits, out, rescored_dates)
+            merged_totals = _merge_corridor_totals(new_totals, out, rescored_dates)
+
+            # 9 prior - 1 overlapping day (2026-08-17, superseded by the
+            # freshly-rescored version) + 2 new = 10, not 11 (which a
+            # duplicated overlap would give).
+            self.assertEqual(len(merged_hits), 10)
+            self.assertEqual(len(merged_totals), 10)
+
+            overlap_rows = merged_hits[merged_hits["date"] == pd.Timestamp("2026-08-17")]
+            self.assertEqual(len(overlap_rows), 1)
+            self.assertEqual(overlap_rows["gpr_score"].iloc[0], 0.9)
 
 
 class IncrementalHistoryTests(unittest.TestCase):

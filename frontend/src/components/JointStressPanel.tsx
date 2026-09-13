@@ -4,6 +4,8 @@
 import type { DualSignalPayload } from '../lib/api'
 import {
   SCORE_LABELS,
+  resolveJointStressRegime,
+  resolveJointStressScore,
   stressRegimeClass,
   stressRegimeLabel,
 } from '../lib/macroCopy'
@@ -16,7 +18,17 @@ type Props = {
 
 export default function JointStressPanel({ dual, volUnavailable }: Props) {
   const joint = dual?.joint_stress
-  const score = joint?.stress_score
+  const geo = dual?.geopolitical
+  const vol = dual?.nifty_volatility
+  const score = resolveJointStressScore(
+    joint,
+    geo?.geo_percentile,
+    vol?.vol_percentile,
+    volUnavailable,
+  )
+  const regime = resolveJointStressRegime(score, joint?.stress_regime, volUnavailable)
+  const geoPct = joint?.geo_percentile ?? geo?.geo_percentile
+  const volPct = joint?.vol_percentile ?? vol?.vol_percentile
 
   return (
     <div className="corridor-panel p-4 h-full flex flex-col gap-4">
@@ -30,25 +42,28 @@ export default function JointStressPanel({ dual, volUnavailable }: Props) {
           <div
             className="absolute inset-0"
             style={{
-              background: `conic-gradient(var(--corridor-accent-alert) ${score ?? 0}%, transparent 0)`,
+              background: `conic-gradient(var(--corridor-accent-alert) ${score ?? 0}%, transparent ${score ?? 0}%)`,
               mask: 'radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px))',
               WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px))',
             }}
           />
           <div className="text-center z-10">
             <div className="corridor-score text-4xl text-white">{score ?? '—'}</div>
-            <div className={`text-xs font-semibold mt-1 uppercase ${stressRegimeClass(joint?.stress_regime)}`}>
-              {stressRegimeLabel(joint?.stress_regime)}
+            <div className={`text-xs font-semibold mt-1 uppercase ${stressRegimeClass(regime)}`}>
+              {stressRegimeLabel(regime)}
             </div>
           </div>
         </div>
       </div>
 
-      {joint?.geo_percentile != null && (
-        <ScoreBar label={SCORE_LABELS.geoPct} value={joint.geo_percentile} />
+      {geoPct != null && <ScoreBar label={SCORE_LABELS.geoPct} value={geoPct} />}
+      {volPct != null && (
+        <ScoreBar label={SCORE_LABELS.volPct} value={volPct} muted={volUnavailable} />
       )}
-      {joint?.vol_percentile != null && (
-        <ScoreBar label={SCORE_LABELS.volPct} value={joint.vol_percentile} muted={volUnavailable} />
+      {volUnavailable && score != null && (
+        <p className="text-[10px] text-corridor-muted leading-snug">
+          Vol model unavailable — score uses news risk only (60% weight).
+        </p>
       )}
     </div>
   )

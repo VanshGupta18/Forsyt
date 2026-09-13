@@ -84,6 +84,7 @@ export function stressRegimeLabel(regime?: string): string {
   if (r === 'WATCH') return 'Watch'
   if (r === 'CALM') return 'Calm'
   if (r === 'UNAVAILABLE') return 'Unavailable'
+  if (r === 'PARTIAL') return 'Partial'
   return regime ?? '—'
 }
 
@@ -93,6 +94,42 @@ export function stressRegimeClass(regime?: string): string {
   if (r === 'WATCH') return 'text-corridor-watch'
   if (r === 'CALM') return 'text-corridor-clear'
   return 'text-corridor-muted'
+}
+
+/** Resolve combined-stress score for display when API omits stress_score (e.g. vol model warming up). */
+export function resolveJointStressScore(
+  joint?: {
+    stress_score?: number | null
+    geo_percentile?: number | null
+    vol_percentile?: number | null
+  } | null,
+  geoPercentile?: number | null,
+  volPercentile?: number | null,
+  volUnavailable?: boolean,
+): number | null {
+  if (joint?.stress_score != null && Number.isFinite(joint.stress_score)) {
+    return joint.stress_score
+  }
+  const geo = joint?.geo_percentile ?? geoPercentile
+  if (geo == null) return null
+  if (volUnavailable) {
+    return Math.round(0.6 * geo * 10) / 10
+  }
+  const vol = joint?.vol_percentile ?? volPercentile
+  if (vol == null) return null
+  return Math.round((0.6 * geo + 0.4 * vol) * 10) / 10
+}
+
+export function resolveJointStressRegime(
+  score: number | null,
+  regime?: string | null,
+  volUnavailable?: boolean,
+): string {
+  if (regime && regime !== 'UNAVAILABLE') return regime
+  if (score == null) return volUnavailable ? 'PARTIAL' : '—'
+  if (score >= 75) return 'HIGH_STRESS'
+  if (score >= 50) return 'WATCH'
+  return 'CALM'
 }
 
 export function geoRegimeLabel(regime?: string): string {

@@ -300,33 +300,46 @@ def normalize_corridor_index(
 def _merge_prior_corridor_hits(
     hits: pd.DataFrame,
     output_dir: Path,
-    scored_start: pd.Timestamp,
+    rescored_dates: set[pd.Timestamp],
 ) -> pd.DataFrame:
-    """Keep warmup-era hits when doing a product-only corridor rescore."""
-    if scored_start < pd.Timestamp(INDIA_GPR_INDEX_START):
-        return hits
+    """Keep prior hit rows for dates that were not just rescored.
+
+    Excludes by exact date membership (mirroring gkg_gpr_pipeline.py's
+    `_run_incremental`), not by a `< scored_start` threshold. The old
+    threshold compared against the CLI's fixed --start-date, which equals
+    INDIA_GPR_INDEX_START in production, so `prior[date < scored_start]`
+    was always empty: every hourly incremental run silently discarded the
+    entire accumulated product-era history and rewrote the outputs with
+    only the 1-2 freshly rescored days.
+    """
     hits_path = output_dir / "corridor_article_hits.parquet"
     if not hits_path.exists():
         return hits
     prior = pd.read_parquet(hits_path)
     if prior.empty:
         return hits
-    prior = prior[prior["date"] < scored_start]
+    prior = prior[~prior["date"].isin(rescored_dates)]
     if prior.empty:
         return hits
     if hits.empty:
         return prior
+    # No de-duplication here on purpose: hit rows are per-article and carry no
+    # unique id, so distinct articles legitimately share
+    # (date, corridor, gpr_score, event_category, gpr_type) — de-duping on those
+    # columns would silently collapse ~32% of real hits and undercount both
+    # gpr_sum and corridor_hit_count. Excluding rescored dates from `prior`
+    # above already makes duplication structurally impossible.
     return pd.concat([prior, hits], ignore_index=True)
 
 
 def _merge_corridor_totals(
     totals: pd.DataFrame,
     output_dir: Path,
-    scored_start: pd.Timestamp,
+    rescored_dates: set[pd.Timestamp],
 ) -> pd.DataFrame:
     """Reuse denominator metadata for days we did not rescan."""
     daily_path = output_dir / "gpr_corridor_daily.csv"
-    if not daily_path.exists() or scored_start < pd.Timestamp(INDIA_GPR_INDEX_START):
+    if not daily_path.exists():
         return totals
     prior = pd.read_csv(daily_path, parse_dates=["date"])
     keep_cols = [
@@ -335,7 +348,7 @@ def _merge_corridor_totals(
         "positive_articles",
         "matched_positive_articles",
     ]
-    prior = prior[prior["date"] < scored_start][keep_cols]
+    prior = prior[~prior["date"].isin(rescored_dates)][keep_cols]
     if prior.empty:
         return totals
     merged = pd.concat([prior, totals[keep_cols]], ignore_index=True)
@@ -491,10 +504,10 @@ def run(
         if checkpoint_hits
         else pd.DataFrame(columns=HIT_COLUMNS)
     )
-    scored_start = pd.Timestamp(start_date)
-    hits = _merge_prior_corridor_hits(hits, output_dir, scored_start)
+    rescored_dates = {date_val.normalize() for date_val, _ in files}
+    hits = _merge_prior_corridor_hits(hits, output_dir, rescored_dates)
     totals = pd.DataFrame(daily_totals)
-    totals = _merge_corridor_totals(totals, output_dir, scored_start)
+    totals = _merge_corridor_totals(totals, output_dir, rescored_dates)
     daily = aggregate_corridor_hits(hits, totals)
     norm_baseline = (
         GPR_WARMUP_START.isoformat()
