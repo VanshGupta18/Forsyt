@@ -24,12 +24,6 @@ export const CORRIDOR_SEARCH_TERMS: Record<string, string> = {
   cape_of_good_hope: 'Cape of Good Hope',
   danish_straits_baltic: 'Baltic',
   taiwan_south_china_sea: 'South China Sea',
-  india_china_lac: 'Ladakh',
-  india_pakistan_attari: 'Wagah',
-  india_bangladesh_petrapole: 'Petrapole',
-  india_nepal_raxaul: 'Raxaul',
-  imec: 'IMEC',
-  instc_chabahar: 'Chabahar',
 }
 
 export function corridorRouteKeys(metadata?: CorridorsPayload['metadata']): string[] {

@@ -43,35 +43,48 @@ def _read_csv_rows(path: Path) -> list[dict]:
 def _corridor_fixture_accuracy(*, refresh: bool = False) -> dict:
     from news_dataset.api.cache import _MISSING, cache_get, cache_set
 
+    # Cache key is versioned: scoping this metric to active corridors changes
+    # its meaning, so any previously cached figure must not be reused.
     if not refresh:
-        hit = cache_get("metrics:corridor_fixtures", ttl_seconds=86400)
+        hit = cache_get("metrics:corridor_fixtures:active", ttl_seconds=86400)
         if hit is not _MISSING:
             return hit
 
     from gpr_index.tests.corridor_fixtures import LABELED_CORRIDOR_ARTICLES
-    from gpr_index.scripts.corridors import tag_corridors
+    from gpr_index.scripts.corridors import INACTIVE_CORRIDORS, tag_active_corridors
     from news_dataset.nlp.locations import extract_locations
+
+    # Only score fixtures for corridors the product actually reports. The
+    # retired corridors' fixtures name their place outright ("Ladakh",
+    # "Attari"), so they match on the alias rule and passed 100% here — while
+    # matching zero real articles in five weeks of production, because live
+    # NLP output never carries those place names. Keeping them in would let
+    # this dashboard advertise accuracy for routes nobody can see.
+    scored_cases = [
+        case for case in LABELED_CORRIDOR_ARTICLES
+        if not (case["expected"] & INACTIVE_CORRIDORS)
+    ]
 
     passed = 0
     cases = []
-    for case in LABELED_CORRIDOR_ARTICLES:
+    for case in scored_cases:
         v2 = extract_locations(case["title"], case["body"])
-        actual = set(tag_corridors(v2))
+        actual = set(tag_active_corridors(v2))
         missing = case["expected"] - actual
-        forbidden = case["forbidden"] & actual
+        forbidden = (case["forbidden"] - INACTIVE_CORRIDORS) & actual
         ok = not missing and not forbidden
         if ok:
             passed += 1
         cases.append({"label": case["label"], "pass": ok})
-    total = len(LABELED_CORRIDOR_ARTICLES)
+    total = len(scored_cases)
     result = {
         "passed": passed,
         "total": total,
         "pass_rate_pct": _pct(passed, total),
         "cases": cases,
-        "description": "Hand-labelled corridor articles — location tagging accuracy",
+        "description": "Hand-labelled corridor articles — location tagging accuracy (tracked corridors only)",
     }
-    cache_set("metrics:corridor_fixtures", result)
+    cache_set("metrics:corridor_fixtures:active", result)
     return result
 
 

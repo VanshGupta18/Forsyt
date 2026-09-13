@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from gpr_index.scripts.corridors import INACTIVE_CORRIDORS
 from news_dataset.nlp.locations import extract_locations
 from news_dataset.nlp.themes import (
     SIMILARITY_THRESHOLD,
@@ -40,16 +41,16 @@ TIERS = {
 }
 # Corridors that rarely appear in Indian geo RSS summaries; zero matches here
 # are expected rather than a plumbing failure.
-LOW_COVERAGE_CORRIDORS = frozenset({
-    "danish_straits_baltic",
-    "cape_of_good_hope",
-    "imec",
-    "instc_chabahar",
-    "india_china_lac",
-    "india_pakistan_attari",
-    "india_bangladesh_petrapole",
-    "india_nepal_raxaul",
-})
+# Corridors where a zero match count is expected rather than a red flag.
+# Retired corridors (INACTIVE_CORRIDORS) are always in this set — they are no
+# longer scored at all — plus the two active sea routes that genuinely see
+# little Indian geo-news coverage.
+LOW_COVERAGE_CORRIDORS = frozenset(
+    {
+        "danish_straits_baltic",
+        "cape_of_good_hope",
+    }
+) | INACTIVE_CORRIDORS
 
 
 def _repo_root() -> Path:

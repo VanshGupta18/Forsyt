@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -39,21 +40,42 @@ NSE_KEYS = frozenset({"nifty", "sensex", "india_vix"})
 _cache: dict[str, dict] = {}
 _yf = None
 _yf_checked = False
+# Serializes the one-time yfinance import so concurrent callers can't observe
+# a half-initialized module reference (see _get_yfinance).
+_yf_lock = threading.Lock()
 
 
 def _get_yfinance():
-    """Return yfinance module if installed, else None."""
+    """Return yfinance module if installed, else None.
+
+    Guarded by a lock because the flag must not be visible to other threads
+    until `_yf` is actually populated. Previously `_yf_checked` was set before
+    the (slow) `import yfinance`, so a second thread calling in during that
+    window saw "already checked" and read `_yf` while it was still None —
+    concluding yfinance was missing and dropping to the error path. That bites
+    any concurrent first-call: gunicorn runs threads=4, and page bundles now
+    fan their market calls out in parallel.
+    """
     global _yf, _yf_checked
     if _yf_checked:
         return _yf
-    _yf_checked = True
-    try:
-        import yfinance as yf  # noqa: PLC0415
+    with _yf_lock:
+        # Re-check inside the lock: another thread may have completed the
+        # import while this one waited.
+        if _yf_checked:
+            return _yf
+        try:
+            import yfinance as yf  # noqa: PLC0415
 
-        _yf = yf
-    except ImportError:
-        logger.warning("yfinance not installed — market quotes will use CSV fallbacks where available")
-        _yf = None
+            _yf = yf
+        except ImportError:
+            logger.warning(
+                "yfinance not installed — market quotes will use CSV fallbacks where available"
+            )
+            _yf = None
+        finally:
+            # Set last, so no thread can observe the flag before `_yf` is set.
+            _yf_checked = True
     return _yf
 
 

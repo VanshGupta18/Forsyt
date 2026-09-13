@@ -1,8 +1,24 @@
-"""Page-level API bundles — one JSON response per dashboard."""
+"""Page-level API bundles — one JSON response per dashboard.
+
+Each builder fans its independent sources out across a small thread pool
+instead of calling them one after another. Every source here is I/O-bound
+(Postgres round-trips, yfinance HTTP calls, CSV reads) and releases the GIL
+while it waits, so plain threads give real wall-clock parallelism and the
+bundle costs roughly its slowest call rather than the sum of all of them.
+
+Threads (not asyncio) are the right tool: this is a synchronous Flask app
+already served with `threads = 4` in gunicorn.conf.py, so no part of the
+surrounding stack has to change. `db.py` hands out connections from a
+ThreadedConnectionPool, and the TTL caches are plain dict get/set, which the
+GIL makes atomic — a race there costs at most a duplicate recompute.
+"""
 
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+from typing import Any, Callable
 
 from news_dataset.api.gpr_service import (
     build_dual_signal_payload,
@@ -45,72 +61,142 @@ def _safe_gpr_history(limit: int = DEFAULT_GPR_HISTORY_LIMIT) -> list[dict]:
         return []
 
 
+def _gather(**tasks: Callable[[], Any]) -> dict[str, Any]:
+    """Run independent, I/O-bound bundle sources concurrently.
+
+    Exceptions are re-raised on `.result()`, and results are collected in
+    submission order, so a builder fails exactly where and how it did when
+    these calls ran sequentially — the caller in server.py still turns that
+    into the same 503. Only the waiting happens in parallel.
+    """
+    with ThreadPoolExecutor(max_workers=max(len(tasks), 1)) as pool:
+        futures = {name: pool.submit(fn) for name, fn in tasks.items()}
+        return {name: future.result() for name, future in futures.items()}
+
+
 def build_home_bundle() -> dict:
+    r = _gather(
+        health=get_health_snapshot,
+        gpr_current=get_gpr_current,
+        corridors=get_corridors,
+        quotes=partial(fetch_quotes, SPARKLINE_SYMBOLS),
+        dual_signal=_safe_dual_signal,
+        status=get_platform_status_slim,
+    )
     return {
-        "health": get_health_snapshot(),
-        "gpr_current": get_gpr_current(),
-        "corridors": get_corridors(),
-        "quotes": fetch_quotes(SPARKLINE_SYMBOLS),
-        "dual_signal": _safe_dual_signal(),
-        "status": get_platform_status_slim(),
+        "health": r["health"],
+        "gpr_current": r["gpr_current"],
+        "corridors": r["corridors"],
+        "quotes": r["quotes"],
+        "dual_signal": r["dual_signal"],
+        "status": r["status"],
     }
 
 
 def build_macro_bundle() -> dict:
-    corridors = get_corridors()
+    # The widest bundle: 8 independent sources, including three separate
+    # yfinance round-trips (quotes, 3mo indicators, 1y histories for 5
+    # symbols). Sequentially this was the slowest endpoint by a wide margin.
+    r = _gather(
+        dual_signal=_safe_dual_signal,
+        quotes=partial(fetch_quotes, SPARKLINE_SYMBOLS),
+        indicators=partial(compute_indicators, "nifty"),
+        gpr_current=get_gpr_current,
+        gpr_history=_safe_gpr_history,
+        corridors=get_corridors,
+        market_histories=partial(
+            fetch_histories_batch, SPARKLINE_SYMBOLS, period=MACRO_CHART_PERIOD
+        ),
+        status=get_platform_status_slim,
+    )
     return {
-        "dual_signal": _safe_dual_signal(),
-        "quotes": fetch_quotes(SPARKLINE_SYMBOLS),
-        "indicators": compute_indicators("nifty"),
-        "gpr_current": get_gpr_current(),
-        "gpr_history": {"history": _safe_gpr_history()},
-        "corridors": corridors,
-        "market_histories": fetch_histories_batch(SPARKLINE_SYMBOLS, period=MACRO_CHART_PERIOD),
-        "status": get_platform_status_slim(),
+        "dual_signal": r["dual_signal"],
+        "quotes": r["quotes"],
+        "indicators": r["indicators"],
+        "gpr_current": r["gpr_current"],
+        "gpr_history": {"history": r["gpr_history"]},
+        "corridors": r["corridors"],
+        "market_histories": r["market_histories"],
+        "status": r["status"],
     }
 
 
 def build_news_bundle(*, limit: int = 50) -> dict:
+    r = _gather(
+        events=partial(get_events_feed, limit=limit, tagged_only=True),
+        gpr_current=get_gpr_current,
+        gpr_history=partial(_safe_gpr_history, limit=120),
+        status=get_platform_status_slim,
+    )
     return {
-        "events": get_events_feed(limit=limit, tagged_only=True),
-        "gpr_current": get_gpr_current(),
-        "gpr_history": {"history": _safe_gpr_history(limit=120)},
-        "status": get_platform_status_slim(),
+        "events": r["events"],
+        "gpr_current": r["gpr_current"],
+        "gpr_history": {"history": r["gpr_history"]},
+        "status": r["status"],
     }
 
 
 def build_corridor_bundle(*, corridor: str | None = None, feed_limit: int = 40) -> dict:
-    return {
-        "corridors": get_corridors(),
-        "status": get_platform_status_slim(),
-        "events": get_events_feed(
+    r = _gather(
+        corridors=get_corridors,
+        status=get_platform_status_slim,
+        events=partial(
+            get_events_feed,
             limit=feed_limit,
             corridor=corridor,
             tagged_only=True,
         ),
+    )
+    return {
+        "corridors": r["corridors"],
+        "status": r["status"],
+        "events": r["events"],
         "selected_corridor": corridor,
     }
 
 
 def build_portfolio_bundle() -> dict:
+    r = _gather(
+        gpr_current=get_gpr_current,
+        dual_signal=_safe_dual_signal,
+        quotes=partial(fetch_quotes, ["nifty", "sensex", "india_vix"]),
+        gpr_history=_safe_gpr_history,
+    )
     return {
-        "gpr_current": get_gpr_current(),
-        "dual_signal": _safe_dual_signal(),
-        "quotes": fetch_quotes(["nifty", "sensex", "india_vix"]),
-        "gpr_history": {"history": _safe_gpr_history()},
+        "gpr_current": r["gpr_current"],
+        "dual_signal": r["dual_signal"],
+        "quotes": r["quotes"],
+        "gpr_history": {"history": r["gpr_history"]},
     }
 
 
-def build_quality_bundle(*, refresh: bool = False) -> dict:
-    report = build_quality_report(refresh=refresh)
+def _safe_platform_status() -> dict | None:
     try:
-        report["status"] = get_platform_status_slim()
+        return get_platform_status_slim()
     except Exception:
         logger.exception("platform status unavailable for quality bundle")
-        report["status"] = None
+        return None
+
+
+def _safe_health_snapshot() -> dict | None:
     try:
-        report["health"] = get_health_snapshot()
+        return get_health_snapshot()
     except Exception:
         logger.exception("health snapshot unavailable for quality bundle")
-        report["health"] = None
+        return None
+
+
+def build_quality_bundle(*, refresh: bool = False) -> dict:
+    # build_quality_report is the expensive one (validation CSVs + a cached
+    # walk-forward vol backtest); status/health ride alongside it rather than
+    # queueing behind it. Their individual try/except contracts are preserved
+    # in the _safe_* wrappers above.
+    r = _gather(
+        report=partial(build_quality_report, refresh=refresh),
+        status=_safe_platform_status,
+        health=_safe_health_snapshot,
+    )
+    report = r["report"]
+    report["status"] = r["status"]
+    report["health"] = r["health"]
     return report

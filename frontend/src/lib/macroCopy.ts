@@ -289,11 +289,7 @@ export function corridorPlainEnglish(corridorId?: string | null): string {
     red_sea_suez: 'Red Sea / Suez lane — shipping delays and insurance costs can ripple into import prices.',
     strait_of_malacca: 'Malacca Strait — key Asia trade chokepoint; goods and electronics supply chains.',
     cape_of_good_hope: 'Cape route — longer shipping times when Suez is stressed; freight and timing risk.',
-    india_china_lac: 'India–China border — defence and industrial sentiment; limited direct trade but high news weight.',
     taiwan_south_china_sea: 'South China Sea — electronics supply chains and regional tension spillovers.',
-    india_pakistan_attari: 'India–Pakistan border crossing — regional trade and security headlines.',
-    imec: 'India–Middle East–Europe corridor — long-horizon trade infrastructure exposure.',
-    instc_chabahar: 'Chabahar / INSTC — Central Asia and Iran-adjacent trade routing.',
   }
   return lines[id] ?? 'Trade-route stress that can affect imports, freight, and commodity-linked sectors.'
 }

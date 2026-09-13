@@ -12,11 +12,14 @@ import pandas as pd
 from .corridors import CORRIDORS, INACTIVE_CORRIDORS, tag_corridors
 from .paths import GKG_PROCESSED_DIR, OUTPUT_DIR
 
+# Events are only useful on corridors we still score — entries for retired
+# corridors (Operation Sindoor / india_pakistan_attari, Chabahar waiver /
+# instc_chabahar) were removed when those routes were cut, since they have no
+# threat_index series to respond. The INACTIVE_CORRIDORS filter below keeps
+# that true automatically if more corridors are retired later.
 KNOWN_CORRIDOR_EVENTS = [
-    ("2025-05-07", "india_pakistan_attari", "Operation Sindoor"),
     ("2025-01-15", "red_sea_suez", "Red Sea / Houthi escalation"),
     ("2026-02-28", "strait_of_hormuz", "Hormuz closure"),
-    ("2026-04-26", "instc_chabahar", "Chabahar waiver expiry"),
 ]
 
 

@@ -400,12 +400,20 @@ def _enrich_corridor_row(row: dict) -> dict:
 
 
 def _corridors_payload(date_val, rows: list[dict], *, data_source: str = "postgres") -> dict:
+    # Serve only corridors we still report. Postgres upserts never delete, so
+    # rows written before a corridor was retired linger indefinitely; without
+    # this filter they'd be returned with no matching `metadata` entry and the
+    # dashboard would render a nameless row frozen at its last-written value.
+    # Keying off corridor_metadata() keeps rows and metadata consistent by
+    # construction, so retiring a corridor stays a one-line registry change.
+    meta = corridor_metadata()
+    rows = [row for row in rows if str(row.get("corridor") or "") in meta]
     enriched = [_enrich_corridor_row(dict(row)) for row in _sort_corridors_by_operational(rows)]
     base = {
         "date": _serialize(date_val),
         "index_start": INDIA_GPR_INDEX_START.isoformat(),
         "disclaimer": CORRIDOR_SCORE_DISCLAIMER,
-        "metadata": corridor_metadata(),
+        "metadata": meta,
         "corridors": serialize_rows(enriched),
     }
     return _with_refresh_meta(base, data_source=data_source, as_of_date=base.get("date"))

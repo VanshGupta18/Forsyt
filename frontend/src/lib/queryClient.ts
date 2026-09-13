@@ -40,4 +40,8 @@ export const queryKeys = {
   corridor: (corridor: string | null, limit: number) => ['pages', 'corridor', corridor, limit] as const,
   portfolio: ['pages', 'portfolio'] as const,
   quality: (refresh: boolean) => ['pages', 'quality', refresh] as const,
+  // Per-article thumbnail lookups. Keyed by link so the same article rendered
+  // in the feed, the hero and the corridor ticker at once collapses into a
+  // single request instead of one per card.
+  newsImage: (link: string) => ['news-image', link] as const,
 }

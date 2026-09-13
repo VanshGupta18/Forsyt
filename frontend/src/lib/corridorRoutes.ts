@@ -6,23 +6,17 @@
 // engine (see the "v1, no ML" comment below) — so treat its suggestions as a
 // rough hint, not authoritative routing.
 //
-// NOTE: the IDs below are the full corridor registry, but only corridors with
-// non-zero trade exposure are actually scored and returned by the API. The
-// caller (CorridorRiskDashboard) filters these suggestions against live data,
-// so unscored IDs simply drop out. In particular every LAND corridor is
-// currently unscored, so road/rail lookups yield no suggestion until
-// ADM1-level location extraction lands and those corridors are re-enabled.
+// NOTE: only the six sea corridors are tracked. The land-border corridors
+// (Attari, Petrapole, Raxaul, Ladakh) were retired because they carry no
+// quantified India trade exposure and could never be matched to articles, so
+// road/rail lookups intentionally return nothing rather than pointing at a
+// route with no score behind it. See INACTIVE_CORRIDORS in
+// gpr_index/scripts/corridors.py for the full rationale.
 // ---------------------------------------------------------------------------
 export type RouteMode = 'sea' | 'road' | 'rail'
 
 const SEA_EUROPE = ['red_sea_suez', 'strait_of_hormuz', 'cape_of_good_hope', 'danish_straits_baltic']
 const SEA_EAST = ['strait_of_malacca', 'taiwan_south_china_sea']
-const LAND = [
-  'india_pakistan_attari',
-  'india_bangladesh_petrapole',
-  'india_nepal_raxaul',
-  'india_china_lac',
-]
 
 function includesAny(text: string, terms: string[]): boolean {
   const lower = text.toLowerCase()
@@ -34,22 +28,18 @@ function includesAny(text: string, terms: string[]): boolean {
 // one `blob` string, then checked for keywords (city/country names). This
 // means it can't tell origin from destination, and only recognizes the
 // place names hard-coded in `includesAny(...)` calls below — anything else
-// falls through to a generic guess (all land corridors, or all sea
-// corridors, depending on `mode`).
+// falls through to a generic guess across all tracked sea corridors.
 export function suggestCorridors(origin: string, destination: string, mode: RouteMode): string[] {
   const from = origin.trim()
   const to = destination.trim()
   if (!from || !to) return []
 
-  const blob = `${from} ${to}`
-  if (mode === 'road' || mode === 'rail') {
-    if (includesAny(blob, ['nepal', 'birgunj', 'raxaul'])) return ['india_nepal_raxaul']
-    if (includesAny(blob, ['bangladesh', 'dhaka', 'petrapole'])) return ['india_bangladesh_petrapole']
-    if (includesAny(blob, ['pakistan', 'lahore', 'wagah', 'attari'])) return ['india_pakistan_attari']
-    if (includesAny(blob, ['china', 'ladakh', 'lhasa'])) return ['india_china_lac']
-    return LAND
-  }
+  // No land corridor is tracked any more, so an overland lane has no
+  // scored route to point at. Returning [] lets the caller show the
+  // "no tracked route" state instead of naming a corridor with no data.
+  if (mode === 'road' || mode === 'rail') return []
 
+  const blob = `${from} ${to}`
   if (includesAny(blob, ['europe', 'rotterdam', 'hamburg', 'uk', 'mediterranean'])) {
     return ['red_sea_suez', 'strait_of_hormuz', 'danish_straits_baltic']
   }
@@ -57,7 +47,7 @@ export function suggestCorridors(origin: string, destination: string, mode: Rout
     return ['strait_of_malacca', 'taiwan_south_china_sea']
   }
   if (includesAny(blob, ['uae', 'dubai', 'middle east', 'iran', 'chabahar'])) {
-    return ['strait_of_hormuz', 'instc_chabahar', 'imec']
+    return ['strait_of_hormuz']
   }
   if (includesAny(blob, ['africa', 'cape'])) {
     return ['cape_of_good_hope', 'red_sea_suez']
@@ -70,9 +60,8 @@ export const CORRIDOR_ALTERNATIVES: Record<string, string> = {
   red_sea_suez: 'Consider Cape routing or longer Malacca–Europe path if Suez/Red Sea stays elevated.',
   taiwan_south_china_sea: 'Monitor Malacca approach and port congestion; build buffer for East Asia lanes.',
   strait_of_malacca: 'No direct substitute — increase lead time and track South China Sea spillover.',
-  india_pakistan_attari: 'Buffer customs clearance; consider alternate land routes if border closures reported.',
-  india_bangladesh_petrapole: 'Allow extra border dwell time; confirm Petrapole queue status with freight forwarder.',
-  india_china_lac: 'Land-border consignments may face delays — confirm clearance before dispatch.',
+  cape_of_good_hope: 'Already the long-way-round option — build schedule buffer rather than rerouting.',
+  danish_straits_baltic: 'Confirm Baltic port calls and ice-season timing with your forwarder.',
 }
 
 export const CONTINGENCY_CHECKLIST: Record<string, string[]> = {
