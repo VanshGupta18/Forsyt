@@ -41,7 +41,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .corridors import CORRIDORS, tag_corridors
+from .corridors import CORRIDORS, active_corridors, tag_active_corridors
 from .gkg_gpr_pipeline import (
     CHECKPOINT_INTERVAL,
     GPR_POSITIVE_THRESHOLD,
@@ -98,7 +98,7 @@ def corridor_article_hits(scored: pd.DataFrame, date_val: pd.Timestamp) -> pd.Da
     positive["corridor"] = pd.Series(
         [[] for _ in range(len(positive))], index=positive.index, dtype=object
     )
-    positive.loc[valid, "corridor"] = locations.loc[valid].map(tag_corridors)
+    positive.loc[valid, "corridor"] = locations.loc[valid].map(tag_active_corridors)
     hits = positive.explode("corridor").dropna(subset=["corridor"])
     if hits.empty:
         return pd.DataFrame(columns=HIT_COLUMNS)
@@ -121,7 +121,7 @@ def aggregate_corridor_day(
             scored.loc[scored["gpr_score"] > GPR_POSITIVE_THRESHOLD, "V2Locations"]
             .fillna("")
             .astype(str)
-            .map(tag_corridors)
+            .map(tag_active_corridors)
             .map(bool)
             .sum()
         )
@@ -147,7 +147,7 @@ def _aggregate_hits_day(
         if not hits.empty
         else pd.DataFrame(columns=["corridor", "gpr_sum", "corridor_hit_count"])
     )
-    base = pd.DataFrame({"corridor": list(CORRIDORS)})
+    base = pd.DataFrame({"corridor": list(active_corridors())})
     out = base.merge(grouped, on="corridor", how="left").fillna(
         {"gpr_sum": 0.0, "corridor_hit_count": 0}
     )
@@ -471,7 +471,7 @@ def run(
             scored.loc[positive, "V2Locations"]
             .fillna("")
             .astype(str)
-            .map(tag_corridors)
+            .map(tag_active_corridors)
             .astype(bool)
         )
         matched_count = int(matched.sum()) if len(matched) else 0

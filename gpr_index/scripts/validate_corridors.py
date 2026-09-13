@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .corridors import CORRIDORS, tag_corridors
+from .corridors import CORRIDORS, INACTIVE_CORRIDORS, tag_corridors
 from .paths import GKG_PROCESSED_DIR, OUTPUT_DIR
 
 KNOWN_CORRIDOR_EVENTS = [
@@ -47,6 +47,11 @@ def check_event_response(
     data = corridor_df.copy()
     data["date"] = pd.to_datetime(data["date"])
     events = events or KNOWN_CORRIDOR_EVENTS
+    # Skip events on corridors we no longer score (zero trade exposure, see
+    # corridors.INACTIVE_CORRIDORS). They have no threat_index series to react,
+    # so including them would report a guaranteed "no response" failure for a
+    # route the product never shows.
+    events = [e for e in events if e[1] not in INACTIVE_CORRIDORS]
     rows = []
     for date_text, corridor, label in events:
         series = (
@@ -75,6 +80,11 @@ def check_cross_corridor_discrimination(
     data = corridor_df.copy()
     data["date"] = pd.to_datetime(data["date"])
     events = events or KNOWN_CORRIDOR_EVENTS
+    # Skip events on corridors we no longer score (zero trade exposure, see
+    # corridors.INACTIVE_CORRIDORS). They have no threat_index series to react,
+    # so including them would report a guaranteed "no response" failure for a
+    # route the product never shows.
+    events = [e for e in events if e[1] not in INACTIVE_CORRIDORS]
     rows = []
     for date_text, target, label in events:
         event_date = pd.Timestamp(date_text)

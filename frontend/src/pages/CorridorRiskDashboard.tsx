@@ -83,7 +83,9 @@ export default function CorridorRiskDashboard() {
   const [finderOpen, setFinderOpen] = useState(false)
   const [pipelineRunAt, setPipelineRunAt] = useState<string | null>(null)
 
-  const corridors = payload?.corridors ?? []
+  // Memoized so the `[]` fallback isn't a fresh array every render, which
+  // would invalidate every downstream useMemo/useEffect that depends on it.
+  const corridors = useMemo(() => payload?.corridors ?? [], [payload])
   const asOf = payload?.date ?? null
 
   const corridorSearchTerm = selected
@@ -166,10 +168,19 @@ export default function CorridorRiskDashboard() {
     (row) => watchlist.includes(row.corridor?.toLowerCase() ?? '') && corridorOperationalRisk(row) >= 50,
   )
 
-  const routeSuggestions = useMemo(
-    () => suggestCorridors(routeOrigin, routeDestination, routeMode),
-    [routeOrigin, routeDestination, routeMode],
-  )
+  // Keep only suggestions the API actually reports. Corridors with zero trade
+  // exposure (e.g. the land borders, IMEC, INSTC) are no longer scored, so a
+  // raw suggestion could otherwise select a corridor that has no row to show.
+  // Filtering against live data means this self-corrects if a corridor is
+  // re-enabled later, with no list to keep in sync here.
+  const routeSuggestions = useMemo(() => {
+    const available = new Set(
+      corridors.map((row) => row.corridor?.toLowerCase()).filter(Boolean),
+    )
+    return suggestCorridors(routeOrigin, routeDestination, routeMode).filter((id) =>
+      available.has(id),
+    )
+  }, [routeOrigin, routeDestination, routeMode, corridors])
 
   const handleWatchlistToggle = (id: string) => {
     const next = toggleWatchlist(id)

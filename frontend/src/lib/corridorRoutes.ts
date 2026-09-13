@@ -1,10 +1,17 @@
 // ---------------------------------------------------------------------------
 // Powers the "Find a route" box on the Corridor Risk page: the user types an
 // origin/destination (free text, e.g. "Mumbai" → "Rotterdam") and this file
-// guesses which of the 12 tracked corridors that shipment would pass
-// through. This is intentionally simple — plain keyword matching, no
-// geocoding or real routing engine (see the "v1, no ML" comment below) — so
-// treat its suggestions as a rough hint, not authoritative routing.
+// guesses which tracked corridors that shipment would pass through. This is
+// intentionally simple — plain keyword matching, no geocoding or real routing
+// engine (see the "v1, no ML" comment below) — so treat its suggestions as a
+// rough hint, not authoritative routing.
+//
+// NOTE: the IDs below are the full corridor registry, but only corridors with
+// non-zero trade exposure are actually scored and returned by the API. The
+// caller (CorridorRiskDashboard) filters these suggestions against live data,
+// so unscored IDs simply drop out. In particular every LAND corridor is
+// currently unscored, so road/rail lookups yield no suggestion until
+// ADM1-level location extraction lands and those corridors are re-enabled.
 // ---------------------------------------------------------------------------
 export type RouteMode = 'sea' | 'road' | 'rail'
 

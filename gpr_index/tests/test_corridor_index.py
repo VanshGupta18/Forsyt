@@ -15,6 +15,7 @@ from gpr_index.scripts.corridor_index import (
     corridor_article_hits,
     normalize_corridor_index,
 )
+from gpr_index.scripts.corridors import active_corridors
 from gpr_index.scripts.download_gkg import select_time_slots
 from gpr_index.scripts.validate_corridors import (
     check_match_coverage,
@@ -44,19 +45,22 @@ class CorridorAggregationTests(unittest.TestCase):
     def test_hits_are_slim_and_positive_only(self) -> None:
         hits = corridor_article_hits(scored_fixture(), pd.Timestamp("2025-01-01"))
         self.assertEqual(hits.columns.tolist(), HIT_COLUMNS)
-        self.assertEqual(
-            set(hits["corridor"]),
-            {"strait_of_hormuz", "india_bangladesh_petrapole"},
-        )
+        # The Petrapole row still matches india_bangladesh_petrapole in the raw
+        # matcher, but that corridor is inactive (zero exposure on both
+        # channels), so it is not recorded as a reportable hit.
+        self.assertEqual(set(hits["corridor"]), {"strait_of_hormuz"})
 
     def test_aggregation_keeps_parent_denominator(self) -> None:
         daily = aggregate_corridor_day(
             scored_fixture(), pd.Timestamp("2025-01-01"), total_articles=10
         )
         hormuz = daily.loc[daily["corridor"] == "strait_of_hormuz"].iloc[0]
-        self.assertEqual(len(daily), 12)
+        self.assertEqual(len(daily), len(active_corridors()))
         self.assertAlmostEqual(hormuz["raw_ratio"], 0.05)
-        self.assertEqual(hormuz["matched_positive_articles"], 2)
+        # Only the Hormuz article counts toward coverage now: the Petrapole
+        # match belongs to an inactive corridor and the bare "India" mention
+        # is correctly rejected by the land-corridor ADM1 rule.
+        self.assertEqual(hormuz["matched_positive_articles"], 1)
 
     def test_normalization_keeps_threat_and_exposure_layers(self) -> None:
         rows = pd.DataFrame(

@@ -222,6 +222,66 @@ CORRIDORS: dict[str, CorridorSpec] = {
 }
 
 
+# Corridors kept in the registry but NOT surfaced in the product.
+#
+# Every corridor listed here has energy_exposure == goods_exposure == 0.0, so
+# corridor_risk = max(threat_index * 0, threat_index * 0) = 0 by construction —
+# it can never report a non-zero score no matter how much news matches it.
+# Publishing a permanently-zero route is worse than omitting it: a reader sees
+# "India-China LAC: 0" and concludes the border is calm, when in fact nothing
+# was ever measured. They stay in CORRIDORS (rather than being deleted) so the
+# researched aliases, geometry and matching tests survive, which makes
+# re-enabling a one-line change once the blockers below are cleared.
+#
+#   india_china_lac / india_pakistan_attari /
+#   india_bangladesh_petrapole / india_nepal_raxaul
+#       Land borders. Rule 2 of tag_corridors() requires an ADM1 state code
+#       (IN30 = Ladakh, IN23 = Punjab, PK04, ...), but news_dataset/nlp/
+#       locations.py emits no type-2 (state) locations at all — it writes the
+#       country code into the ADM1 slot — so Rule 2 can never fire, Rule 3
+#       (bounding box) is deliberately off for land corridors, and Rule 1
+#       needs the extractor to name "Ladakh"/"Attari" outright. Result: these
+#       matched 0 articles across 34 days of live production data. Reviving
+#       them needs ADM1-level location extraction, not a corridor change.
+#
+#   imec / instc_chabahar
+#       Proposed / under-construction corridors: India's present-day
+#       throughput is ~0, so the 0.0 exposure is accurate rather than a
+#       missing weight. They also over-match badly (no ADM1 and no bounds, so
+#       any mention of Iran/Russia or Israel/Saudi matches), which is why
+#       instc_chabahar logged the highest raw hit count of any corridor while
+#       being the least informative.
+INACTIVE_CORRIDORS: frozenset[str] = frozenset(
+    {
+        "india_china_lac",
+        "india_pakistan_attari",
+        "india_bangladesh_petrapole",
+        "india_nepal_raxaul",
+        "imec",
+        "instc_chabahar",
+    }
+)
+
+
+def active_corridors() -> dict[str, CorridorSpec]:
+    """Corridors actually reported by the product (see INACTIVE_CORRIDORS)."""
+    return {
+        corridor_id: spec
+        for corridor_id, spec in CORRIDORS.items()
+        if corridor_id not in INACTIVE_CORRIDORS
+    }
+
+
+def tag_active_corridors(v2locations: str) -> list[str]:
+    """tag_corridors() restricted to corridors the product actually reports.
+
+    Used for scoring and for the corridor-coverage metric so that matches
+    against a non-reported corridor (e.g. any Iran mention hitting
+    instc_chabahar) don't inflate coverage for routes nobody ever sees.
+    """
+    return [c for c in tag_corridors(v2locations) if c not in INACTIVE_CORRIDORS]
+
+
 class _Location(NamedTuple):
     fullname: str
     country: str
@@ -398,9 +458,13 @@ CORRIDOR_GEO: dict[str, dict] = {
 
 
 def corridor_metadata() -> dict[str, dict]:
-    """Static corridor registry for API / dashboard (category + exposure weights)."""
+    """Static corridor registry for API / dashboard (category + exposure weights).
+
+    Only active corridors are exposed — see INACTIVE_CORRIDORS for what was cut
+    and why.
+    """
     result: dict[str, dict] = {}
-    for corridor_id, spec in CORRIDORS.items():
+    for corridor_id, spec in active_corridors().items():
         geo = CORRIDOR_GEO.get(corridor_id, {})
         entry = {
             "id": corridor_id,
