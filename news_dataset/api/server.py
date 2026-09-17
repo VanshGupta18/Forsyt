@@ -77,11 +77,22 @@ def add_cache_headers(response):
 CORS(
     app,
     resources={
-        r"/api/*": {"origins": "*"},
-        r"/health*": {"origins": "*"},
+        r"/api/*": {
+            "origins": [
+                "https://main.d93kgmpg3rbm.amplifyapp.com",
+                "http://localhost:3000",
+                "http://localhost:5173",
+            ]
+        },
+        r"/health*": {
+            "origins": [
+                "https://main.d93kgmpg3rbm.amplifyapp.com",
+                "http://localhost:3000",
+                "http://localhost:5173",
+            ]
+        },
     },
 )
-
 
 @app.get("/")
 # Landing page for the API itself — lists every available endpoint so a
