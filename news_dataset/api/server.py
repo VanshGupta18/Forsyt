@@ -73,20 +73,19 @@ app = Flask(__name__)
 def add_cache_headers(response):
     return _maybe_cache_headers(response, request.path)
 
-
 CORS(
     app,
     resources={
         r"/api/*": {
             "origins": [
-                "https://main.d93kgmpg3rbm.amplifyapp.com",
+                "https://main.d93kggpm3rbm.amplifyapp.com",
                 "http://localhost:3000",
                 "http://localhost:5173",
             ]
         },
         r"/health*": {
             "origins": [
-                "https://main.d93kgmpg3rbm.amplifyapp.com",
+                "https://main.d93kggpm3rbm.amplifyapp.com",
                 "http://localhost:3000",
                 "http://localhost:5173",
             ]
