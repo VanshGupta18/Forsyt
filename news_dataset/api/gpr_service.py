@@ -37,6 +37,7 @@ from gpr_index.scripts.corridors import corridor_metadata  # noqa: E402
 from gpr_index.scripts.paths import INDIA_GPR_INDEX_START  # noqa: E402
 from news_dataset import db  # noqa: E402
 from news_dataset.api.cache import cache_get, cache_set, _MISSING  # noqa: E402
+from news_dataset.api.explain import additive_explanation, term  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +249,12 @@ def get_gpr_current(*, skip_cache: bool = False) -> dict | None:
         hit = cache_get("gpr:current", ttl_seconds=300)
         if hit is not _MISSING:
             return hit
-    row = db.get_gpr_current()
+    try:
+        row = db.get_gpr_current()
+    except Exception:
+        # DB unreachable (e.g. local run without Postgres) — fall back to CSV.
+        logger.exception("gpr current db read failed; falling back to CSV")
+        row = None
     csv_payload = _csv_current_payload() if _allow_csv_fallback() or not _database_configured() else None
     if row and csv_payload and _allow_csv_fallback():
         db_date = str(row.get("date"))[:10]
@@ -329,7 +335,11 @@ def get_gpr_history(
         if hit is not _MISSING:
             return hit
     csv_history = _gpr_history_from_csv(start=start, end=end, limit=limit)
-    rows = db.get_gpr_history(start=start, end=end, limit=limit)
+    try:
+        rows = db.get_gpr_history(start=start, end=end, limit=limit)
+    except Exception:
+        logger.exception("gpr history db read failed; falling back to CSV")
+        rows = []
     if rows:
         ordered = list(reversed(rows))
         cleaned = [row for row in ordered if _valid_gpr_index(row.get("gpr_index"))]
@@ -363,6 +373,139 @@ def get_gpr_history(
     return csv_history
 
 
+# --- Extra GPR analytics panels (portfolio page) ---------------------------
+# Small, read-only summaries built straight from the pipeline's CSV outputs:
+# what's driving risk (event-type mix), forward-looking threats vs realized
+# acts, and the India oil-GPR channel. All cheap file reads; each sub-block is
+# independent so a missing file just hides that one panel.
+_EVENT_LABELS = {
+    "sum_military_conflict": "Military",
+    "sum_terrorism": "Terrorism",
+    "sum_diplomatic_tension": "Diplomatic",
+    "sum_nuclear_threat": "Nuclear",
+    "sum_sanctions": "Sanctions",
+    "sum_coup_regime": "Coup/Regime",
+    "sum_civil_war": "Civil war",
+    "sum_other": "Other",
+}
+
+
+def _read_output_csv(name: str) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(GPR_OUTPUT / name)
+        if "date" in df.columns:
+            df = df.sort_values("date")
+        return df
+    except Exception:
+        logger.warning("gpr panel CSV missing/unreadable: %s", name)
+        return pd.DataFrame()
+
+
+def _downsample_records(df: pd.DataFrame, cols: dict[str, str], n: int = 40) -> list[dict]:
+    """df -> list of {out_name: rounded value, 'd': date}, downsampled to <=n rows."""
+    if df.empty:
+        return []
+    if len(df) > n:
+        step = len(df) / n
+        df = df.iloc[[int(i * step) for i in range(n)]]
+    out = []
+    for _, row in df.iterrows():
+        rec: dict = {"d": str(row.get("date"))[:10]}
+        for src, dst in cols.items():
+            v = row.get(src)
+            rec[dst] = round(float(v), 1) if pd.notna(v) else None
+        out.append(rec)
+    return out
+
+
+def _pctile(series: pd.Series, value: float) -> float | None:
+    s = series.dropna()
+    if s.empty:
+        return None
+    return round(100.0 * float((s <= value).mean()), 1)
+
+
+def _risk_composition(window: int = 7) -> dict | None:
+    df = _read_output_csv("gpr_event_type.csv")
+    cols = [c for c in _EVENT_LABELS if c in df.columns]
+    if df.empty or not cols:
+        return None
+    recent = df.tail(window)
+    sums = {c: float(recent[c].fillna(0).sum()) for c in cols}
+    total = sum(sums.values()) or 1.0
+    items = [
+        {"type": _EVENT_LABELS[c], "share": round(100.0 * sums[c] / total, 1), "value": round(sums[c], 1)}
+        for c in cols
+    ]
+    items.sort(key=lambda x: x["share"], reverse=True)
+    return {
+        "as_of": str(df["date"].iloc[-1])[:10] if "date" in df.columns else None,
+        "window_days": window,
+        "items": [i for i in items if i["share"] > 0],
+    }
+
+
+def _threats_acts() -> dict | None:
+    df = _read_output_csv("gpr_daily_index.csv")
+    if df.empty or "gpr_threats_index" not in df.columns or "gpr_acts_index" not in df.columns:
+        return None
+    t = pd.to_numeric(df["gpr_threats_index"], errors="coerce")
+    a = pd.to_numeric(df["gpr_acts_index"], errors="coerce")
+    if not t.notna().any() or not a.notna().any():
+        return None
+    # Headline = 7d trailing mean: single days are sparse (a quiet news day can
+    # read 0 threats), so smooth like the composition panel; percentile is taken
+    # on the same smoothed series so the gauge and number agree.
+    t7, a7 = t.rolling(7, min_periods=1).mean(), a.rolling(7, min_periods=1).mean()
+    t_now, a_now = float(t7.dropna().iloc[-1]), float(a7.dropna().iloc[-1])
+    return {
+        "as_of": str(df["date"].iloc[-1])[:10] if "date" in df.columns else None,
+        "threats_index": round(t_now, 1),
+        "acts_index": round(a_now, 1),
+        "threats_percentile": _pctile(t7, t_now),
+        "acts_percentile": _pctile(a7, a_now),
+        "spark": _downsample_records(
+            df.assign(gpr_threats_index=t, gpr_acts_index=a),
+            {"gpr_threats_index": "threats", "gpr_acts_index": "acts"},
+        ),
+    }
+
+
+def _oil_gpr() -> dict | None:
+    df = _read_output_csv("gpr_oil_daily.csv")
+    if df.empty or "gpr_oil_index" not in df.columns:
+        return None
+    idx = pd.to_numeric(df["gpr_oil_index"], errors="coerce")
+    if not idx.notna().any():
+        return None
+    clean = idx.dropna()
+    now = float(clean.iloc[-1])
+    prior = float(clean.iloc[-8]) if len(clean) >= 8 else None
+    return {
+        "as_of": str(df["date"].iloc[-1])[:10] if "date" in df.columns else None,
+        "index": round(now, 1),
+        "change_7d": round(now - prior, 1) if prior is not None else None,
+        "percentile": _pctile(idx, now),
+        "spark": _downsample_records(df.assign(gpr_oil_index=idx), {"gpr_oil_index": "v"}),
+    }
+
+
+def get_gpr_panels(*, skip_cache: bool = False) -> dict:
+    """Event-type mix, threats-vs-acts, and oil-GPR summaries for the portfolio page."""
+    cache_key = "gpr:panels"
+    if not skip_cache:
+        hit = cache_get(cache_key, ttl_seconds=900)
+        if hit is not _MISSING:
+            return hit
+    panels = {
+        "risk_composition": _risk_composition(),
+        "threats_acts": _threats_acts(),
+        "oil_gpr": _oil_gpr(),
+    }
+    cache_set(cache_key, panels)
+    return panels
+
+
 def _corridor_action_label(risk: float | None, score_status: str | None = None) -> str:
     if score_status == "insufficient_history":
         return "Calibrating"
@@ -388,6 +531,26 @@ def _sort_corridors_by_operational(rows: list[dict]) -> list[dict]:
     return sorted(rows, key=_corridor_operational_risk, reverse=True)
 
 
+def _corridor_explain(row: dict) -> dict:
+    """Exact breakdown of corridor_risk = max(energy_risk, goods_risk),
+    each = threat_index × India exposure. The dominant term is the risk shown."""
+    ti = float(row.get("threat_index") or 0.0)
+    ee = float(row.get("energy_exposure") or 0.0)
+    ge = float(row.get("goods_exposure") or 0.0)
+    terms = [
+        term("Energy route", ti, ee, note=f"threat {ti:.0f} × energy exposure {ee:.0%}"),
+        term("Goods route", ti, ge, note=f"threat {ti:.0f} × goods exposure {ge:.0%}"),
+    ]
+    output = row.get("corridor_risk")
+    if output is None:
+        output = max((t["contribution"] for t in terms), default=0.0)
+    return additive_explanation(
+        output, terms,
+        "corridor_risk = max(energy_risk, goods_risk); each = threat_index × India exposure",
+        "threat_index ≈100 = baseline news stress on this route, not a disruption probability.",
+    )
+
+
 def _enrich_corridor_row(row: dict) -> dict:
     meta = corridor_metadata().get(str(row.get("corridor") or ""), {})
     operational = row.get("corridor_risk_7ma")
@@ -396,6 +559,7 @@ def _enrich_corridor_row(row: dict) -> dict:
     out = {**row, **meta}
     out["operational_risk"] = operational
     out["action_label"] = _corridor_action_label(operational, row.get("score_status"))
+    out["explain"] = _corridor_explain(out)
     return out
 
 
@@ -709,12 +873,42 @@ def _driving_events(limit: int = 8, top_corridor: str | None = None) -> tuple[li
     return events, meta
 
 
+def _attach_dual_explain(payload: dict) -> None:
+    """Attach exact additive explanations to joint_stress and the geo regime."""
+    joint = payload.get("joint_stress") or {}
+    if joint.get("stress_score") is not None:
+        geo_pct = float(joint.get("geo_percentile") or 0.0)
+        vol_pct = float(joint.get("vol_percentile") or 0.0)
+        joint["explain"] = additive_explanation(
+            joint["stress_score"],
+            [
+                term("Geopolitics", geo_pct, 0.6, note="GPR percentile × 0.6"),
+                term("Market volatility", vol_pct, 0.4, note="NIFTY vol percentile × 0.4"),
+            ],
+            "stress = 0.6 × geo_percentile + 0.4 × vol_percentile",
+            "Transparent fixed blend — recompute it by hand from the two percentiles.",
+        )
+
+    geo = payload.get("geopolitical") or {}
+    if geo.get("z_score") is not None:
+        z = float(geo["z_score"])
+        gpr = float(geo.get("gpr_index") or 0.0)
+        geo["explain"] = additive_explanation(
+            round(z, 2),
+            [term("GPR vs baseline", gpr - 100.0, 1.0 / 35.0,
+                  note=f"(GPR {gpr:.0f} − baseline 100) ÷ std 35")],
+            "z = (gpr_index − 100) / 35  →  regime band",
+            "Baseline 100/35 is the Caldara long-run mean/spread (India index history is short).",
+        )
+
+
 def _normalize_dual_signal(payload: dict) -> dict:
     geo = payload.get("geopolitical") or {}
     events = geo.get("driving_events") or []
     for ev in events:
         if ev.get("themes") and not ev.get("nlp_themes"):
             ev["nlp_themes"] = ev.pop("themes")
+    _attach_dual_explain(payload)
     return payload
 
 

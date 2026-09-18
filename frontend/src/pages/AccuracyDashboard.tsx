@@ -14,7 +14,7 @@ import QualityCheckTable from '../components/quality/QualityCheckTable'
 import StaleDataBanner from '../components/quality/StaleDataBanner'
 import ValidationSummaryBar from '../components/quality/ValidationSummaryBar'
 import ValidationVizPanel from '../components/quality/ValidationVizPanel'
-import { fetchPageQuality } from '../lib/api'
+import { fetchPageQuality, type QualityReport } from '../lib/api'
 import { queryKeys } from '../lib/queryClient'
 import {
   QUALITY_EYEBROW,
@@ -184,6 +184,7 @@ export default function AccuracyDashboard() {
                   )}
                 </div>
                 <ValidationVizPanel checks={data.checks} summary={data.summary} />
+                <VolModelPanel vol={data.vol_model} />
                 <QualityCheckTable checks={data.checks} onRefresh={() => load(true)} refreshing={refreshing} />
                 {data.pipeline.ingestion?.feed_health &&
                   Object.keys(data.pipeline.ingestion.feed_health).length > 0 && (
@@ -200,6 +201,65 @@ export default function AccuracyDashboard() {
             </p>
           </footer>
         </>
+      )}
+    </div>
+  )
+}
+
+// The forward-vol model is the platform's one true black box (gradient-boosted
+// trees), so this is the only place real SHAP is used. Shows the honest
+// market-only vs market+GPR ROC-AUC comparison plus SHAP feature importance.
+function VolModelPanel({ vol }: { vol?: QualityReport['vol_model'] }) {
+  if (!vol) return null
+  const shap = vol.market_shap
+  const maxImp = shap?.length ? Math.max(...shap.map((s) => s.importance)) : 1
+  return (
+    <div className="corridor-panel p-4 space-y-3">
+      <div>
+        <span className="corridor-kicker">Forward-vol model · explainability</span>
+        <p className="text-sm text-corridor-muted mt-1">
+          The one machine-learning model here (XGBoost). GPR's honest out-of-sample value-add:{' '}
+          {vol.market_only_roc_auc != null && vol.market_plus_gpr_roc_auc != null ? (
+            <>
+              market-only ROC-AUC {vol.market_only_roc_auc} vs market+GPR {vol.market_plus_gpr_roc_auc}{' '}
+              (Δ {vol.gpr_incremental_roc_auc}).
+            </>
+          ) : (
+            'backtest pending.'
+          )}
+        </p>
+      </div>
+      {shap && shap.length > 0 ? (
+        <div className="space-y-2 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {shap.map((s) => (
+            <div key={s.feature}>
+              <div className="flex items-baseline justify-between text-xs">
+                <span className="text-white">{s.feature}</span>
+                <span className="text-corridor-muted">
+                  {s.importance} · pushes vol {s.direction}
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-white/5 rounded-sm overflow-hidden mt-0.5">
+                <div
+                  className="h-full rounded-sm"
+                  style={{
+                    width: `${(s.importance / maxImp) * 100}%`,
+                    background: s.direction === 'up' ? '#ef4444' : '#00c853',
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+          <p className="text-[10px] text-corridor-muted/70 pt-1">
+            SHAP shows what the model <em>used</em>, not whether it predicts the future — judge
+            that from the ROC-AUC backtest above.
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-corridor-muted/70">
+          SHAP importances unavailable (install <code>shap</code> and refresh with
+          <code> ?refresh=1</code>).
+        </p>
       )}
     </div>
   )

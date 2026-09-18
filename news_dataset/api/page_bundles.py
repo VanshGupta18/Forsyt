@@ -26,6 +26,7 @@ from news_dataset.api.gpr_service import (
     get_events_feed,
     get_gpr_current,
     get_gpr_history,
+    get_gpr_panels,
     get_health_snapshot,
     get_platform_status_slim,
 )
@@ -82,6 +83,7 @@ def build_home_bundle() -> dict:
         quotes=partial(fetch_quotes, SPARKLINE_SYMBOLS),
         dual_signal=_safe_dual_signal,
         status=get_platform_status_slim,
+        oil_gpr=_safe_oil_gpr,
     )
     return {
         "health": r["health"],
@@ -90,7 +92,16 @@ def build_home_bundle() -> dict:
         "quotes": r["quotes"],
         "dual_signal": r["dual_signal"],
         "status": r["status"],
+        "oil_gpr": r["oil_gpr"],
     }
+
+
+def _safe_oil_gpr() -> dict | None:
+    try:
+        return (get_gpr_panels() or {}).get("oil_gpr")
+    except Exception:
+        logger.exception("oil gpr unavailable for home bundle")
+        return None
 
 
 def build_macro_bundle() -> dict:
@@ -159,15 +170,25 @@ def build_portfolio_bundle() -> dict:
     r = _gather(
         gpr_current=get_gpr_current,
         dual_signal=_safe_dual_signal,
-        quotes=partial(fetch_quotes, ["nifty", "sensex", "india_vix"]),
+        quotes=partial(fetch_quotes, ["nifty", "sensex", "india_vix", "usd_inr"]),
         gpr_history=_safe_gpr_history,
+        gpr_panels=_safe_gpr_panels,
     )
     return {
         "gpr_current": r["gpr_current"],
         "dual_signal": r["dual_signal"],
         "quotes": r["quotes"],
         "gpr_history": {"history": r["gpr_history"]},
+        "gpr_panels": r["gpr_panels"],
     }
+
+
+def _safe_gpr_panels() -> dict:
+    try:
+        return get_gpr_panels()
+    except Exception:
+        logger.exception("gpr panels unavailable for portfolio bundle")
+        return {}
 
 
 def _safe_platform_status() -> dict | None:

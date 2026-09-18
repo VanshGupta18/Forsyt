@@ -256,6 +256,19 @@ def _compute_vol_metrics(refresh: bool = False) -> dict:
                 pass
         return fallback
 
+    # SHAP on the market-only production model — the one true black box on the
+    # platform. Computed independently of the GPR walk-forward backtest below
+    # (it needs only NIFTY price, which has long history), so it still works even
+    # when the GPR-dependent backtest falls back on short India-index history.
+    # None if `shap` isn't installed — the panel then shows an install hint.
+    shap_imp = None
+    try:
+        from forsyt_gpr import data as _data, vol_model as _vm
+
+        shap_imp = _vm.market_shap_importance(_data.load_price("NIFTY"), horizon=5)
+    except Exception:
+        logger.warning("market SHAP importance failed", exc_info=True)
+
     try:
         from forsyt_gpr import data, vol_model
         from news_dataset.api.gpr_service import gpr_frame_from_db_or_csv
@@ -272,6 +285,7 @@ def _compute_vol_metrics(refresh: bool = False) -> dict:
             "market_plus_gpr_roc_auc": round(mg, 3),
             "gpr_incremental_roc_auc": round(mg - mo, 3),
             "market_only_r2_vs_persistence": None,
+            "market_shap": shap_imp,
             "horizon_days": 5,
             "source": "walk_forward_backtest",
             "computed_at": datetime.now(timezone.utc).isoformat(),
@@ -293,7 +307,10 @@ def _compute_vol_metrics(refresh: bool = False) -> dict:
                 "walk-forward vol backtest needs longer aligned history. "
                 "Use published_research figures until more index days exist."
             )
-        out = {**fallback, "error": str(exc), "note": note}
+        # SHAP still works from price alone even when the GPR backtest can't run.
+        out = {**fallback, "market_shap": shap_imp, "error": str(exc), "note": note}
+        if shap_imp:
+            cache_set("metrics:vol", out)
         return out
 
 
@@ -1104,6 +1121,7 @@ def _build_quality_report_uncached(*, refresh: bool = False) -> dict:
         "summary": summary,
         "coverage": coverage,
         "checks": checks,
+        "vol_model": vol,
         "pipeline": {
             "ingestion": ingestion,
             "nlp": nlp,

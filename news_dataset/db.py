@@ -928,6 +928,10 @@ def update_article_image_url(article_id: int, image_url: str | None) -> None:
 
 def _should_run_init_db() -> bool:
     """Skip init in Flask debug reloader parent to avoid concurrent ALTER TABLE deadlocks."""
+    # Local/offline runs (ALLOW_CSV_FALLBACK=1) have no reachable Postgres — don't
+    # try to create tables at import; the service layer falls back to the CSV outputs.
+    if os.environ.get("ALLOW_CSV_FALLBACK", "").strip().lower() in ("1", "true", "yes"):
+        return False
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         return True
     if os.environ.get("WERKZEUG_SERVER_FD") is None:
@@ -944,6 +948,9 @@ def _init_db_with_retry() -> None:
 
         time.sleep(0.5)
         init_db()
+    except Exception:
+        # Unreachable DB on a local/offline run — degrade to CSV fallback.
+        logger.warning("init_db failed on startup; continuing (CSV fallback if enabled)")
 
 
 if _should_run_init_db():

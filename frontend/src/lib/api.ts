@@ -110,6 +110,7 @@ export type HomePageBundle = {
   quotes: MarketQuotesPayload
   dual_signal: DualSignalPayload | null
   status: PlatformStatusSlim
+  oil_gpr?: GprPanels['oil_gpr']
 }
 
 export type MacroPageBundle = {
@@ -137,11 +138,36 @@ export type CorridorPageBundle = {
   selected_corridor: string | null
 }
 
+export type GprRiskCompositionItem = { type: string; share: number; value: number }
+export type GprPanels = {
+  risk_composition?: {
+    as_of: string | null
+    window_days: number
+    items: GprRiskCompositionItem[]
+  } | null
+  threats_acts?: {
+    as_of: string | null
+    threats_index: number
+    acts_index: number
+    threats_percentile: number | null
+    acts_percentile: number | null
+    spark: Array<{ d: string; threats: number | null; acts: number | null }>
+  } | null
+  oil_gpr?: {
+    as_of: string | null
+    index: number
+    change_7d: number | null
+    percentile: number | null
+    spark: Array<{ d: string; v: number | null }>
+  } | null
+}
+
 export type PortfolioPageBundle = {
   gpr_current: GprCurrent | null
   dual_signal: DualSignalPayload | null
   quotes: MarketQuotesPayload
   gpr_history: GprHistoryPayload
+  gpr_panels?: GprPanels
 }
 
 export type NewsArticle = {
@@ -209,6 +235,7 @@ export type CorridorRow = {
   score_status?: string
   action_label?: string
   date?: string
+  explain?: Explanation
 }
 
 export type CorridorsPayload = {
@@ -232,6 +259,23 @@ export type CorridorsPayload = {
   stale_warning?: string | null
 }
 
+// "Why this number" — exact additive attribution (or SHAP for the vol model).
+// The frontend's ExplainPopover renders this contract for any explained value.
+export type ExplainTerm = {
+  label: string
+  value: number
+  weight: number
+  contribution: number
+  note?: string | null
+}
+export type Explanation = {
+  output: number
+  method: 'additive' | 'shap'
+  formula: string
+  caveat?: string | null
+  terms: ExplainTerm[]
+}
+
 export type DualSignalPayload = {
   index_start?: string
   geopolitical?: {
@@ -248,6 +292,7 @@ export type DualSignalPayload = {
     gpr_acts?: number
     top_corridor?: string
     driving_events?: NewsArticle[]
+    explain?: Explanation
   }
   nifty_volatility?: {
     available?: boolean
@@ -266,6 +311,7 @@ export type DualSignalPayload = {
     narrative?: string
     geo_percentile?: number
     vol_percentile?: number | null
+    explain?: Explanation
   }
   historical_analog?: {
     query?: string
@@ -455,6 +501,14 @@ export type QualityReport = {
     status?: QualityCheckStatus | null
   }>
   checks: QualityCheck[]
+  vol_model?: {
+    market_only_roc_auc?: number
+    market_plus_gpr_roc_auc?: number
+    gpr_incremental_roc_auc?: number
+    horizon_days?: number
+    market_shap?: Array<{ feature: string; importance: number; direction: 'up' | 'down' }> | null
+    note?: string
+  }
   pipeline: {
     ingestion: {
       total_articles?: number
@@ -542,5 +596,88 @@ export function fetchPagePortfolio() {
 export function fetchPageQuality(refresh = false) {
   const qs = refresh ? '?refresh=1' : ''
   return fetchJSON<QualityReport>(`/api/pages/quality${qs}`)
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio -> GPR risk analysis (POST /api/portfolio/analyze). Stateless:
+// the frontend sends a pasted/uploaded holdings CSV; the backend resolves
+// sectors and returns exposure + a geopolitical-risk score. Nothing stored.
+// ---------------------------------------------------------------------------
+export type PortfolioOverlayPoint = { d: string; gpr: number; px: number }
+export type PortfolioOverlay = {
+  series: PortfolioOverlayPoint[]
+  corr: number | null
+  vol_percentile: number
+  joint_stress: number
+  joint_band: string
+  price_change_pct: number
+  gpr_change_pct: number
+}
+
+export type PortfolioHolding = {
+  ticker: string
+  sector: string
+  weight: number
+  sector_risk: number
+  contribution: number
+  overlay?: PortfolioOverlay
+  explain?: Explanation
+}
+
+export type PortfolioSector = {
+  sector: string
+  weight: number
+  contribution: number
+}
+
+export type PortfolioScenario = { name: string; score: number; delta: number }
+
+export type PortfolioAnalysis = {
+  as_of?: string | null
+  gpr_index?: number
+  gpr_oil_index?: number | null
+  betas_source?: 'fitted' | 'prior'
+  explain?: Explanation
+  pressures?: { broad: number; energy: number; fx?: number; trade?: number }
+  drivers?: { energy_corridor?: string | null; trade_corridor?: string | null }
+  risk_score: number
+  risk_band: string
+  holdings: PortfolioHolding[]
+  sectors: PortfolioSector[]
+  scenarios: PortfolioScenario[]
+  note?: string
+  error?: string
+}
+
+export type SectorBetaChannel = {
+  channel: string
+  label: string
+  loading: number
+  tilt: 'headwind' | 'tailwind' | 'neutral'
+}
+export type SectorBeta = {
+  sector: string
+  channels: SectorBetaChannel[]
+  dominant: string | null
+  tilt: 'headwind' | 'tailwind' | 'neutral'
+}
+export type SectorBetasPayload = { betas_source: 'fitted' | 'prior'; sectors: SectorBeta[] }
+
+// GET /api/portfolio/sector-betas — the data-fitted sector loadings for the
+// sensitivity reference panel (replaces the old hand-written tilt strings).
+export function fetchSectorBetas() {
+  return fetchJSON<SectorBetasPayload>('/api/portfolio/sector-betas')
+}
+
+export async function analyzePortfolio(csv: string): Promise<PortfolioAnalysis> {
+  const url = `${API_BASE}/api/portfolio/analyze`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csv }),
+  })
+  const data = (await res.json()) as PortfolioAnalysis
+  if (!res.ok) throw new Error(data.error || `${url} -> ${res.status}`)
+  return data
 }
 

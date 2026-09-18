@@ -53,6 +53,8 @@ COMMANDS: dict[str, str] = {
     "validate":    "scripts.validate_gpr",        # compare our index against the published Caldara benchmark
     "diagnose":    "scripts.diagnose_gpr_scoring",# print scoring statistics on a small sample, for debugging the scorer itself
     "corridor":    "scripts.corridor_index",      # build the India trade-corridor threat/risk indices
+    "oil":         "scripts.oil_index",           # build the India-native oil GPR index (gpr_oil) from corridor threat
+    "plot-oil":    "scripts.plot_oil_validation",  # plot gpr_oil vs the Caldara GPR_OIL benchmark (validation figure)
     "validate-corridors": "scripts.validate_corridors",  # sanity-check the corridor indices (coverage, parity, event response)
     "plot":        "scripts.plot_gpr",            # draw the daily/monthly GPR charts as PNG files
     "reprocess":   "scripts.gkg_gpr_pipeline",    # re-normalize an existing gpr_daily_index.csv without re-scoring articles

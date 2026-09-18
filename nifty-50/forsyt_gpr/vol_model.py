@@ -361,6 +361,51 @@ def latest_market_forecast(price: pd.Series, horizon: int = 5,
     return out
 
 
+def market_shap_importance(price: pd.Series, horizon: int = 5, top: int = 12) -> list[dict] | None:
+    """SHAP on the MARKET-ONLY production model (the one the dashboard uses).
+
+    This is the one genuine black box on the platform (gradient-boosted trees),
+    so SHAP earns its place here — for trees `shap.TreeExplainer` is exact and
+    fast (LIME would only approximate it). Returns per-feature
+    [{feature, importance, direction}] where importance = mean|SHAP| and
+    direction is the sign of the correlation between the feature and its SHAP
+    value (does a higher value push the vol forecast up or down).
+
+    EXPLANATION ONLY — this says what the model *used*, never whether it's any
+    good out-of-sample (that's the walk-forward tables in run_vol_experiment).
+    Returns None if `shap` isn't installed or there's too little history, so the
+    caller degrades gracefully.
+    """
+    try:
+        import shap
+    except Exception:
+        return None
+    from .data import forward_realized_vol
+    from .features import market_features
+
+    y = forward_realized_vol(price, horizon)
+    Xm = market_features(price)
+    train = Xm.join(y.rename("y")).dropna()
+    if len(train) < 250:
+        return None
+    cols = list(Xm.columns)
+    m = _xgb_reg().fit(train[cols].values, train["y"].values)
+    X = train[cols].values
+    sv = shap.TreeExplainer(m).shap_values(X)
+    imp = np.abs(sv).mean(0)
+    rows = []
+    for i, c in enumerate(cols):
+        col = X[:, i]
+        corr = float(np.corrcoef(col, sv[:, i])[0, 1]) if np.std(col) > 0 else 0.0
+        rows.append({
+            "feature": c,
+            "importance": round(float(imp[i]), 4),
+            "direction": "up" if corr >= 0 else "down",
+        })
+    rows.sort(key=lambda r: r["importance"], reverse=True)
+    return rows[:top]
+
+
 def latest_forecast(gf: pd.DataFrame, price: pd.Series, horizon: int = 5,
                     threshold_q: float = 0.75, block: str = "market+gpr") -> dict:
     """PRODUCTION path: fit on all resolved history, predict the newest day.

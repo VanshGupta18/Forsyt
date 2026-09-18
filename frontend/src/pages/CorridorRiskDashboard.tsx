@@ -12,6 +12,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton'
 import CorridorRiskMap from '../components/CorridorRiskMap'
 import CorridorRouteList from '../components/CorridorRouteList'
 import CorridorNewsTicker from '../components/CorridorNewsTicker'
+import ExplainPopover from '../components/ExplainPopover'
 import ScoreBar from '../components/ScoreBar'
 import {
   corridorOperationalRisk,
@@ -333,7 +334,10 @@ export default function CorridorRiskDashboard() {
           {selectedRow ? (
             <>
               <div>
-                <span className="corridor-kicker block mb-2">Selected route</span>
+                <span className="corridor-kicker mb-2 flex items-center justify-between gap-2">
+                  Selected route
+                  <ExplainPopover explain={selectedRow.explain} />
+                </span>
                 <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 items-center">
                   <span
                     className="corridor-score text-4xl leading-none row-span-2 self-center"

@@ -3,6 +3,8 @@
 // an optional big primary number + regime badge, and a list of label/value rows.
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import type { Explanation } from '../lib/api'
+import ExplainPopover from './ExplainPopover'
 
 export type MetricRow = {
   label: string
@@ -27,6 +29,7 @@ type Props = {
   rows: MetricRow[]
   highlighted?: boolean
   footer?: ReactNode
+  explain?: Explanation
 }
 
 export default function MacroMetricTable({
@@ -40,6 +43,7 @@ export default function MacroMetricTable({
   rows,
   highlighted,
   footer,
+  explain,
 }: Props) {
   return (
     <div
@@ -47,9 +51,12 @@ export default function MacroMetricTable({
         highlighted ? 'macro-signal-highlight' : ''
       }`}
     >
-      <div>
-        <p className="corridor-kicker">{kicker}</p>
-        <h2 className="corridor-headline mt-1">{title}</h2>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="corridor-kicker">{kicker}</p>
+          <h2 className="corridor-headline mt-1">{title}</h2>
+        </div>
+        {explain && <ExplainPopover explain={explain} />}
       </div>
 
       {spot && (

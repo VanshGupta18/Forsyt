@@ -184,6 +184,7 @@ export default function MacroDashboard() {
           primaryLabel="News risk score"
           regime={geoRegimeLabel(geo?.regime)}
           regimeClass={geoRegimeClass(geo?.regime)}
+          explain={geo?.explain}
           rows={[
             {
               label: '7d change',

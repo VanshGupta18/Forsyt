@@ -1,0 +1,52 @@
+{
+  "Energy": {
+    "broad": 0.1408,
+    "energy": -0.217,
+    "fx": 0.7186
+  },
+  "Technology": {
+    "broad": 0.0,
+    "energy": -0.4219,
+    "fx": 0.2994
+  },
+  "Financial Services": {
+    "broad": 0.2131,
+    "energy": -0.3198,
+    "fx": 0.997
+  },
+  "Consumer Cyclical": {
+    "broad": 0.0,
+    "energy": -0.2555,
+    "fx": 0.711
+  },
+  "Consumer Defensive": {
+    "broad": 0.0,
+    "energy": 0.0,
+    "fx": 0.2541
+  },
+  "Healthcare": {
+    "broad": 0.1528,
+    "energy": -0.2319,
+    "fx": 0.1811
+  },
+  "Basic Materials": {
+    "broad": 0.0,
+    "energy": -0.9405,
+    "fx": 1.0
+  },
+  "Utilities": {
+    "broad": 0.0,
+    "energy": -0.2133,
+    "fx": 0.5686
+  },
+  "Industrials": {
+    "broad": 0.1722,
+    "energy": -0.3695,
+    "fx": 0.9459
+  },
+  "Communication Services": {
+    "broad": 0.0,
+    "energy": -0.212,
+    "fx": 0.5673
+  }
+}

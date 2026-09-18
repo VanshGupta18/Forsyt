@@ -1,0 +1,31 @@
+sector,channel,beta,t_stat,p_value,r2,n_weeks,significant
+Energy,broad,-0.00219,-2.0,0.0458,0.1188,977,True
+Energy,energy,0.00338,1.96,0.0495,0.1188,977,True
+Energy,fx,-0.01118,-6.56,0.0,0.1188,977,True
+Technology,broad,-0.00152,-1.56,0.118,0.0645,977,False
+Technology,energy,0.00656,4.06,0.0,0.0645,977,True
+Technology,fx,-0.00466,-2.96,0.0031,0.0645,977,True
+Financial Services,broad,-0.00332,-2.64,0.0083,0.1821,977,True
+Financial Services,energy,0.00498,2.89,0.0038,0.1821,977,True
+Financial Services,fx,-0.01551,-8.42,0.0,0.1821,977,True
+Consumer Cyclical,broad,-0.00056,-0.54,0.5859,0.1128,977,False
+Consumer Cyclical,energy,0.00397,2.06,0.0396,0.1128,977,True
+Consumer Cyclical,fx,-0.01106,-6.33,0.0,0.1128,977,True
+Consumer Defensive,broad,0.00026,0.3,0.7663,0.0208,977,False
+Consumer Defensive,energy,7e-05,0.06,0.9493,0.0208,977,False
+Consumer Defensive,fx,-0.00395,-2.66,0.0078,0.0208,977,True
+Healthcare,broad,-0.00238,-2.41,0.0158,0.0343,977,True
+Healthcare,energy,0.00361,3.06,0.0022,0.0343,977,True
+Healthcare,fx,-0.00282,-3.1,0.0019,0.0343,977,True
+Basic Materials,broad,-0.00084,-0.58,0.5631,0.1837,977,False
+Basic Materials,energy,0.01463,5.79,0.0,0.1837,977,True
+Basic Materials,fx,-0.01556,-6.54,0.0,0.1837,977,True
+Utilities,broad,-0.00152,-1.57,0.1155,0.0899,977,False
+Utilities,energy,0.00332,2.68,0.0074,0.0899,977,True
+Utilities,fx,-0.00885,-6.6,0.0,0.0899,977,True
+Industrials,broad,-0.00268,-1.94,0.0523,0.1311,977,True
+Industrials,energy,0.00575,2.9,0.0037,0.1311,977,True
+Industrials,fx,-0.01472,-6.48,0.0,0.1311,977,True
+Communication Services,broad,-0.00049,-0.38,0.7026,0.0554,977,False
+Communication Services,energy,0.0033,2.14,0.0324,0.0554,977,True
+Communication Services,fx,-0.00883,-5.59,0.0,0.0554,977,True

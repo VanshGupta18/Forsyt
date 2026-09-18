@@ -9,6 +9,7 @@ import {
   stressRegimeClass,
   stressRegimeLabel,
 } from '../lib/macroCopy'
+import ExplainPopover from './ExplainPopover'
 import ScoreBar from './ScoreBar'
 
 type Props = {
@@ -32,9 +33,12 @@ export default function JointStressPanel({ dual, volUnavailable }: Props) {
 
   return (
     <div className="corridor-panel p-4 h-full flex flex-col gap-4">
-      <div>
-        <p className="corridor-kicker">{SCORE_LABELS.joint}</p>
-        <h2 className="corridor-headline mt-1">Combined stress</h2>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="corridor-kicker">{SCORE_LABELS.joint}</p>
+          <h2 className="corridor-headline mt-1">Combined stress</h2>
+        </div>
+        <ExplainPopover explain={joint?.explain} />
       </div>
 
       <div className="flex flex-col items-center py-2">

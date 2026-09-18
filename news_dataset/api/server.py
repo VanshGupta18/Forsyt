@@ -102,6 +102,7 @@ def root():
             "pages_corridor": "/api/pages/corridor",
             "pages_portfolio": "/api/pages/portfolio",
             "pages_quality": "/api/pages/quality",
+            "portfolio_analyze": "POST /api/portfolio/analyze",
         },
     })
 
@@ -221,6 +222,46 @@ def api_pages_portfolio():
     except Exception as exc:
         logger.exception("portfolio bundle failed")
         return jsonify({"error": str(exc)}), 503
+
+
+# Analyse a user's holdings for geopolitical (GPR) risk. Stateless: accepts a
+# holdings list as JSON ({"holdings": [{ticker, qty|value|weight}, ...]} or a
+# raw list) or a pasted/uploaded CSV ({"csv": "..."} or a "file" upload), and
+# returns sector exposure + a portfolio risk score. Nothing is stored.
+@app.post("/api/portfolio/analyze")
+def api_portfolio_analyze():
+    from news_dataset.api.portfolio_service import analyze_portfolio
+
+    try:
+        raw = None
+        if request.files.get("file"):
+            raw = request.files["file"].read().decode("utf-8", "replace")
+        else:
+            body = request.get_json(silent=True) or {}
+            raw = body.get("csv") or body.get("holdings")
+        if not raw:
+            return jsonify({"error": "provide holdings (JSON list, {csv:...}, or file upload)"}), 400
+        result = analyze_portfolio(raw)
+        if result.get("error"):
+            return jsonify(result), 400
+        return jsonify(result)
+    except Exception as exc:
+        logger.exception("portfolio analyze failed")
+        return jsonify({"error": str(exc)}), 500
+
+
+# The fitted sector-risk betas (from fit_sector_betas.py), for the sector
+# sensitivity reference panel. Data-estimated loadings per channel (GPR / oil /
+# INR), not hand-written tilts.
+@app.get("/api/portfolio/sector-betas")
+def api_portfolio_sector_betas():
+    from news_dataset.api.portfolio_service import BETAS_SOURCE, sector_beta_table
+
+    try:
+        return jsonify({"betas_source": BETAS_SOURCE, "sectors": sector_beta_table()})
+    except Exception as exc:
+        logger.exception("sector betas failed")
+        return jsonify({"error": str(exc)}), 500
 
 
 # The "how accurate is this index" methodology/quality report — pass-fail

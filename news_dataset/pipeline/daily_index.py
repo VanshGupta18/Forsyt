@@ -223,6 +223,11 @@ def run_gpr_range(
         corridor_cmd.extend(["--dates", *[d.isoformat() for d in dirty_days]])
     _run_cmd(corridor_cmd)
 
+    # Rebuild the India-native oil GPR index from the fresh corridor CSV.
+    _run_cmd([sys.executable, "gpr_index/main.py", "oil",
+              "--corridor-csv", str(OUTPUT_DIR / "gpr_corridor_daily.csv"),
+              "--output-csv", str(OUTPUT_DIR / "gpr_oil_daily.csv")])
+
 
 def run_daily_index(
     day: date,

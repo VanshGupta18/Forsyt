@@ -20,6 +20,7 @@ import {
   type CorridorRow,
   type CorridorsPayload,
   type DualSignalPayload,
+  type GprPanels,
   type MarketQuote,
 } from '../lib/api'
 import { queryKeys } from '../lib/queryClient'
@@ -43,6 +44,7 @@ export type HomeLiveData = {
   dual: DualSignalPayload | null
   corridors: CorridorRow[]
   corridorMetadata: CorridorsPayload['metadata']
+  oilGpr: NonNullable<GprPanels['oil_gpr']> | null
 }
 
 // Scans every corridor row and keeps whichever one has the highest
@@ -94,5 +96,6 @@ export function useHomeLiveData(): HomeLiveData {
     dual: data?.dual_signal ?? null,
     corridors: data?.corridors?.corridors ?? [],
     corridorMetadata: data?.corridors?.metadata,
+    oilGpr: data?.oil_gpr ?? null,
   }
 }
