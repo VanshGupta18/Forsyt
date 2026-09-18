@@ -145,13 +145,30 @@ def _aggregate_hits_day(
         hits.groupby("corridor", as_index=False)
         .agg(gpr_sum=("gpr_score", "sum"), corridor_hit_count=("gpr_score", "size"))
         if not hits.empty
-        else pd.DataFrame(columns=["corridor", "gpr_sum", "corridor_hit_count"])
+        # A zero-hit day (common — most corridors see no matching article on
+        # most days) must still merge in as float64/int64, not the object
+        # dtype pandas defaults an empty, columns-only DataFrame to. Object
+        # dtype here silently "poisons" raw_ratio for this date's rows below,
+        # and once that date's rows get pd.concat'd alongside every other
+        # (properly float64) date in aggregate_corridor_hits(), the WHOLE
+        # merged column downcasts to object — which normalize_corridor_index's
+        # split-era .loc[boolean_mask, "threat_index"] = ... assignment can't
+        # write back into a float64 block, raising
+        # `TypeError: Invalid value '[...]' for dtype 'float64'`.
+        else pd.DataFrame(
+            {
+                "corridor": pd.Series(dtype=object),
+                "gpr_sum": pd.Series(dtype="float64"),
+                "corridor_hit_count": pd.Series(dtype="int64"),
+            }
+        )
     )
     base = pd.DataFrame({"corridor": list(active_corridors())})
     out = base.merge(grouped, on="corridor", how="left").fillna(
         {"gpr_sum": 0.0, "corridor_hit_count": 0}
     )
     out.insert(0, "date", date_val)
+    out["gpr_sum"] = out["gpr_sum"].astype(float)
     out["corridor_hit_count"] = out["corridor_hit_count"].astype(int)
     out["total_articles"] = int(total_articles)
     out["positive_articles"] = int(positive_articles)
@@ -159,6 +176,7 @@ def _aggregate_hits_day(
     out["raw_ratio"] = (
         out["gpr_sum"] / total_articles if total_articles > 0 else 0.0
     )
+    out["raw_ratio"] = out["raw_ratio"].astype(float)
     return out
 
 
