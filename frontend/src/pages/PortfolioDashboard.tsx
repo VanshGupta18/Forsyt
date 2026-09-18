@@ -339,7 +339,7 @@ function PortfolioAnalyzer() {
                   )}
                 </div>
                 <div className="mt-1">
-                  Pressures — broad {result.pressures?.broad} · oil {result.pressures?.energy} · fx {result.pressures?.fx ?? '—'}
+                  Pressures — GPR {result.pressures?.broad} · Oil {result.pressures?.energy} · INR {result.pressures?.fx ?? '—'} · Trade {result.pressures?.trade ?? '—'}
                 </div>
                 {result.gpr_oil_index != null && (
                   <div className="mt-0.5">India gpr_oil index {result.gpr_oil_index}</div>

@@ -41,7 +41,7 @@ export default function ExplainPopover({
           {/* click-away layer */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
           <div
-            className={`absolute z-50 mt-1 w-72 bg-[#0d0d0d] border border-white/15 rounded-md p-3 font-mono text-left shadow-xl ${
+            className={`absolute z-50 mt-1 w-72 bg-[#0d0d0d] border border-white/15 rounded-md p-3 font-mono text-left normal-case tracking-normal shadow-xl ${
               align === 'right' ? 'right-0' : 'left-0'
             }`}
             style={{ fontVariantNumeric: 'tabular-nums' }}
