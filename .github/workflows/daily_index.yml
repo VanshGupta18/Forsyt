@@ -9,6 +9,8 @@ on:
 jobs:
   daily-index:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the refreshed index CSVs back to the repo
     defaults:
       run:
         working-directory: .
@@ -52,6 +54,19 @@ jobs:
           MIN_PARQUET_DAYS_FOR_GPR: '7'
           PARQUET_BACKFILL_LOOKBACK_DAYS: '14'
         run: python -m news_dataset.pipeline.daily_index
+
+      - name: Commit refreshed index CSVs
+        if: success()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gpr_index/outputs/*.csv
+          if git diff --cached --quiet; then
+            echo "No index changes to commit."
+          else
+            git commit -m "chore(data): refresh GPR index CSVs [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
 
       - name: Save india processed parquets
         uses: actions/cache/save@v4
