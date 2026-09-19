@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import date, timezone
+from datetime import date
 from pathlib import Path
 
 import psycopg2
@@ -842,22 +842,6 @@ def get_dual_signal(as_of=None):
     return {"as_of": row["as_of"], **payload}
 
 
-def _as_utc(value):
-    """Tag a naive datetime read back from a TIMESTAMP (no time zone) column as UTC.
-
-    Every writer here stores UTC clock values (NOW() on Supabase's UTC-
-    configured sessions, or datetime.now(timezone.utc)), but psycopg2 hands
-    them back with no tzinfo. Serializing that straight to .isoformat()
-    produces a string with no 'Z'/offset, which the frontend's `new
-    Date(...)` then silently reinterprets as the viewer's own local time
-    instead of converting from UTC — e.g. 15:05 UTC showing as "03:05 PM"
-    to an IST viewer instead of the correct 8:35 PM.
-    """
-    if value is not None and getattr(value, "tzinfo", None) is None and hasattr(value, "replace"):
-        return value.replace(tzinfo=timezone.utc)
-    return value
-
-
 def log_pipeline_run(stage, status, details=None):
     conn = get_connection()
     cur = conn.cursor()
@@ -884,7 +868,6 @@ def get_last_pipeline_run(stage):
     release_connection(conn)
     if not row:
         return None
-    row["run_at"] = _as_utc(row["run_at"])
     return dict(row)
 
 
@@ -907,7 +890,7 @@ def get_health_snapshot() -> dict:
         "total_articles": row[0] or 0,
         "gpr_latest_date": row[1].isoformat() if row[1] else None,
         "corridor_latest_date": row[2].isoformat() if row[2] else None,
-        "news_latest_at": _as_utc(row[3]).isoformat() if row[3] and hasattr(row[3], "isoformat") else row[3],
+        "news_latest_at": row[3].isoformat() if row[3] and hasattr(row[3], "isoformat") else row[3],
     }
 
 
