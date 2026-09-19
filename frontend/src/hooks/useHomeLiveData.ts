@@ -45,6 +45,7 @@ export type HomeLiveData = {
   corridors: CorridorRow[]
   corridorMetadata: CorridorsPayload['metadata']
   oilGpr: NonNullable<GprPanels['oil_gpr']> | null
+  panels: GprPanels | undefined
 }
 
 // Scans every corridor row and keeps whichever one has the highest
@@ -97,5 +98,6 @@ export function useHomeLiveData(): HomeLiveData {
     corridors: data?.corridors?.corridors ?? [],
     corridorMetadata: data?.corridors?.metadata,
     oilGpr: data?.oil_gpr ?? null,
+    panels: data?.gpr_panels,
   }
 }

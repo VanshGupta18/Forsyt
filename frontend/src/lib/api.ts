@@ -111,6 +111,7 @@ export type HomePageBundle = {
   dual_signal: DualSignalPayload | null
   status: PlatformStatusSlim
   oil_gpr?: GprPanels['oil_gpr']
+  gpr_panels?: GprPanels
 }
 
 export type MacroPageBundle = {

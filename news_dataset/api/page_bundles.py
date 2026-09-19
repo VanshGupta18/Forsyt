@@ -83,8 +83,9 @@ def build_home_bundle() -> dict:
         quotes=partial(fetch_quotes, SPARKLINE_SYMBOLS),
         dual_signal=_safe_dual_signal,
         status=get_platform_status_slim,
-        oil_gpr=_safe_oil_gpr,
+        gpr_panels=_safe_gpr_panels,
     )
+    panels = r["gpr_panels"] or {}
     return {
         "health": r["health"],
         "gpr_current": r["gpr_current"],
@@ -92,16 +93,9 @@ def build_home_bundle() -> dict:
         "quotes": r["quotes"],
         "dual_signal": r["dual_signal"],
         "status": r["status"],
-        "oil_gpr": r["oil_gpr"],
+        "gpr_panels": panels,
+        "oil_gpr": panels.get("oil_gpr"),  # kept for the hero tile
     }
-
-
-def _safe_oil_gpr() -> dict | None:
-    try:
-        return (get_gpr_panels() or {}).get("oil_gpr")
-    except Exception:
-        logger.exception("oil gpr unavailable for home bundle")
-        return None
 
 
 def build_macro_bundle() -> dict:
