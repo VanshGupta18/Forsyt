@@ -11,11 +11,14 @@ import pandas as pd
 from gpr_index import main as gpr_main
 from gpr_index.scripts.corridor_index import (
     HIT_COLUMNS,
+    _aggregate_hits_day,
     aggregate_corridor_day,
+    aggregate_corridor_hits,
     corridor_article_hits,
     normalize_corridor_index,
 )
 from gpr_index.scripts.corridors import active_corridors
+from gpr_index.scripts.split_era import product_start_date
 from gpr_index.scripts.download_gkg import select_time_slots
 from gpr_index.scripts.validate_corridors import (
     check_match_coverage,
@@ -119,6 +122,63 @@ class CorridorAggregationTests(unittest.TestCase):
         spike_day = result.loc[result["date"] == dates[5]].iloc[0]
         self.assertGreater(spike_day["corridor_risk"], 0.0)
         self.assertLess(spike_day["corridor_risk_7ma"], spike_day["corridor_risk"] + 1e-6)
+
+    def test_zero_hit_day_aggregates_as_float_not_object(self) -> None:
+        # A day with zero matching articles hits the empty-groupby fallback
+        # in _aggregate_hits_day. That fallback must still produce float64/
+        # int64 columns, not pandas' default object dtype for an empty,
+        # columns-only DataFrame — see the comment at that call site.
+        day = _aggregate_hits_day(
+            pd.DataFrame(columns=HIT_COLUMNS),
+            pd.Timestamp("2025-01-01"),
+            total_articles=100,
+            positive_articles=0,
+            matched_positive_articles=0,
+        )
+        self.assertEqual(day["gpr_sum"].dtype, "float64")
+        self.assertEqual(day["raw_ratio"].dtype, "float64")
+        self.assertEqual(day["corridor_hit_count"].dtype, "int64")
+
+    def test_zero_hit_day_does_not_poison_split_era_normalization(self) -> None:
+        # Regression test for the intermittent platform_refresh failure: one
+        # zero-hit day concatenated (via aggregate_corridor_hits, exactly as
+        # run() does) alongside warmup-era and product-era days used to
+        # downcast raw_ratio to object dtype for the WHOLE series, which then
+        # crashed normalize_corridor_index's split-era
+        # `group.loc[boolean_mask, "threat_index"] = ...` assignment with
+        # `TypeError: Invalid value '[...]' for dtype 'float64'`.
+        product_start = pd.Timestamp(product_start_date())
+        warmup_day = product_start - pd.Timedelta(days=2)
+        product_day = product_start
+        zero_hit_day = product_start + pd.Timedelta(days=1)
+
+        hits = pd.DataFrame(
+            {
+                "date": [warmup_day, product_day],
+                "corridor": ["strait_of_hormuz", "strait_of_hormuz"],
+                "gpr_score": [0.5, 0.5],
+                "event_category": ["sanctions", "sanctions"],
+                "gpr_type": ["threat", "threat"],
+            }
+        )
+        daily_totals = pd.DataFrame(
+            {
+                "date": [warmup_day, product_day, zero_hit_day],
+                "total_articles": [100, 100, 100],
+                "positive_articles": [5, 5, 0],
+                "matched_positive_articles": [1, 1, 0],
+            }
+        )
+        daily = aggregate_corridor_hits(hits, daily_totals)
+        self.assertEqual(daily["raw_ratio"].dtype, "float64")
+
+        # normalize_corridor_index only takes the split-era path (the one
+        # that crashed) when the batch spans both the pre-product-start
+        # warmup era and the product era.
+        result = normalize_corridor_index(
+            daily, warmup_day.isoformat(), zero_hit_day.isoformat()
+        )
+        self.assertEqual(result["threat_index"].dtype, "float64")
 
     def test_insufficient_history_before_min_hit_days(self) -> None:
         rows = pd.DataFrame(
