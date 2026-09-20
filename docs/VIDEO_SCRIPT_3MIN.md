@@ -14,7 +14,7 @@ Target runtime **2:50** (hard ceiling 3:00). Word budget ≈ 430 words at a calm
 - [ ] Pre-open tabs in this order so you never fumble: **Home → News → Trade Corridor → Macro → Quality**
 - [ ] Editor pre-opened at `template.yaml` and `news_dataset/api/cache.py` (for the AWS beat)
 - [ ] A terminal with `sam validate --lint` typed but **not run** (run it on camera — it's one clean line of proof)
-- [ ] Architecture diagram exported as a PNG (render the Mermaid block in `README.md`) — you need it as a still, not a code block
+- [ ] Architecture diagram ready: **`docs/forsyt-architecture.png`** (1920×1080, built for this video — drop it straight on the timeline, no export step needed). Its five stages are numbered 1–5 so you can highlight each one as you narrate that hop.
 - [ ] Record at 1080p/30fps, mic test first — audio quality matters more than video quality
 - [ ] Upload as **Unlisted** (or Public) on YouTube, **not Private** — verify by opening the link in an incognito window before submitting
 
@@ -22,14 +22,16 @@ Target runtime **2:50** (hard ceiling 3:00). Word budget ≈ 430 words at a calm
 
 ## Full video architecture (shot list)
 
+![Forsyt system architecture](forsyt-architecture.png)
+
 | # | Time | Duration | On screen | Audio |
 |---|------|----------|-----------|-------|
-| 1 | 0:00–0:08 | 8s | Title card: *Forsyt — Geopolitical Risk Intelligence for Indian Markets*, name, team, CPG 300 | Hook line |
+| 1 | 0:00–0:08 | 8s | Title card: *Forsyt — Geopolitical Risk Intelligence for Indian Markets*, name, team | Hook line |
 | 2 | 0:08–0:35 | 27s | **Live dashboard Home page**, scrolling slowly: GPR gauge, regime badge, threat panels | §1 About the project |
 | 3 | 0:35–0:55 | 20s | **Demo A** — News page: theme filter click, tagged article feed | §1 continued |
 | 4 | 0:55–1:15 | 20s | **Demo B** — Trade Corridor page: map, click a corridor, AI explanation panel opens | §1 continued |
-| 5 | 1:15–1:50 | 35s | **Architecture diagram PNG**, animate/highlight left→right as you narrate each hop | §2 Tech stack & architecture |
-| 6 | 1:50–2:30 | 40s | **Split**: `template.yaml` on screen → `cache.py` backend switch → terminal running `sam validate --lint` → `docker-compose.yml` localstack/opensearch services | §3 How I used AWS |
+| 5 | 1:15–1:50 | 35s | **`docs/forsyt-architecture.png`** full-screen; highlight stages 1→5 left→right in time with the narration | §2 Tech stack & architecture |
+| 6 | 1:50–2:30 | 40s | **Split**: `template.yaml` on screen → `cache.py` backend switch → terminal running `sam validate --lint` → `docker-compose.yml` localstack/opensearch services. If a shot fails, cut to the orange **AWS band** at the bottom of the diagram | §3 How I used AWS |
 | 7 | 2:30–2:48 | 18s | Back to dashboard, slow zoom-out on Home; or Quality page showing validation numbers | §4 Learning and growth |
 | 8 | 2:48–2:55 | 7s | End card: repo URL + live URL + thanks | Close |
 
