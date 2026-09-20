@@ -31,6 +31,10 @@ from gpr_index.scripts.corridors import CORRIDOR_PLACES  # noqa: E402
 from news_dataset import agent_model, db  # noqa: E402
 
 ARTICLES_PER_CORRIDOR = 5
+# Extra slots reserved for vector-search hits, on top of the exact place
+# matches. Kept separate so semantically-relevant coverage still reaches the
+# model on corridors whose exact matches already fill ARTICLES_PER_CORRIDOR.
+SEMANTIC_EXTRA = 3
 
 SYSTEM_PROMPT = (
     "You are a geopolitical risk analyst. Given a trade corridor's risk "
@@ -58,17 +62,46 @@ def _places_for_corridor(corridor_id: str) -> list[str]:
     ]
 
 
-def _cited_articles(corridor_id: str, limit: int = ARTICLES_PER_CORRIDOR) -> list[dict]:
+def _semantic_articles(corridor_row: dict, limit: int) -> list[dict]:
+    """Coverage that is *about* this corridor without naming any of its places.
+
+    _places_for_corridor() can only find articles whose nlp_locations carries
+    one of the corridor's exact place names, so an article about, say, shipping
+    insurance rates collapsing on a route is invisible to it. Vector search over
+    the embeddings nlp/themes.py already computes catches those. A no-op
+    returning [] when OpenSearch isn't configured (see search/opensearch_client.py).
+    """
+    from news_dataset.search import opensearch_client
+
+    if not opensearch_client.is_enabled():
+        return []
+    places = _places_for_corridor(corridor_row["corridor"])
+    query = f"{corridor_row['corridor_name']}. {', '.join(places)}"
+    hits = opensearch_client.semantic_search(query, k=limit)
+    return db.get_articles_by_ids([h["article_id"] for h in hits])
+
+
+def _cited_articles(corridor_row: dict, limit: int = ARTICLES_PER_CORRIDOR) -> list[dict]:
     seen: dict[int, dict] = {}
-    for place in _places_for_corridor(corridor_id):
+    for place in _places_for_corridor(corridor_row["corridor"]):
         for row in db.get_recent_news(corridor=place, limit=limit, tagged_only=True):
             seen.setdefault(row["id"], row)
     articles = sorted(
         seen.values(),
         key=lambda r: r.get("published_at") or r.get("scraped_at") or "",
         reverse=True,
-    )
-    return articles[:limit]
+    )[:limit]
+
+    # Top up with vector hits the exact match couldn't see. Failure here must
+    # not cost us the exact matches we already have.
+    try:
+        known = {a["id"] for a in articles}
+        for row in _semantic_articles(corridor_row, SEMANTIC_EXTRA):
+            if row["id"] not in known:
+                articles.append(row)
+    except Exception as exc:  # noqa: BLE001 - vector search is an optional enrichment
+        print(f"[explain_corridors] semantic retrieval skipped: {exc}")
+    return articles
 
 
 def _build_agent():
@@ -105,7 +138,7 @@ def run() -> dict:
     for row in rows:
         corridor_id = row["corridor"]
         try:
-            articles = _cited_articles(corridor_id)
+            articles = _cited_articles(row)
             text = explain_corridor(agent, row, articles)
             db.upsert_corridor_explanation(
                 date=latest,

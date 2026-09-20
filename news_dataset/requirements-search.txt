@@ -1,0 +1,7 @@
+# Vector search over article embeddings (news_dataset/search/opensearch_client.py)
+# and the shared DynamoDB cache backend (news_dataset/api/cache.py). Both are
+# optional: without OPENSEARCH_URL / FORSYT_CACHE_BACKEND=dynamodb the code
+# paths that import these never run, so this file is not part of the base
+# install or the API container.
+opensearch-py
+boto3

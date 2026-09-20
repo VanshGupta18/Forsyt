@@ -144,6 +144,15 @@ def init_db():
     cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_locations TEXT;")
     cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_model_version TEXT;")
     cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_extracted_at TIMESTAMP;")
+    # Theme-scoring embedding (see nlp/themes.py:embed_article), stashed here
+    # as an intermediate holding column so pipeline/hourly_refresh.py can pick
+    # up newly-tagged articles and push them to OpenSearch (search/opensearch_client.py)
+    # without re-encoding — Postgres itself never queries this column.
+    # REAL[] because float4 matches the model's float32 output exactly and
+    # psycopg2 adapts Python lists to Postgres arrays natively. This mirrors a
+    # column already present in the deployed database; declaring it here keeps
+    # a fresh database identical to that one.
+    cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS nlp_embedding REAL[];")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_tier ON articles(tier);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_duplicate_of ON articles(duplicate_of);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);")
@@ -527,7 +536,7 @@ def get_articles_pending_nlp(limit, model_version, start=None, end=None, reproce
 def update_article_nlp(article_id, fields):
     allowed = {
         "nlp_themes", "nlp_tone_neg", "nlp_tone_polarity", "nlp_gcam",
-        "nlp_locations", "nlp_model_version", "nlp_extracted_at",
+        "nlp_locations", "nlp_model_version", "nlp_extracted_at", "nlp_embedding",
     }
     invalid = set(fields) - allowed
     if invalid:
@@ -839,6 +848,55 @@ def get_recent_news(
             ORDER BY COALESCE(published_at, scraped_at) DESC NULLS LAST
             LIMIT %s""",
         params,
+    )
+    rows = cur.fetchall()
+    cur.close()
+    release_connection(conn)
+    return [dict(row) for row in rows]
+
+
+def get_articles_by_ids(ids):
+    """Canonical article rows for a list of ids, in the order given.
+
+    Lets vector-search hits (search/opensearch_client.py returns ids + scores)
+    be rendered with the same fields as keyword results, instead of the caller
+    having to handle two different row shapes.
+    """
+    if not ids:
+        return []
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT id, title, source, link, published_at, scraped_at, tier,
+                  nlp_themes, nlp_locations, nlp_tone_neg, nlp_tone_polarity,
+                  confidence, matched_keywords, image_url
+           FROM articles WHERE id = ANY(%s)""",
+        (list(ids),),
+    )
+    by_id = {row["id"]: dict(row) for row in cur.fetchall()}
+    cur.close()
+    release_connection(conn)
+    return [by_id[i] for i in ids if i in by_id]
+
+
+def get_articles_for_search_sync(start, end):
+    """Embedded, tagged articles in [start, end) — the source rows for
+    search/opensearch_client.py's index_articles(). Scoped to a date range
+    (see pipeline/hourly_refresh.py's "dirty days") rather than the whole
+    table, matching the same bounded-resync pattern export/to_db.sync_all()
+    already uses for GPR/corridor rows.
+    """
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT id, title, link, published_at, scraped_at, nlp_themes,
+                  nlp_locations, nlp_embedding
+           FROM articles
+           WHERE nlp_embedding IS NOT NULL
+             AND COALESCE(published_at, scraped_at) >= %s
+             AND COALESCE(published_at, scraped_at) < %s
+             AND duplicate_of IS NULL""",
+        (start, end),
     )
     rows = cur.fetchall()
     cur.close()

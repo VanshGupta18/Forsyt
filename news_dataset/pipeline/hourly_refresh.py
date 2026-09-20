@@ -26,6 +26,7 @@ Beginner note — the full order of operations for run_platform_refresh():
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from datetime import datetime, time, timedelta, timezone
@@ -45,6 +46,8 @@ from news_dataset.pipeline.daily_index import (  # noqa: E402
     run_daily_index,
     run_gpr_range,
 )
+
+logger = logging.getLogger(__name__)
 
 STAGE = "platform_refresh"
 NLP_BATCH = int(os.environ.get("PLATFORM_REFRESH_NLP_BATCH", "200"))
@@ -81,6 +84,31 @@ def _warm_api_caches() -> dict:
         details["image_warm_error"] = str(exc)
 
     return details
+
+
+def _sync_search_index(dirty_days: list) -> dict:
+    """Push the days we just re-exported into the vector index.
+
+    Piggybacks on the same dirty-day set sync_all() uses rather than adding a
+    scheduler: the articles whose NLP (and therefore embedding) just landed are
+    exactly the ones in this window. A no-op returning {"enabled": False} when
+    OPENSEARCH_URL is unset, which is the normal state everywhere except the
+    compose stack — and never allowed to fail the refresh either way.
+    """
+    try:
+        from news_dataset.search import opensearch_client
+
+        if not opensearch_client.is_enabled():
+            return {"enabled": False}
+        if not dirty_days:
+            return {"enabled": True, "indexed": 0}
+        start = datetime.combine(min(dirty_days), time.min, tzinfo=timezone.utc)
+        end = datetime.combine(max(dirty_days) + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        rows = db.get_articles_for_search_sync(start, end)
+        return {"enabled": True, "indexed": opensearch_client.index_articles(rows)}
+    except Exception as exc:  # noqa: BLE001 - search is optional, the refresh is not
+        logger.warning("search index sync failed: %s", exc)
+        return {"enabled": True, "error": str(exc)}
 
 
 def run_platform_refresh(*, skip_nlp: bool = False, skip_dual_signal: bool = False) -> dict:
@@ -134,6 +162,7 @@ def run_platform_refresh(*, skip_nlp: bool = False, skip_dual_signal: bool = Fal
     run_gpr_range(INDIA_GPR_INDEX_START, today, dirty_days=dirty or None)
     counts = sync_all()
     details["sync"] = counts
+    details["search_indexed"] = _sync_search_index(dirty)
 
     if not skip_dual_signal:
         details["dual_signal_as_of"] = refresh_dual_signal()

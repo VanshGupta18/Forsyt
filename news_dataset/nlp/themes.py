@@ -88,30 +88,61 @@ def _get_prototypes() -> Any:
     return _prototypes
 
 
-def theme_similarities(title: str, body: str) -> dict[str, float]:
-    """Return one cosine similarity per GPR theme code.
-
-    Beginner note: the title is repeated twice in the text below (title +
-    title + body) so the headline counts for a bit more than the body text
-    when the model builds the embedding — a cheap way to weight the part of
-    the article that's usually most on-topic. `_get_prototypes() @ embedding`
-    is a matrix multiplication that computes the similarity between this
-    one article's vector and every theme prototype's vector all in one
-    step (much faster than comparing one at a time in a loop).
+def embed_text(text: str) -> Any:
+    """Embed arbitrary text with the same model/normalization theme scoring
+    uses. For ad-hoc queries that aren't a scraped article's title+body —
+    e.g. search/opensearch_client.py's semantic_search() embedding a
+    corridor description to find related coverage. None for empty text.
     """
-    text = f"{title or ''} {title or ''} {body or ''}"[:MAX_CHARS]
+    text = (text or "")[:MAX_CHARS]
     if not text.strip():
-        return {code: 0.0 for code in ALL_CODES}
-    embedding = _get_model().encode(
+        return None
+    return _get_model().encode(
         [text],
         convert_to_numpy=True,
         normalize_embeddings=True,
     )[0]
+
+
+def embed_article(title: str, body: str) -> Any:
+    """The raw embedding vector theme scoring is based on, exposed so callers
+    that also want it (see nlp/run_extraction.py, search/opensearch_client.py)
+    don't have to re-encode the same text — one encode per article is the
+    whole cost model here.
+
+    Beginner note: the title is repeated twice in the text below (title +
+    title + body) so the headline counts for a bit more than the body text
+    when the model builds the embedding — a cheap way to weight the part of
+    the article that's usually most on-topic.
+    """
+    return embed_text(f"{title or ''} {title or ''} {body or ''}")
+
+
+def theme_similarities(title: str, body: str) -> dict[str, float]:
+    """Return one cosine similarity per GPR theme code.
+
+    `_get_prototypes() @ embedding` is a matrix multiplication that computes
+    the similarity between this one article's vector and every theme
+    prototype's vector all in one step (much faster than comparing one at a
+    time in a loop).
+    """
+    similarities, _ = theme_similarities_with_embedding(title, body)
+    return similarities
+
+
+def theme_similarities_with_embedding(title: str, body: str) -> tuple[dict[str, float], Any]:
+    """Like theme_similarities(), but also returns the embedding it was
+    computed from — for run_extraction.py, which persists both without
+    encoding the article's text twice.
+    """
+    embedding = embed_article(title, body)
+    if embedding is None:
+        return {code: 0.0 for code in ALL_CODES}, None
     similarities = _get_prototypes() @ embedding
-    return {
-        code: float(similarity)
-        for code, similarity in zip(ALL_CODES, similarities)
-    }
+    return (
+        {code: float(similarity) for code, similarity in zip(ALL_CODES, similarities)},
+        embedding,
+    )
 
 
 def themes_at_threshold(

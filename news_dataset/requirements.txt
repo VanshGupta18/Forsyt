@@ -7,3 +7,12 @@ psycopg2-binary>=2.9
 pandas>=2.0
 pyarrow>=14.0
 yfinance>=0.2
+gunicorn>=21.2.0
+
+# Security floors for transitive dependencies. Neither is imported directly —
+# click arrives via Flask, soupsieve via yfinance's beautifulsoup4 — so without
+# these pins a fresh install (the container build, the GitHub Actions runners)
+# resolves to versions pip-audit flags. Remove once the parents' own floors
+# have moved past these.
+click>=8.3.3        # PYSEC-2026-2132
+soupsieve>=2.9.0    # CVE-2026-85999, CVE-2026-86000

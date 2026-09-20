@@ -15,6 +15,7 @@ import NewsIntelStrip from '../components/NewsIntelStrip'
 import NewsRiskPanel from '../components/NewsRiskPanel'
 import NewsSidebar from '../components/NewsSidebar'
 import NewsThemeNav from '../components/NewsThemeNav'
+import RelatedCoveragePanel from '../components/RelatedCoveragePanel'
 import {
   fetchEventsFeed,
   fetchPageNews,
@@ -218,6 +219,7 @@ export default function NewsDashboard() {
                 <NewsHero article={hero} />
                 <NewsSidebar topStories={topStories} />
               </section>
+              <RelatedCoveragePanel articleId={hero.id} />
               <NewsRiskPanel
                 gprIndex={gprIndex}
                 gprDate={gprDate}

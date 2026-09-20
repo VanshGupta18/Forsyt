@@ -20,6 +20,16 @@ services:
     # Without a .env, pass them explicitly: docker compose run -e DATABASE_URL=... backend
     environment:
       - PORT=5001
+      # Reaches the services below by compose service name, the same way the
+      # frontend reaches the backend. Both are additive: OPENSEARCH_URL unset
+      # means vector search no-ops, and the cache backend defaults to the
+      # in-process dict unless you export FORSYT_CACHE_BACKEND=dynamodb.
+      - OPENSEARCH_URL=http://opensearch:9200
+      - FORSYT_CACHE_BACKEND=${FORSYT_CACHE_BACKEND:-memory}
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_DEFAULT_REGION=ap-south-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
 
   frontend:
     build: ./frontend
@@ -30,3 +40,34 @@ services:
       VITE_API_KEY: ${VITE_API_KEY:-}
     depends_on:
       - backend
+
+  # Vector search over article embeddings (news_dataset/search/opensearch_client.py).
+  # Only this stack sets OPENSEARCH_URL — without it every search call is a
+  # no-op, which is why GHA, the API and a plain .venv need nothing from here.
+  # OpenSearch is a JVM service and ships on Amazon Corretto, so running it
+  # here is what actually puts Corretto in the stack.
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    environment:
+      - discovery.type=single-node
+      # Local dev only: no TLS, no auth, no demo-password requirement.
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    ports:
+      - "9200:9200"
+
+  # AWS emulation for local development of the shared cache backend
+  # (news_dataset/api/cache.py's dynamodb store, declared in template.yaml).
+  # Nothing in production depends on this; FORSYT_CACHE_BACKEND defaults to the
+  # in-process dict, so the stack behaves identically without it.
+  localstack:
+    image: localstack/localstack:3.8
+    environment:
+      - SERVICES=dynamodb
+      - DEBUG=0
+    ports:
+      - "4566:4566"

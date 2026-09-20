@@ -181,6 +181,9 @@ export type PortfolioPageBundle = {
 }
 
 export type NewsArticle = {
+  // Postgres row id — already returned by /api/events/feed; needed to ask for
+  // this article's semantic neighbours (see fetchRelatedNews).
+  id?: number
   title?: string
   link?: string
   source?: string
@@ -592,6 +595,25 @@ export function fetchPageCorridor(corridor?: string, limit = 40) {
   const qs = new URLSearchParams({ limit: String(limit) })
   if (corridor) qs.set('corridor', corridor)
   return fetchJSON<CorridorPageBundle>(`/api/pages/corridor?${qs}`)
+}
+
+export type RelatedArticle = {
+  article_id: number
+  title: string | null
+  link: string | null
+  published: string | null
+  themes: string[]
+  score: number
+}
+
+// Calls GET /api/news/related?article_id= — semantically similar coverage,
+// from k-NN over the article embeddings (news_dataset/search/opensearch_client.py).
+// `enabled` is false when the backend has no OpenSearch configured, which is
+// every deployment except the compose stack; `related` is then empty.
+export function fetchRelatedNews(articleId: number, limit = 5) {
+  return fetchJSON<{ related: RelatedArticle[]; enabled: boolean }>(
+    `/api/news/related?article_id=${articleId}&limit=${limit}`,
+  )
 }
 
 export type CorridorExplanation = {

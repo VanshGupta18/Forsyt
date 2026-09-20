@@ -28,7 +28,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from news_dataset.db import count_articles_pending_nlp, get_articles_pending_nlp, update_article_nlp
 from news_dataset.nlp.locations import extract_locations
 from news_dataset.nlp.version import EXTRACTOR_VERSION
-from news_dataset.nlp.themes import extract_themes
+from news_dataset.nlp.themes import extract_themes, theme_similarities_with_embedding
 from news_dataset.nlp.tone import extract_gcam, extract_tone
 
 
@@ -100,16 +100,23 @@ def run(limit=500, start=None, end=None, reprocess=False, until_empty=False):
                 body = article["content"] or ""
                 text = f"{title}\n{body}".strip()
                 tone_neg, tone_polarity = extract_tone(text)
+                # One encode per article: theme scoring already needs this
+                # embedding, so capture it here instead of re-encoding the
+                # same text later just to index it (see search/opensearch_client.py).
+                similarities, embedding = theme_similarities_with_embedding(title, body)
                 update_article_nlp(
                     article["id"],
                     {
-                        "nlp_themes": ";".join(extract_themes(title, body)),
+                        "nlp_themes": ";".join(extract_themes(title, body, similarities=similarities)),
                         "nlp_tone_neg": tone_neg,
                         "nlp_tone_polarity": tone_polarity,
                         "nlp_gcam": extract_gcam(text),
                         "nlp_locations": extract_locations(title, body),
                         "nlp_model_version": NLP_MODEL_VERSION,
                         "nlp_extracted_at": datetime.now(timezone.utc),
+                        # psycopg2 adapts a Python list straight into the REAL[]
+                        # column — no JSON encoding in between.
+                        "nlp_embedding": embedding.tolist() if embedding is not None else None,
                     },
                 )
                 updated += 1

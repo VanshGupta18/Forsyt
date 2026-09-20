@@ -19,6 +19,7 @@ Beginner note — what is this file?
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import sys
@@ -105,7 +106,9 @@ register_ai_summary(app)
 def _require_api_key():
     if not API_KEY or request.method == "OPTIONS" or not request.path.startswith("/api/"):
         return None
-    if request.headers.get("X-API-Key") != API_KEY:
+    # compare_digest rather than != so a wrong key can't be recovered a
+    # character at a time from response-time differences.
+    if not hmac.compare_digest(request.headers.get("X-API-Key") or "", API_KEY):
         return jsonify({"error": "unauthorized"}), 401
     return None
 
@@ -122,6 +125,7 @@ def root():
             "status": "/api/status",
             "events": "/api/events/feed",
             "news_image": "/api/news/image",
+            "news_related": "/api/news/related?article_id=",
             "dual_signal": "/api/market/dual-signal",
             "pages_home": "/api/pages/home",
             "pages_macro": "/api/pages/macro",
@@ -179,6 +183,27 @@ def api_news_image():
     if not link:
         return jsonify({"error": "link required", "image_url": None}), 400
     return jsonify({"image_url": resolve_news_image(link)})
+
+
+# Semantically similar coverage for one article, via k-NN over the embeddings
+# nlp/themes.py already computes (see search/opensearch_client.py). Keyword
+# filtering in /api/events/feed can't do this — it matches tags and substrings,
+# not meaning. Returns an empty list (not an error) when OpenSearch isn't
+# configured, which is every deployment except the compose stack.
+@app.get("/api/news/related")
+def api_news_related():
+    from news_dataset.search import opensearch_client
+
+    article_id = request.args.get("article_id", "").strip()
+    if not article_id.isdigit():
+        return jsonify({"error": "numeric article_id required", "related": []}), 400
+    limit = min(int(request.args.get("limit", 5)), 20)
+    try:
+        related = opensearch_client.related_articles(int(article_id), k=limit)
+    except Exception as exc:
+        logger.exception("related lookup failed")
+        return jsonify({"error": str(exc), "related": []}), 503
+    return jsonify({"related": related, "enabled": opensearch_client.is_enabled()})
 
 
 # The combined "geopolitical risk + market volatility" reading used on the
