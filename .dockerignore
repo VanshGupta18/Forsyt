@@ -1,0 +1,11 @@
+.venv
+.git
+.github
+frontend
+gpr_index/outputs
+gpr_index/data
+nifty-50/output
+__pycache__
+*.pyc
+.pytest_cache
+news_dataset/.env

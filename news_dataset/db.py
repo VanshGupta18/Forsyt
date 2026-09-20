@@ -67,6 +67,7 @@ PUBLIC_TABLES = (
     "corridor_daily",
     "dual_signal_daily",
     "pipeline_runs",
+    "corridor_explanations",
 )
 
 _pool: psycopg2.pool.ThreadedConnectionPool | None = None
@@ -151,6 +152,14 @@ def init_db():
         "ON articles(tier, published_at DESC) WHERE duplicate_of IS NULL;"
     )
     cur.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;")
+
+    # pg_trgm backs the title/content ILIKE fallback in get_recent_news() with
+    # a GIN index so keyword filtering stays fast as article volume grows,
+    # without changing ILIKE's substring-match semantics (unlike tsvector,
+    # which would rank/stem prose — not needed here, results are date-sorted).
+    cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_title_trgm ON articles USING GIN (title gin_trgm_ops);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_articles_content_trgm ON articles USING GIN (content gin_trgm_ops);")
 
     # "geo_feed_health" — one row per RSS feed, tracking when it last
     # succeeded/failed so geo_scheduler.py can decide when a feed is "due"
@@ -245,6 +254,20 @@ def init_db():
             as_of DATE PRIMARY KEY,
             payload JSONB NOT NULL,
             updated_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    # "corridor_explanations" — one row per corridor per day: a short
+    # LLM-generated explanation of that day's risk score, generated once
+    # daily as a batch step (see pipeline/explain_corridors.py) rather than
+    # live at request time. The API only ever reads this table.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS corridor_explanations (
+            date DATE NOT NULL,
+            corridor TEXT NOT NULL,
+            explanation_text TEXT NOT NULL,
+            cited_article_ids JSONB NOT NULL DEFAULT '[]',
+            updated_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (date, corridor)
         );
     """)
     # "pipeline_runs" — a log/history row per pipeline stage execution
@@ -784,15 +807,22 @@ def get_recent_news(
         clauses.append("tier = %s")
         params.append(tier)
     if theme:
+        # nlp_themes is a ";"-joined tag list (see nlp/run_extraction.py) — match
+        # a whole tag, not a raw substring, so e.g. "war" doesn't also match a
+        # tag like "warning". title/content stay substring (ILIKE) on purpose:
+        # they're prose, not a tag list, and are backed by a trigram GIN index.
         clauses.append(
-            "(nlp_themes ILIKE %s OR title ILIKE %s OR content ILIKE %s)"
+            "(';' || nlp_themes || ';' ILIKE %s OR title ILIKE %s OR content ILIKE %s)"
         )
-        params.extend([f"%{theme}%"] * 3)
+        params.extend([f"%;{theme};%", f"%{theme}%", f"%{theme}%"])
     if corridor:
+        # nlp_locations is GDELT's V2Locations format: "#"-delimited blocks
+        # ("1#India#IN#IN#20.0#77.0#0") joined by ";" (see nlp/locations.py) —
+        # the place name sits between two "#"s, not two ";"s like nlp_themes.
         clauses.append(
             "(nlp_locations ILIKE %s OR title ILIKE %s OR content ILIKE %s)"
         )
-        params.extend([f"%{corridor}%"] * 3)
+        params.extend([f"%#{corridor}#%", f"%{corridor}%", f"%{corridor}%"])
     if start:
         clauses.append("COALESCE(published_at, scraped_at) >= %s")
         params.append(start)
@@ -814,6 +844,48 @@ def get_recent_news(
     cur.close()
     release_connection(conn)
     return [dict(row) for row in rows]
+
+
+def upsert_corridor_explanation(date, corridor, explanation_text, cited_article_ids):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO corridor_explanations
+                   (date, corridor, explanation_text, cited_article_ids, updated_at)
+               VALUES (%s, %s, %s, %s, NOW())
+               ON CONFLICT (date, corridor) DO UPDATE SET
+                   explanation_text = EXCLUDED.explanation_text,
+                   cited_article_ids = EXCLUDED.cited_article_ids,
+                   updated_at = NOW()""",
+            (date, corridor, explanation_text, json.dumps(cited_article_ids)),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        release_connection(conn)
+
+
+def get_corridor_explanation(corridor, date=None):
+    """Latest stored explanation for a corridor, or for a specific `date` if given."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if date:
+        cur.execute(
+            "SELECT date, corridor, explanation_text, cited_article_ids, updated_at "
+            "FROM corridor_explanations WHERE corridor = %s AND date = %s",
+            (corridor, date),
+        )
+    else:
+        cur.execute(
+            "SELECT date, corridor, explanation_text, cited_article_ids, updated_at "
+            "FROM corridor_explanations WHERE corridor = %s ORDER BY date DESC LIMIT 1",
+            (corridor,),
+        )
+    row = cur.fetchone()
+    cur.close()
+    release_connection(conn)
+    return dict(row) if row else None
 
 
 def upsert_dual_signal(as_of, payload):

@@ -74,3 +74,26 @@ jobs:
         with:
           path: gpr_index/data/india_processed
           key: india-processed-parquets-v1
+
+      # Generates each corridor's daily "why this score" explanation. Runs a
+      # small local model via Ollama on this runner (installed + pulled fresh
+      # below, torn down when the job ends) rather than a live inference
+      # server — no API key, no external account, no always-on host needed.
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama and pull model
+        run: |
+          ollama serve &
+          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags >/dev/null && break; sleep 1; done
+          ollama pull llama3.2:1b
+
+      - name: Install AI explanation dependencies
+        run: pip install -r news_dataset/requirements-ai.txt
+
+      - name: Run corridor explanation pipeline
+        if: success()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OLLAMA_MODEL_ID: llama3.2:1b
+        run: python -m news_dataset.pipeline.explain_corridors

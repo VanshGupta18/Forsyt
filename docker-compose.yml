@@ -1,0 +1,23 @@
+# Local-dev reproducibility only — run with `finch compose up` (or
+# `docker compose up`) instead of hand-building a .venv + npm install.
+# Does not touch production hosting. Supabase stays the database — this
+# does not stand up a local Postgres container.
+services:
+  backend:
+    build: .
+    ports:
+      - "5001:5001"
+    env_file:
+      - news_dataset/.env
+    environment:
+      PORT: "5001"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      DEV_API_PROXY_TARGET: http://backend:5001
+      VITE_API_KEY: ${VITE_API_KEY:-}
+    depends_on:
+      - backend

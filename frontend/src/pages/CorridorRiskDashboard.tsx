@@ -12,6 +12,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton'
 import CorridorRiskMap from '../components/CorridorRiskMap'
 import CorridorRouteList from '../components/CorridorRouteList'
 import CorridorNewsTicker from '../components/CorridorNewsTicker'
+import CorridorExplainPanel from '../components/CorridorExplainPanel'
 import ExplainPopover from '../components/ExplainPopover'
 import ScoreBar from '../components/ScoreBar'
 import {
@@ -419,6 +420,8 @@ export default function CorridorRiskDashboard() {
                   ))}
                 </ul>
               </div>
+
+              <CorridorExplainPanel corridorId={selectedRow.corridor ?? null} />
             </>
           ) : (
             <p className="text-sm text-corridor-muted">Select a route on the map or strip below.</p>

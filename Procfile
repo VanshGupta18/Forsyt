@@ -1,1 +1,1 @@
-web: gunicorn -c gunicorn_eb.conf.py news_dataset.api.server:app
+web: gunicorn -c news_dataset/gunicorn.conf.py news_dataset.api.server:app

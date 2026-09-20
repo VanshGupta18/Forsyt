@@ -16,6 +16,14 @@
 // ---------------------------------------------------------------------------
 const API_BASE = String(import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 
+// Sent as the X-API-Key header on every /api/* request when set. Must match
+// the backend's API_KEY (news_dataset/.env) — see docs/STACK_GAP_AND_IMPLEMENTATION_PLAN.md.
+const API_KEY = String(import.meta.env.VITE_API_KEY ?? '')
+
+function authHeaders(extra?: Record<string, string>): HeadersInit {
+  return API_KEY ? { ...extra, 'X-API-Key': API_KEY } : (extra ?? {})
+}
+
 // Shared fetch wrapper used by every function below. `<T>` is a TypeScript
 // "generic" — it lets each caller say "I expect the JSON back to look like
 // type X", e.g. `fetchJSON<HealthPayload>('/health')`. This function itself
@@ -24,7 +32,7 @@ const API_BASE = String(import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 // helpful Error if the HTTP status isn't ok (2xx), and parses the body as JSON.
 export async function fetchJSON<T>(path: string): Promise<T> {
   const url = `${API_BASE}${path}`
-  const res = await fetch(url)
+  const res = await fetch(url, { headers: authHeaders() })
   if (!res.ok) {
     const hint =
       res.status === 403 && API_BASE
@@ -586,6 +594,22 @@ export function fetchPageCorridor(corridor?: string, limit = 40) {
   return fetchJSON<CorridorPageBundle>(`/api/pages/corridor?${qs}`)
 }
 
+export type CorridorExplanation = {
+  date: string
+  corridor: string
+  explanation_text: string
+  cited_article_ids: number[]
+  updated_at: string
+}
+
+// Calls GET /api/corridor/<id>/explanation — the precomputed AI explanation
+// for why this corridor's risk score is where it is today (generated once a
+// day by news_dataset/pipeline/explain_corridors.py, not live). 404 means no
+// explanation has been generated yet for this corridor.
+export function fetchCorridorExplanation(corridorId: string) {
+  return fetchJSON<CorridorExplanation>(`/api/corridor/${encodeURIComponent(corridorId)}/explanation`)
+}
+
 // Calls GET /api/pages/portfolio — GPR score, dual signal, and market quotes
 // used to drive the (illustrative) Portfolio Exposure page.
 export function fetchPagePortfolio() {
@@ -692,7 +716,7 @@ export async function analyzePortfolio(csv: string): Promise<PortfolioAnalysis> 
   const url = `${API_BASE}/api/portfolio/analyze`
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ csv }),
   })
   const data = (await res.json()) as PortfolioAnalysis

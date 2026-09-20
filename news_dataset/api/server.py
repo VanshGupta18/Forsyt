@@ -74,11 +74,17 @@ def add_cache_headers(response):
     return _maybe_cache_headers(response, request.path)
 
 
+# Empty by default so unauthenticated local dev keeps working out of the box;
+# set API_KEY in .env to require it (needed before this is ever deployed
+# somewhere publicly reachable).
+API_KEY = os.environ.get("API_KEY", "")
+FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "*")
+
 CORS(
     app,
     resources={
-        r"/api/*": {"origins": "*"},
-        r"/health*": {"origins": "*"},
+        r"/api/*": {"origins": FRONTEND_ORIGIN},
+        r"/health*": {"origins": FRONTEND_ORIGIN},
     },
 )
 
@@ -93,6 +99,15 @@ register_worldmonitor(app)
 from news_dataset.api.ai_summary import register_ai_summary  # noqa: E402
 
 register_ai_summary(app)
+
+
+@app.before_request
+def _require_api_key():
+    if not API_KEY or request.method == "OPTIONS" or not request.path.startswith("/api/"):
+        return None
+    if request.headers.get("X-API-Key") != API_KEY:
+        return jsonify({"error": "unauthorized"}), 401
+    return None
 
 
 @app.get("/")
@@ -115,6 +130,7 @@ def root():
             "pages_portfolio": "/api/pages/portfolio",
             "pages_quality": "/api/pages/quality",
             "portfolio_analyze": "POST /api/portfolio/analyze",
+            "corridor_explanation": "/api/corridor/<corridor_id>/explanation",
         },
     })
 
@@ -274,6 +290,18 @@ def api_portfolio_sector_betas():
     except Exception as exc:
         logger.exception("sector betas failed")
         return jsonify({"error": str(exc)}), 500
+
+
+# The precomputed AI explanation for why a corridor's risk score is where it
+# is today — generated once/day by pipeline/explain_corridors.py, not live.
+@app.get("/api/corridor/<corridor_id>/explanation")
+def api_corridor_explanation(corridor_id: str):
+    from news_dataset import db
+
+    row = db.get_corridor_explanation(corridor_id)
+    if not row:
+        return jsonify({"error": "no explanation available for this corridor yet"}), 404
+    return jsonify(row)
 
 
 # The "how accurate is this index" methodology/quality report — pass-fail
