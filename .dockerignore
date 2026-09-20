@@ -2,10 +2,27 @@
 .git
 .github
 frontend
+# Bulk pipeline artifacts stay out (gpr_index/data is ~810 GB locally), but
+# two paths under them are read by the API at *runtime* and must ship:
+#   gpr_index/outputs/validation      -> api/metrics_service.py:14-18 (/api/pages/quality)
+#   nifty-50/output/sector_factors.json -> api/portfolio_service.py:62 (fitted betas)
+# Without them the API still boots: quality degrades, and portfolio scores
+# silently fall back to _PRIOR_FACTORS. Order matters — the re-include must
+# follow the exclude.
 gpr_index/outputs
+!gpr_index/outputs/validation
 gpr_index/data
 nifty-50/output
-__pycache__
-*.pyc
-.pytest_cache
+!nifty-50/output/sector_factors.json
+# .dockerignore patterns match the *whole path*, so a bare `__pycache__` only
+# matches one at the repo root — nested ones were being sent to the daemon.
+# `**/` is what makes these recursive.
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+# AppleDouble sidecars: this repo lives on an exFAT volume, where macOS stores
+# xattrs in `._*` files that the Docker build context can't stat ("failed to
+# xattr ... operation not permitted"). Nothing needs them in the image.
+**/._*
+**/.DS_Store
 news_dataset/.env

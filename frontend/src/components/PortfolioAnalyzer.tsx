@@ -6,6 +6,7 @@ import { useEffect, useState, type ChangeEvent } from 'react'
 import {
   analyzePortfolio,
   fetchPortfolioSummary,
+  isModelGenerated,
   type AiSummary,
   type PortfolioAnalysis,
   type PortfolioHolding,
@@ -50,11 +51,13 @@ function PortfolioAiSummary({ analysis }: { analysis: PortfolioAnalysis }) {
     <div className="border-t border-white/10 pt-3">
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-[10px] uppercase tracking-wide text-corridor-muted">AI summary</span>
-        {summary?.source === 'bedrock' && (
-          <span className="text-[8px] uppercase px-1 py-0.5 rounded bg-corridor-clear/20 text-corridor-clear">Claude · Bedrock</span>
+        {isModelGenerated(summary?.source) && (
+          <span className="text-[8px] uppercase px-1 py-0.5 rounded bg-corridor-clear/20 text-corridor-clear" title={`Written by the ${summary?.source} model from the attribution numbers`}>
+            {summary?.source}
+          </span>
         )}
         {(summary?.source === 'deterministic' || summary?.source === 'fallback') && (
-          <span className="text-[8px] uppercase px-1 py-0.5 rounded bg-white/10 text-gray-400" title="Generated from the attribution numbers (Bedrock not configured)">
+          <span className="text-[8px] uppercase px-1 py-0.5 rounded bg-white/10 text-gray-400" title="Generated from the attribution numbers (no model configured)">
             computed
           </span>
         )}

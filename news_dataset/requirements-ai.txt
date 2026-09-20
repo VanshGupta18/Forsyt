@@ -1,2 +1,7 @@
-strands-agents
+# LLM features: the daily corridor explanations (pipeline/explain_corridors.py)
+# and the portfolio summary (api/ai_summary.py). Both build their agent through
+# news_dataset/agent_model.py, so the extras here are what that module can
+# import: [gemini] for the hosted provider, `ollama` for the local one used on
+# the GitHub Actions runner.
+strands-agents[gemini]
 ollama

@@ -7,10 +7,19 @@ services:
     build: .
     ports:
       - "5001:5001"
+    # news_dataset/.env is gitignored, so a fresh clone won't have it.
+    # required:false lets compose start instead of erroring on the missing file.
     env_file:
-      - news_dataset/.env
+      - path: news_dataset/.env
+        required: false
+    # Only PORT is set here. DATABASE_URL / API_KEY / FRONTEND_ORIGIN come from
+    # env_file above; they are deliberately NOT repeated as passthrough entries,
+    # because `environment` wins over `env_file` and an unset shell variable
+    # resolves to empty — which silently blanks the value the .env supplied and
+    # the container dies on boot (db.py raises at import when DATABASE_URL is "").
+    # Without a .env, pass them explicitly: docker compose run -e DATABASE_URL=... backend
     environment:
-      PORT: "5001"
+      - PORT=5001
 
   frontend:
     build: ./frontend

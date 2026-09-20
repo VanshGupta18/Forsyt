@@ -1,10 +1,12 @@
-Flask>=3.0
-flask-cors>=4.0
-requests>=2.31
-python-dotenv>=1.0
-feedparser>=6.0
-psycopg2-binary>=2.9
-pandas>=2.0
-pyarrow>=14.0
-yfinance>=0.2
+# API runtime deps for the container build. Kept as includes of the canonical
+# lists so a dependency added for the API reaches both the image and the GitHub
+# Actions workflows, which install news_dataset/requirements*.txt directly.
+-r news_dataset/requirements.txt
+
+# The portfolio summary endpoint calls a model through news_dataset/agent_model.py.
+# Without these it still returns its deterministic narrative, but the AI path is
+# silently unavailable — so the image ships them.
+-r news_dataset/requirements-ai.txt
+
+# Only extra the container needs beyond the app itself: the WSGI server the CMD runs.
 gunicorn>=21.2.0

@@ -4,29 +4,26 @@ Given a portfolio's geopolitical-risk analysis, explains the overall risk, which
 sectors drive it, the dominant pressure channels (GPR/oil/INR/trade), how it
 behaves under the scenarios, and the live trade-route drivers.
 
-Uses Google Gemini (generateContent REST API) when GEMINI_API_KEY is set;
-otherwise — or on any Gemini error — returns a deterministic narrative built
-from the same numbers, so the panel never breaks.
+Runs through the Strands agent built by news_dataset/agent_model.py — the same
+provider the daily corridor explainer uses, so there is one model setting for
+the whole project rather than one per feature. If no provider is configured, or
+the call fails for any reason, this returns a deterministic narrative built from
+the same numbers, so the panel never breaks.
 
-Env:
-  GEMINI_API_KEY — Google AI Studio API key. Required for the LLM path.
-  GEMINI_MODEL   — override the model (default gemini-3.8-flash).
+See agent_model.py for the provider environment variables.
 """
 from __future__ import annotations
 
 import json
 import logging
-import os
 
-import requests
 from flask import Flask, jsonify, request
 
+from news_dataset import agent_model
 from news_dataset.api.cache import _MISSING, cache_get, cache_set
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-3.8-flash"
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 CACHE_TTL = 3600  # summaries are stable for a given portfolio snapshot
 
 
@@ -90,36 +87,19 @@ def _portfolio_prompt(a: dict) -> str:
     )
 
 
-def _gemini_summary(prompt: str, model: str) -> str:
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY not configured")
-    resp = requests.post(
-        GEMINI_URL.format(model=model),
-        headers={"x-goog-api-key": key},  # key in header, not URL, to keep it out of logs
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            # 3.x flash are thinking models: without thinkingBudget=0 the reasoning
-            # tokens eat maxOutputTokens and the answer truncates (finishReason
-            # MAX_TOKENS -> empty/garbled summary). This task needs no reasoning.
-            "generationConfig": {
-                "temperature": 0.3,
-                "maxOutputTokens": 800,
-                "thinkingConfig": {"thinkingBudget": 0},
-            },
-        },
-        timeout=30,
+def _agent_summary(prompt: str) -> str:
+    """One turn through the configured model. No tools — this is a caption task."""
+    # Deliberately minimal: _portfolio_prompt() is self-contained (persona,
+    # formatting rules and the not-investment-advice constraint all live there,
+    # tuned against real output). Restating any of it here risks contradicting it.
+    agent = agent_model.build_agent(
+        "Follow the user's instructions exactly.",
+        temperature=0.3,
     )
-    resp.raise_for_status()
-    parts = resp.json()["candidates"][0]["content"]["parts"]
-    text = "".join(p.get("text", "") for p in parts).strip()
+    text = str(agent(prompt)).strip()
     if not text:
-        raise ValueError("empty gemini response")
+        raise ValueError("empty model response")
     return text
-
-
-def _gemini_enabled() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY"))
 
 
 def register_ai_summary(app: Flask) -> None:
@@ -138,16 +118,17 @@ def register_ai_summary(app: Flask) -> None:
             return jsonify(hit)
 
         fallback = _portfolio_deterministic(a)
-        if not _gemini_enabled():
+        if not agent_model.is_configured():
             out = {"summary": fallback, "source": "deterministic"}
         else:
             try:
-                text = _gemini_summary(
-                    _portfolio_prompt(a), os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
-                )
-                out = {"summary": text, "source": "gemini"}
+                out = {
+                    "summary": _agent_summary(_portfolio_prompt(a)),
+                    # the provider name, so the UI can show what produced this
+                    "source": agent_model.provider_name(),
+                }
             except Exception:
-                logger.exception("gemini portfolio summary failed; using deterministic fallback")
+                logger.exception("agent portfolio summary failed; using deterministic fallback")
                 out = {"summary": fallback, "source": "fallback"}
 
         cache_set(cache_key, out)

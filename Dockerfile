@@ -5,7 +5,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Requirements first, so the pip layer stays cached independently of the source
+# below. requirements.txt is `-r` includes of the news_dataset lists, so those
+# files have to be present at install time.
 COPY requirements.txt ./
+COPY news_dataset/requirements.txt news_dataset/requirements-ai.txt ./news_dataset/
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY news_dataset/ ./news_dataset/

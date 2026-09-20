@@ -695,10 +695,19 @@ export function fetchSectorBetas() {
   return fetchJSON<SectorBetasPayload>('/api/portfolio/sector-betas')
 }
 
-export type AiSummary = { summary: string; source: 'gemini' | 'fallback' | 'deterministic'; error?: string }
+// `source` is the model provider that produced the summary ('gemini', 'ollama',
+// ...), or 'deterministic'/'fallback' when no model ran — see the backend's
+// news_dataset/agent_model.py. Kept open-ended so adding a provider there does
+// not require a frontend change.
+export type AiSummaryProvider = 'deterministic' | 'fallback'
+export type AiSummary = { summary: string; source: AiSummaryProvider | (string & {}); error?: string }
 
-// AI (Gemini) explainer for the whole portfolio's GPR risk — overall score,
-// sector drivers, pressure channels, scenarios and route drivers. Shown in the
+export function isModelGenerated(source: string | undefined): boolean {
+  return !!source && source !== 'deterministic' && source !== 'fallback'
+}
+
+// AI explainer for the whole portfolio's GPR risk — overall score, sector
+// drivers, pressure channels, scenarios and route drivers. Shown in the
 // Portfolio GPR Risk panel; degrades to a deterministic narrative server-side.
 export async function fetchPortfolioSummary(analysis: PortfolioAnalysis): Promise<AiSummary> {
   const url = `${API_BASE}/api/portfolio/summary`

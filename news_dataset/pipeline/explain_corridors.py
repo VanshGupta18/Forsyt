@@ -1,6 +1,11 @@
 """Daily job: a short natural-language explanation of each corridor's risk
-score, generated once per day by a local LLM (via the Strands Agents SDK +
-Ollama) and stored in Postgres — not served live.
+score, generated once per day by an LLM (via the Strands Agents SDK) and
+stored in Postgres — not served live.
+
+The model provider is chosen by news_dataset/agent_model.py, shared with the
+portfolio summary (api/ai_summary.py) so both features have one configuration
+surface. On the GitHub Actions runner that means Ollama, installed and pulled
+for the few minutes this job takes.
 
 Beginner note — why this is a batch job, not a live API endpoint:
     Running LLM inference needs either a paid always-on server, or, here, a
@@ -15,7 +20,6 @@ Run standalone: python -m news_dataset.pipeline.explain_corridors
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -23,14 +27,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from strands import Agent  # noqa: E402
-from strands.models.ollama import OllamaModel  # noqa: E402
-
 from gpr_index.scripts.corridors import CORRIDOR_PLACES  # noqa: E402
-from news_dataset import db  # noqa: E402
+from news_dataset import agent_model, db  # noqa: E402
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL_ID = os.environ.get("OLLAMA_MODEL_ID", "qwen2.5:7b-instruct")
 ARTICLES_PER_CORRIDOR = 5
 
 SYSTEM_PROMPT = (
@@ -72,16 +71,11 @@ def _cited_articles(corridor_id: str, limit: int = ARTICLES_PER_CORRIDOR) -> lis
     return articles[:limit]
 
 
-def _build_agent() -> Agent:
-    model = OllamaModel(
-        host=OLLAMA_HOST,
-        model_id=OLLAMA_MODEL_ID,
-        temperature=0.2,
-    )
-    return Agent(model=model, system_prompt=SYSTEM_PROMPT)
+def _build_agent():
+    return agent_model.build_agent(SYSTEM_PROMPT, temperature=0.2)
 
 
-def explain_corridor(agent: Agent, corridor_row: dict, articles: list[dict]) -> str:
+def explain_corridor(agent, corridor_row: dict, articles: list[dict]) -> str:
     headlines = (
         "\n".join(f"- {a['title']} ({a['source']})" for a in articles)
         if articles
