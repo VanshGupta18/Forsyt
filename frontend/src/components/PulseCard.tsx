@@ -1,6 +1,7 @@
 // Small stat-tile card used across Home/News/Macro pulse strips. Two modes
 // via the `variant` prop: a generic label+value ('stat', optionally
 // clickable) or a market-quote card with its own sparkline ('market').
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { formatPrice, type MarketHistoryPayload, type MarketQuote } from '../lib/api'
 import { changeClass } from '../lib/macroCopy'
@@ -24,20 +25,38 @@ type MarketProps = {
   compact?: boolean
   history?: MarketHistoryPayload
   className?: string
+  onExpand?: () => void
 }
 
 type Props = StatProps | MarketProps
 
 export default function PulseCard(props: Props) {
   if (props.variant === 'market') {
-    const { quote, loading, selected, compact, history, className = '' } = props
+    const { quote, loading, selected, compact, history, className = '', onExpand } = props
     const label = quote?.label ?? '—'
+    const clickable = Boolean(onExpand && history?.points?.length)
 
     return (
       <div
         className={`corridor-panel shrink-0 p-3 flex flex-col gap-2 ${
           compact ? 'w-[140px]' : 'w-[168px]'
-        } ${selected ? 'macro-pulse-card-selected' : ''} ${className}`}
+        } ${selected ? 'macro-pulse-card-selected' : ''} ${
+          clickable ? 'cursor-pointer hover:border-white/20 transition-colors' : ''
+        } ${className}`}
+        {...(clickable
+          ? {
+              role: 'button' as const,
+              tabIndex: 0,
+              'aria-label': `Expand ${label} chart`,
+              onClick: onExpand,
+              onKeyDown: (e: ReactKeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onExpand?.()
+                }
+              },
+            }
+          : {})}
       >
         <div className="flex items-start justify-between gap-1">
           <span className="corridor-kicker truncate">{label}</span>

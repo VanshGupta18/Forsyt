@@ -490,6 +490,33 @@ def _oil_gpr() -> dict | None:
     }
 
 
+def get_oil_gpr_history(limit: int = 400) -> list[dict]:
+    """Daily India oil-GPR series for the Markets chart.
+
+    Reuses the GPR history point shape (gpr_index/gpr_7ma/gpr_30ma) so the
+    existing interactive GprHistoryChart can render it directly — the values
+    are the oil-GPR index and its moving averages.
+    """
+    df = _read_output_csv("gpr_oil_daily.csv")
+    if df.empty or "gpr_oil_index" not in df.columns:
+        return []
+    df = df.dropna(subset=["gpr_oil_index"]).tail(limit)
+    out = []
+    for _, row in df.iterrows():
+        val = row.get("gpr_oil_index")
+        if not _valid_gpr_index(val):
+            continue
+        out.append(
+            {
+                "date": str(row.get("date"))[:10],
+                "gpr_index": float(val),
+                "gpr_7ma": float(row["gpr_oil_7ma"]) if _valid_gpr_index(row.get("gpr_oil_7ma")) else None,
+                "gpr_30ma": float(row["gpr_oil_30ma"]) if _valid_gpr_index(row.get("gpr_oil_30ma")) else None,
+            }
+        )
+    return out
+
+
 def get_gpr_panels(*, skip_cache: bool = False) -> dict:
     """Event-type mix, threats-vs-acts, and oil-GPR summaries for the portfolio page."""
     cache_key = "gpr:panels"

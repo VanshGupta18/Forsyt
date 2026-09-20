@@ -23,7 +23,7 @@ const DESTINATIONS: Destination[] = [
   { to: '/news', label: 'Headlines' },
   { to: '/macroeconomics', label: 'Market stress' },
   { to: '/trade-corridor', label: 'Corridor risk' },
-  { to: '/portfolio-exposure', label: 'Portfolio' },
+  { to: '/macroeconomics#holdings', label: 'My holdings' },
 ]
 
 function quadrantChipLabel(q: StressQuadrantId): string {
@@ -148,7 +148,7 @@ export default function HeroVerdictBlock({ live }: Props) {
             label="Oil-GPR"
             value={loading ? '…' : oilGpr ? String(Math.round(oilGpr.index)) : '—'}
             valueClass="text-corridor-alert"
-            href="/portfolio-exposure"
+            href="/macroeconomics"
           />
         </div>
         <PulseCard

@@ -49,9 +49,10 @@
 // ---------------------------------------------------------------------------
 import { useEffect, useRef } from 'react'
 import { geoOrthographic, geoPath, geoGraticule10, geoInterpolate, geoDistance, type GeoProjection } from 'd3-geo'
-import { feature } from 'topojson-client'
-import type { Topology } from 'topojson-specification'
+import { feature, mesh } from 'topojson-client'
+import type { Topology, GeometryCollection } from 'topojson-specification'
 import landTopology from 'world-atlas/land-110m.json'
+import countriesTopology from 'world-atlas/countries-110m.json'
 import { corridorOperationalRisk, type CorridorRow, type CorridorsPayload } from '../lib/api'
 import { corridorCentroidLonLat, corridorRiskColor } from '../lib/corridorGeo'
 
@@ -65,6 +66,13 @@ const GRATICULE = geoGraticule10()
 // of this component and never changes, so there's no reason to redo this
 // decode on every render.
 const LAND = feature(landTopology as unknown as Topology, (landTopology as unknown as Topology).objects.land as never)
+// Internal country borders only (mesh filtered to arcs shared by two distinct
+// countries) — the political overlay. Coastlines still come from LAND above.
+const COUNTRY_BORDERS = mesh(
+  countriesTopology as unknown as Topology,
+  (countriesTopology as unknown as Topology).objects.countries as GeometryCollection,
+  (a, b) => a !== b,
+)
 
 // [lon, lat] — d3-geo's coordinate convention (not [lat, lon])
 const INDIA: [number, number] = [78.9629, 20.5937]
@@ -151,6 +159,7 @@ export default function HeroGlobe({
 }) {
   const graticuleRef = useRef<SVGPathElement>(null)
   const landRef = useRef<SVGPathElement>(null)
+  const bordersRef = useRef<SVGPathElement>(null)
   const nodeRefs = useRef<(SVGGElement | null)[]>([])
   const dotRefs = useRef<(SVGCircleElement | null)[]>([])
   const ringRefs = useRef<(SVGCircleElement | null)[]>([])
@@ -195,6 +204,7 @@ export default function HeroGlobe({
 
       graticuleRef.current?.setAttribute('d', path(GRATICULE) ?? '')
       landRef.current?.setAttribute('d', path(LAND) ?? '')
+      bordersRef.current?.setAttribute('d', path(COUNTRY_BORDERS) ?? '')
 
       for (let i = 0; i < MAX_GLOBE_NODES; i++) {
         const node = nodesRef.current[i]
@@ -302,6 +312,7 @@ export default function HeroGlobe({
         <circle cx={SIZE / 2} cy={SIZE / 2} r={GLOBE_SCALE} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={1} />
         <path ref={graticuleRef} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={0.6} />
         <path ref={landRef} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={1} />
+        <path ref={bordersRef} fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth={0.5} />
         {Array.from({ length: MAX_GLOBE_NODES }).map((_, i) => (
           <path
             key={`line-${i}`}

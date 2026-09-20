@@ -1,0 +1,36 @@
+{
+  "type": "FeatureCollection",
+  "note": "Approximate submarine-cable trunk routes (major India/Asia–Europe systems) for illustrative overview only — not survey-accurate landing geometry.",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "SEA-ME-WE 5" },
+      "geometry": { "type": "LineString", "coordinates": [[103.8, 1.35], [95.3, 5.5], [80.2, 6.0], [72.8, 19.0], [58.4, 23.6], [43.1, 11.6], [32.3, 30.0], [14.5, 35.9], [5.35, 43.3]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "AAE-1" },
+      "geometry": { "type": "LineString", "coordinates": [[114.1, 22.3], [103.8, 1.35], [80.2, 6.0], [72.8, 19.0], [58.4, 23.6], [43.1, 11.6], [32.3, 30.0], [12.5, 37.0], [5.35, 43.3]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "IMEWE" },
+      "geometry": { "type": "LineString", "coordinates": [[72.8, 19.0], [58.4, 23.6], [43.1, 11.6], [32.3, 30.0], [14.5, 37.5], [5.35, 43.3]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Blue-Raman" },
+      "geometry": { "type": "LineString", "coordinates": [[72.8, 19.0], [58.4, 23.6], [43.1, 12.8], [34.8, 32.1], [14.5, 37.5], [8.9, 44.4]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "2Africa (segment)" },
+      "geometry": { "type": "LineString", "coordinates": [[32.3, 30.0], [39.2, -6.8], [18.4, -33.9], [3.4, 6.4], [-17.4, 14.7], [-9.1, 38.7], [-0.1, 51.5]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "MIST (Bay of Bengal)" },
+      "geometry": { "type": "LineString", "coordinates": [[80.3, 13.1], [90.4, 12.5], [95.3, 5.5], [103.8, 1.35]] }
+    }
+  ]
+}

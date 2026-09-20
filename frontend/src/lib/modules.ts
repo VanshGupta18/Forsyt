@@ -41,16 +41,6 @@ export const modules: {
     navLabel: 'Corridors',
   },
   {
-    to: '/portfolio-exposure',
-    title: 'Portfolio Exposure & GPR Analytics',
-    description:
-      'Assess portfolio exposure using India GPR Index with scenario analysis, stress testing and sector impact.',
-    icon: 'deployed_code',
-    tier: 'advanced',
-    kicker: 'Advanced',
-    navLabel: 'Portfolio',
-  },
-  {
     to: '/quality',
     title: 'Platform Quality & Accuracy',
     description:

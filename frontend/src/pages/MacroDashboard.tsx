@@ -7,12 +7,12 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ApiErrorBanner from '../components/ApiErrorBanner'
 import DrivingHeadlines from '../components/DrivingHeadlines'
-import DualSignalChart from '../components/DualSignalChart'
+import RiskChartsPanel from '../components/RiskChartsPanel'
 import HistoricalAnalogPanel from '../components/HistoricalAnalogPanel'
 import JointStressPanel from '../components/JointStressPanel'
 import MacroMetricTable from '../components/MacroMetricTable'
 import MacroPulseStrip from '../components/MacroPulseStrip'
-import StressPositionMap from '../components/StressPositionMap'
+import PortfolioAnalyzer from '../components/PortfolioAnalyzer'
 import TodayVerdict from '../components/TodayVerdict'
 import TopCorridorCard from '../components/TopCorridorCard'
 import {
@@ -104,11 +104,6 @@ export default function MacroDashboard() {
       : indicators?.trailing_vol_22d != null
         ? `${indicators.trailing_vol_22d}%`
         : '—'
-
-  const contextGridClass = useMemo(
-    () => (showAnalog ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''),
-    [showAnalog],
-  )
 
   const quotesLoading = (isLoading || isFetching) && !quotes.length
   const dualLoading = isLoading && !dual
@@ -218,22 +213,29 @@ export default function MacroDashboard() {
 
       <DrivingHeadlines events={geo?.driving_events} loading={dualLoading} meta={dual?.driving_events_meta} />
 
-      <DualSignalChart
+      <RiskChartsPanel
         indexDays={geo?.index_days}
         gprHistory={data?.gpr_history?.history}
-        niftyHistory={data?.market_histories?.histories?.nifty}
+        oilHistory={data?.oil_gpr_history?.history}
       />
 
-      <div className={contextGridClass}>
-        <StressPositionMap
-          geoPercentile={joint?.geo_percentile ?? geo?.geo_percentile}
-          volPercentile={joint?.vol_percentile ?? vol?.vol_percentile}
-          volUnavailable={volUnavailable}
-        />
-        {showAnalog && <HistoricalAnalogPanel analog={dual?.historical_analog} />}
-      </div>
+      {showAnalog && <HistoricalAnalogPanel analog={dual?.historical_analog} />}
 
       {showCorridorCard && <TopCorridorCard corridorId={topCorridor} />}
+
+      <section id="holdings" className="border-t border-white/5 pt-8 space-y-4 scroll-mt-24">
+        <div className="max-w-2xl">
+          <span className="corridor-kicker">Your holdings</span>
+          <p className="text-sm text-corridor-muted mt-1">
+            Turn the stress read above into your own exposure — paste or upload holdings to see the
+            GPR risk, sector tilts and an energy-supply shock scenario.
+          </p>
+        </div>
+        <PortfolioAnalyzer />
+        <p className="text-[10px] text-gray-500 text-center">
+          Sector tilts are educational context from live GPR regime — not investment advice.
+        </p>
+      </section>
     </div>
   )
 }

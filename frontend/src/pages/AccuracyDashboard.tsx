@@ -11,6 +11,7 @@ import HeadlineTrustCards from '../components/quality/HeadlineTrustCards'
 import LiveStatusStrip from '../components/quality/LiveStatusStrip'
 import MethodologyPipeline from '../components/quality/MethodologyPipeline'
 import QualityCheckTable from '../components/quality/QualityCheckTable'
+import SectorBetasPanel from '../components/quality/SectorBetasPanel'
 import StaleDataBanner from '../components/quality/StaleDataBanner'
 import ValidationSummaryBar from '../components/quality/ValidationSummaryBar'
 import ValidationVizPanel from '../components/quality/ValidationVizPanel'
@@ -185,6 +186,7 @@ export default function AccuracyDashboard() {
                 </div>
                 <ValidationVizPanel checks={data.checks} summary={data.summary} />
                 <VolModelPanel vol={data.vol_model} />
+                <SectorBetasPanel />
                 <QualityCheckTable checks={data.checks} onRefresh={() => load(true)} refreshing={refreshing} />
                 {data.pipeline.ingestion?.feed_health &&
                   Object.keys(data.pipeline.ingestion.feed_health).length > 0 && (

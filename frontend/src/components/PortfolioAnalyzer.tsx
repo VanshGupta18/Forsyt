@@ -1,169 +1,18 @@
-// Route: "/portfolio-exposure" (Portfolio Exposure & GPR Analytics). An
-// illustrative page: live GPR/stress/market tiles at the top, then a
-// regime-driven sector-sensitivity table and a GPR history chart. The
-// sample allocation and scenario tables further down are static demo data
-// (no real holdings are connected yet) — search for "Demo" in this file.
-import { useMemo, useState, type ChangeEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
-import Reveal from '../components/Reveal'
-import ExplainPopover from '../components/ExplainPopover'
-import GprHistoryChart from '../components/GprHistoryChart'
-import SectorExposure from '../components/SectorExposure'
-import ApiErrorBanner from '../components/ApiErrorBanner'
-import MarketTicker from '../components/MarketTicker'
+// Portfolio analyzer — paste/upload holdings → GPR exposure, sector tilts,
+// scenario shock and per-holding GPR-vs-price tiles. Stateless (nothing is
+// stored); computed on the fly via POST /api/portfolio/analyze. Lives on the
+// Markets page as the "your holdings" section.
+import { useEffect, useState, type ChangeEvent } from 'react'
 import {
   analyzePortfolio,
-  fetchPagePortfolio,
-  fetchSectorBetas,
-  formatCorridorName,
-  formatPrice,
-  orderMarketQuotes,
+  fetchPortfolioSummary,
+  type AiSummary,
   type PortfolioAnalysis,
   type PortfolioHolding,
-  type SectorBeta,
 } from '../lib/api'
-
-import { portfolioStressContext } from '../lib/portfolioCopy'
-import { queryKeys } from '../lib/queryClient'
-
-export default function PortfolioDashboard() {
-  const [searchParams] = useSearchParams()
-  const stressParam = searchParams.get('stress')
-  const corridorParam = searchParams.get('corridor')
-
-  const { data, error, isLoading, refetch } = useQuery({
-    queryKey: queryKeys.portfolio,
-    queryFn: fetchPagePortfolio,
-  })
-
-  const gpr = data?.gpr_current?.gpr_index ?? null
-  const gprDate = data?.gpr_current?.date ?? null
-  const dual = data?.dual_signal ?? null
-  const quotes = orderMarketQuotes(data?.quotes?.quotes ?? [])
-  const quotesLoading = isLoading && !quotes.length
-
-  const joint = dual?.joint_stress
-  const geo = dual?.geopolitical
-  const nifty = quotes.find((q) => q.key === 'nifty')
-  const usdInr = quotes.find((q) => q.key === 'usd_inr')
-
-  const context = useMemo(
-    () => portfolioStressContext(stressParam, corridorParam, geo?.regime),
-    [stressParam, corridorParam, geo?.regime],
-  )
-
-  const { data: betas } = useQuery({
-    queryKey: ['portfolio', 'sector-betas'],
-    queryFn: fetchSectorBetas,
-    staleTime: 1000 * 60 * 60,
-  })
-
-  const fromStressMonitor = Boolean(stressParam || corridorParam)
-
-  return (
-    <div className="px-margin-page max-w-container-max mx-auto py-8 space-y-6">
-      {fromStressMonitor ? (
-        <div className="corridor-panel border-l-4 border-[var(--corridor-accent-watch)] p-4">
-          <p className="corridor-kicker">From market stress monitor</p>
-          <h2 className="corridor-headline text-base mt-1">{context.title}</h2>
-          <p className="text-sm text-corridor-muted mt-2">{context.detail}</p>
-          <Link to="/macroeconomics" className="text-xs text-corridor-muted underline hover:text-white mt-2 inline-block">
-            ← Back to stress monitor
-          </Link>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-[#f59e0b]/40 bg-[#f59e0b]/10 px-4 py-3 text-sm text-[#f59e0b] flex flex-wrap items-center justify-between gap-2">
-          <span>Holdings analysis is illustrative — live GPR and dual-signal context below.</span>
-          <Link to="/quality" className="text-white underline text-xs">Platform quality metrics →</Link>
-        </div>
-      )}
-
-      <MarketTicker quotes={quotes} loading={quotesLoading} />
-
-      {error instanceof Error && (
-        <ApiErrorBanner message={`Portfolio data: ${error.message}`} onRetry={() => void refetch()} />
-      )}
-
-      <Reveal>
-        <header className="glass-card p-6">
-          <span className="eyebrow-badge mb-3 inline-flex">
-            <span className="eyebrow-dot" />
-            Live stress context
-          </span>
-          <h1 className="text-xl text-white font-semibold mb-2">Portfolio Exposure &amp; GPR Analytics</h1>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 mt-4">
-            <div className="glass-card-inner p-4">
-              <div className="text-xs text-gray-500 uppercase mb-1">News risk score</div>
-              <div className="text-2xl font-bold text-white">{gpr ?? '—'}</div>
-              <div className="text-xs text-gray-400">{gprDate ? `As of ${gprDate}` : geo?.regime}</div>
-            </div>
-            <div className="glass-card-inner p-4">
-              <div className="text-xs text-gray-500 uppercase mb-1">Combined stress</div>
-              <div className="text-2xl font-bold text-white">{joint?.stress_score ?? '—'}</div>
-              <div className="text-xs text-gray-400">{joint?.stress_regime ?? '—'}</div>
-            </div>
-            <div className="glass-card-inner p-4">
-              <div className="text-xs text-gray-500 uppercase mb-1">NIFTY 50</div>
-              <div className="text-2xl font-bold text-white">{nifty ? formatPrice(nifty.price, nifty.currency) : '—'}</div>
-              <div className="text-xs text-gray-400">{nifty ? `${nifty.change_pct >= 0 ? '+' : ''}${nifty.change_pct}%` : '—'}</div>
-            </div>
-            <div className="glass-card-inner p-4">
-              <div className="text-xs text-gray-500 uppercase mb-1">USD/INR</div>
-              <div className="text-2xl font-bold text-white">{usdInr ? formatPrice(usdInr.price, usdInr.currency) : '—'}</div>
-              <div className="text-xs text-gray-400">
-                {usdInr ? `${usdInr.change_pct >= 0 ? '+' : ''}${usdInr.change_pct}% · dominant risk channel` : '—'}
-              </div>
-            </div>
-            <div className="glass-card-inner p-4">
-              <div className="text-xs text-gray-500 uppercase mb-1">Top trade route</div>
-              <div className="text-2xl font-bold text-white truncate">{formatCorridorName(geo?.top_corridor) ?? '—'}</div>
-              <div className="text-xs text-gray-400">Highest-risk corridor</div>
-            </div>
-          </div>
-        </header>
-      </Reveal>
-
-      <Reveal>
-        <section className="glass-card p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <h2 className="text-base font-semibold text-white">Sector sensitivity · fitted betas</h2>
-            {betas?.betas_source && (
-              <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded ${betas.betas_source === 'fitted' ? 'bg-corridor-clear/20 text-corridor-clear' : 'bg-white/10 text-gray-400'}`}>
-                {betas.betas_source === 'fitted' ? 'trained' : 'prior'}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-gray-400 mb-4">
-            Estimated from ~19 years of weekly sector returns regressed on GPR, oil (Brent) and INR shocks.
-            Each chip is the fitted loading on that channel — <span className="text-corridor-alert">+ = headwind</span>,{' '}
-            <span className="text-corridor-clear">− = tailwind</span>. INR is the dominant channel.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(betas?.sectors ?? []).map((row) => (
-              <SectorBetaCard key={row.sector} row={row} />
-            ))}
-          </div>
-        </section>
-      </Reveal>
-
-      <Reveal>
-        <section className="glass-card p-5">
-          <h2 className="text-base font-semibold text-white mb-4">Historical news risk index</h2>
-          <GprHistoryChart history={data?.gpr_history?.history ?? []} />
-        </section>
-      </Reveal>
-
-      <Reveal>
-        <PortfolioAnalyzer />
-      </Reveal>
-
-      <p className="text-[10px] text-gray-500 text-center">
-        Sector tilts are educational context from live GPR regime — not investment advice.
-      </p>
-    </div>
-  )
-}
+import SectorExposure from './SectorExposure'
+import ExplainPopover from './ExplainPopover'
+import HoldingChartModal from './HoldingChartModal'
 
 const SAMPLE_HOLDINGS = `Ticker,Qty
 RELIANCE.NS,40
@@ -179,47 +28,59 @@ function bandClass(band: string): string {
   return 'text-corridor-clear'
 }
 
-function tiltColor(tilt: 'headwind' | 'tailwind' | 'neutral'): string {
-  if (tilt === 'headwind') return 'text-corridor-alert'
-  if (tilt === 'tailwind') return 'text-corridor-clear'
-  return 'text-gray-500'
-}
+// AI (Gemini) explainer for the whole portfolio, refetched whenever the
+// analysis changes. Falls back to a deterministic narrative server-side.
+function PortfolioAiSummary({ analysis }: { analysis: PortfolioAnalysis }) {
+  const [summary, setSummary] = useState<AiSummary | null>(null)
+  const [error, setError] = useState(false)
 
-function tiltWord(tilt: 'headwind' | 'tailwind' | 'neutral'): string {
-  if (tilt === 'headwind') return 'Headwind'
-  if (tilt === 'tailwind') return 'Tailwind'
-  return 'Neutral'
-}
+  useEffect(() => {
+    let alive = true
+    setSummary(null)
+    setError(false)
+    fetchPortfolioSummary(analysis)
+      .then((s) => alive && setSummary(s))
+      .catch(() => alive && setError(true))
+    return () => {
+      alive = false
+    }
+  }, [analysis])
 
-function SectorBetaCard({ row }: { row: SectorBeta }) {
   return (
-    <div className="bg-[#0d0d0d] p-4 border border-white/5">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="text-sm text-white font-medium">{row.sector}</span>
-        <span className={`text-[10px] uppercase font-semibold shrink-0 ${tiltColor(row.tilt)}`}>
-          {tiltWord(row.tilt)}
-        </span>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {row.channels.map((c) => (
-          <span
-            key={c.channel}
-            className={`text-[11px] px-1.5 py-0.5 rounded bg-white/5 ${tiltColor(c.tilt)}`}
-            title={`${c.label} loading`}
-          >
-            {c.label} {c.loading > 0 ? '+' : ''}{c.loading}
+    <div className="border-t border-white/10 pt-3">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-[10px] uppercase tracking-wide text-corridor-muted">AI summary</span>
+        {summary?.source === 'bedrock' && (
+          <span className="text-[8px] uppercase px-1 py-0.5 rounded bg-corridor-clear/20 text-corridor-clear">Claude · Bedrock</span>
+        )}
+        {(summary?.source === 'deterministic' || summary?.source === 'fallback') && (
+          <span className="text-[8px] uppercase px-1 py-0.5 rounded bg-white/10 text-gray-400" title="Generated from the attribution numbers (Bedrock not configured)">
+            computed
           </span>
-        ))}
+        )}
       </div>
+      {error ? (
+        <p className="text-xs text-corridor-muted">Summary unavailable right now.</p>
+      ) : summary ? (
+        <p className="text-sm text-gray-300 leading-relaxed">{summary.summary}</p>
+      ) : (
+        <div className="space-y-1.5 animate-pulse">
+          <div className="h-3 bg-white/5 rounded w-full" />
+          <div className="h-3 bg-white/5 rounded w-11/12" />
+          <div className="h-3 bg-white/5 rounded w-4/5" />
+        </div>
+      )}
+      <p className="mt-1.5 text-[9px] text-gray-600">Explanatory context, not investment advice.</p>
     </div>
   )
 }
 
-function PortfolioAnalyzer() {
+export default function PortfolioAnalyzer() {
   const [text, setText] = useState('')
   const [result, setResult] = useState<PortfolioAnalysis | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<PortfolioHolding | null>(null)
 
   async function run(csv: string) {
     setBusy(true)
@@ -343,6 +204,9 @@ function PortfolioAnalyzer() {
                 Live route drivers: energy → {result.drivers?.energy_corridor ?? '—'}, trade → {result.drivers?.trade_corridor ?? '—'}.
               </p>
             )}
+
+            <PortfolioAiSummary analysis={result} />
+
             {result.note && <p className="text-[10px] text-gray-600">{result.note}</p>}
           </div>
         )}
@@ -365,11 +229,13 @@ function PortfolioAnalyzer() {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {overlayHoldings.map((h) => (
-            <HoldingTile key={h.ticker} holding={h} />
+            <HoldingTile key={h.ticker} holding={h} onExpand={() => setExpanded(h)} />
           ))}
         </div>
       </section>
     )}
+
+    {expanded && <HoldingChartModal holding={expanded} onClose={() => setExpanded(null)} />}
     </div>
   )
 }
@@ -389,10 +255,6 @@ function OverlaySparkline({ holding }: { holding: PortfolioHolding }) {
   const h = 56
   const pad = 3
   const x = (i: number) => pad + (i / (pts.length - 1)) * (w - pad * 2)
-  // Each line gets its OWN y-scale: GPR (identical, spiky, market-wide) and the
-  // stock's price move on wildly different ranges — a shared axis would flatten
-  // the price line and make every tile look the same. Independent scales let
-  // both fill the tile so each holding's price path is actually visible.
   const scale = (vals: number[]) => {
     const mn = Math.min(...vals)
     const range = Math.max(...vals) - mn || 1
@@ -411,11 +273,24 @@ function OverlaySparkline({ holding }: { holding: PortfolioHolding }) {
   )
 }
 
-function HoldingTile({ holding }: { holding: PortfolioHolding }) {
+function HoldingTile({ holding, onExpand }: { holding: PortfolioHolding; onExpand: () => void }) {
   const o = holding.overlay!
   const dpx = o.price_change_pct
   return (
-    <div className="bg-[#0d0d0d] border border-white/5 p-3 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
+    <div
+      className="group bg-[#0d0d0d] border border-white/5 p-3 font-mono cursor-pointer hover:border-white/20 hover:bg-white/[0.02] transition-colors"
+      style={{ fontVariantNumeric: 'tabular-nums' }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Expand ${holding.ticker} chart`}
+      onClick={onExpand}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onExpand()
+        }
+      }}
+    >
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="min-w-0">
           <div className="text-sm text-white font-semibold truncate">{holding.ticker}</div>
@@ -449,7 +324,9 @@ function HoldingTile({ holding }: { holding: PortfolioHolding }) {
         <span>wt {Math.round(holding.weight * 100)}%</span>
         <span className="flex items-center gap-2">
           <span>vol pctile {o.vol_percentile}</span>
-          <ExplainPopover explain={holding.explain} label="risk" />
+          <span onClick={(e) => e.stopPropagation()}>
+            <ExplainPopover explain={holding.explain} label="risk" />
+          </span>
         </span>
       </div>
     </div>

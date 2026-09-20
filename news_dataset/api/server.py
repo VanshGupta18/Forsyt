@@ -82,6 +82,18 @@ CORS(
     },
 )
 
+# Live WorldMonitor layer proxy (/api/worldmonitor/<layer>). Needs
+# WORLDMONITOR_API_KEY in the env; without it those routes return 503.
+from news_dataset.api.worldmonitor_proxy import register_worldmonitor  # noqa: E402
+
+register_worldmonitor(app)
+
+# AI summary for expanded holding charts (POST /api/holdings/summary).
+# Uses Gemini when GEMINI_API_KEY is set, else a deterministic fallback.
+from news_dataset.api.ai_summary import register_ai_summary  # noqa: E402
+
+register_ai_summary(app)
+
 
 @app.get("/")
 # Landing page for the API itself — lists every available endpoint so a

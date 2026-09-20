@@ -262,8 +262,13 @@ def run_daily_index(
         force=force_export,
         allow_incomplete_denominator=allow_incomplete_denominator,
     )
-    details["parquet"] = str(export_path) if export_path else None
-    if export_path is None:
+    # process_day returns None when the day's parquet already exists (e.g. the
+    # backfill step above just created it, since its range includes `day`). That
+    # is not a reason to skip GPR — only a genuinely missing parquet is. Gate on
+    # what's actually on disk so GPR still runs when backfill produced the day.
+    day_parquet = INDIA_PROCESSED_DIR / f"india_processed_{day.strftime('%Y%m%d')}.parquet"
+    details["parquet"] = str(export_path or (day_parquet if day_parquet.exists() else "")) or None
+    if not day_parquet.exists():
         db.log_pipeline_run("export", "skipped", details)
         return details
 

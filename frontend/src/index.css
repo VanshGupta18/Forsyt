@@ -380,6 +380,15 @@ body {
   fill: #282828;
 }
 
+/* Overlay layer lines (pipelines, cables): brighten + thicken on hover. */
+.overlay-line {
+  transition: stroke-width 0.1s ease, stroke-opacity 0.1s ease;
+}
+.overlay-feature:hover .overlay-line {
+  stroke-width: 2.4;
+  stroke-opacity: 1;
+}
+
 .corridor-panel {
   background: #0a0a0a;
   border: none;

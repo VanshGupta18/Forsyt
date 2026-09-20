@@ -1,6 +1,7 @@
 // Macro page's row of live market-quote PulseCards, plus a "what changed"
 // summary line and transmission-channel badges (oil-rupee / risk-off — see
 // lib/macroCopy.ts's computeTransmission).
+import { useState } from 'react'
 import { MARKET_SYMBOL_ORDER, orderMarketQuotes, type MarketHistoryPayload, type MarketQuote } from '../lib/api'
 import {
   computeTransmission,
@@ -8,6 +9,7 @@ import {
   whatChangedLine,
 } from '../lib/macroCopy'
 import PulseCard from './PulseCard'
+import MarketChartModal from './MarketChartModal'
 
 type Props = {
   quotes: MarketQuote[]
@@ -24,6 +26,7 @@ export default function MacroPulseStrip({
   indexDays,
   marketHistories,
 }: Props) {
+  const [expandKey, setExpandKey] = useState<string | null>(null)
   const ordered = orderMarketQuotes(quotes)
   const transmission = computeTransmission(
     quotes.map((q) => ({ key: q.key, change_pct: q.change_pct })),
@@ -47,10 +50,19 @@ export default function MacroPulseStrip({
               loading={loading}
               selected={key === 'nifty'}
               history={marketHistories?.[key]}
+              onExpand={() => setExpandKey(key)}
             />
           )
         })}
       </div>
+
+      {expandKey && (
+        <MarketChartModal
+          quote={ordered.find((q) => q.key === expandKey)}
+          history={marketHistories?.[expandKey]}
+          onClose={() => setExpandKey(null)}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-2 px-1">
         <span className={`text-[10px] font-semibold uppercase ${transmissionToneClass(transmission.tone)}`}>
           {loading ? 'Checking channels…' : transmission.label}

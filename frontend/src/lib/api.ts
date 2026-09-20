@@ -120,6 +120,7 @@ export type MacroPageBundle = {
   indicators: MarketIndicatorsPayload
   gpr_current: GprCurrent | null
   gpr_history: GprHistoryPayload
+  oil_gpr_history?: GprHistoryPayload
   corridors: CorridorsPayload
   market_histories: MarketHistoriesBatch
   status: PlatformStatusSlim
@@ -668,6 +669,23 @@ export type SectorBetasPayload = { betas_source: 'fitted' | 'prior'; sectors: Se
 // sensitivity reference panel (replaces the old hand-written tilt strings).
 export function fetchSectorBetas() {
   return fetchJSON<SectorBetasPayload>('/api/portfolio/sector-betas')
+}
+
+export type AiSummary = { summary: string; source: 'gemini' | 'fallback' | 'deterministic'; error?: string }
+
+// AI (Gemini) explainer for the whole portfolio's GPR risk — overall score,
+// sector drivers, pressure channels, scenarios and route drivers. Shown in the
+// Portfolio GPR Risk panel; degrades to a deterministic narrative server-side.
+export async function fetchPortfolioSummary(analysis: PortfolioAnalysis): Promise<AiSummary> {
+  const url = `${API_BASE}/api/portfolio/summary`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ analysis }),
+  })
+  const data = (await res.json()) as AiSummary
+  if (!res.ok) throw new Error(data.error || `${url} -> ${res.status}`)
+  return data
 }
 
 export async function analyzePortfolio(csv: string): Promise<PortfolioAnalysis> {

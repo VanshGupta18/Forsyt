@@ -1,10 +1,9 @@
-// Macro page section pairing a NIFTY price sparkline with the GPR history
-// chart side by side, sharing one time-range picker (1M/3M/6M/1Y) so both
-// charts always show the same window.
-import { useEffect, useState } from 'react'
+// Markets-page section: the news risk index and the India oil-GPR index as
+// two interactive line charts (hover crosshair + tooltip), sharing one
+// time-range picker (1M/3M/6M/1Y) so both windows stay aligned.
+import { useState } from 'react'
 import GprHistoryChart, { type GprChartPeriod } from './GprHistoryChart'
-import MarketSparkline from './MarketSparkline'
-import type { GprHistoryPoint, MarketHistoryPayload } from '../lib/api'
+import type { GprHistoryPoint } from '../lib/api'
 
 const RANGES = [
   { id: '1mo', label: '1M' },
@@ -19,31 +18,23 @@ type Props = {
   chartHeight?: number
   indexDays?: number | null
   gprHistory?: GprHistoryPoint[]
-  niftyHistory?: MarketHistoryPayload | null
+  oilHistory?: GprHistoryPoint[]
 }
 
-function defaultRange(indexDays?: number | null): RangeId {
-  if (indexDays != null && indexDays < 90) return '1mo'
-  return '3mo'
-}
-
-export default function DualSignalChart({ chartHeight = 260, indexDays, gprHistory, niftyHistory }: Props) {
-  const [range, setRange] = useState<RangeId>(() => defaultRange(indexDays))
+export default function RiskChartsPanel({ chartHeight = 260, indexDays, gprHistory, oilHistory }: Props) {
+  // Oil-GPR carries ~8 months of history and the news index only ~30 days, so
+  // the picker is free (no forced 1M) — each chart shows what it has within
+  // the shared window. Default 3M.
+  const [range, setRange] = useState<RangeId>('3mo')
   const [rangeNote, setRangeNote] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (indexDays != null && indexDays < 90 && range !== '1mo') {
-      setRange('1mo')
-    }
-  }, [indexDays, range])
 
   return (
     <div className="corridor-panel p-4 flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="corridor-kicker">Dual signal</p>
-          <h2 className="corridor-headline mt-1">NIFTY vs news risk index</h2>
-          <p className="text-[10px] text-corridor-muted mt-1">Same time window for both charts</p>
+          <p className="corridor-kicker">Risk signals</p>
+          <h2 className="corridor-headline mt-1">News risk vs oil-GPR</h2>
+          <p className="text-[10px] text-corridor-muted mt-1">Latest {range.replace('mo', 'M').replace('1y', '1Y')} of each index · hover for values</p>
         </div>
         <div className="flex items-center gap-1">
           {RANGES.map((r) => (
@@ -64,10 +55,6 @@ export default function DualSignalChart({ chartHeight = 260, indexDays, gprHisto
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div>
-          <p className="corridor-kicker mb-2">NIFTY 50</p>
-          <MarketSparkline data={niftyHistory} period={range} height={chartHeight} variant="corridor" />
-        </div>
-        <div>
           <p className="corridor-kicker mb-2">News risk index</p>
           <GprHistoryChart
             height={chartHeight}
@@ -76,6 +63,18 @@ export default function DualSignalChart({ chartHeight = 260, indexDays, gprHisto
             history={gprHistory ?? []}
             indexDays={indexDays}
             onRangeNote={setRangeNote}
+          />
+        </div>
+        <div>
+          <p className="corridor-kicker mb-2">India oil-GPR</p>
+          <GprHistoryChart
+            height={chartHeight}
+            variant="corridor"
+            period={range as GprChartPeriod}
+            history={oilHistory ?? []}
+            label="India oil-GPR"
+            valueLabel="Oil-GPR"
+            showBaseline={false}
           />
         </div>
       </div>

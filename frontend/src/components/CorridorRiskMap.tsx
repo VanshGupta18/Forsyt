@@ -32,7 +32,7 @@
 // attribute on a wrapping `<g>` element — so d3-zoom only handles gesture
 // *detection*, React still owns what actually gets drawn.
 // ---------------------------------------------------------------------------
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { geoEquirectangular, geoInterpolate, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
 import type { Topology } from 'topojson-specification'
@@ -51,6 +51,8 @@ import {
 } from '../lib/corridorGeo'
 import { corridorOperationalRisk, formatCorridorName, type CorridorRow, type CorridorsPayload } from '../lib/api'
 import { businessTierLabel, displayStressScore, tierAccentColor } from '../lib/corridorCopy'
+import MapLayerPanel from './MapLayerPanel'
+import { OVERLAY_LAYERS, useOverlayLayer, type OverlayLayer } from '../lib/mapLayers'
 
 const WIDTH = 1000
 const HEIGHT = 460
@@ -118,6 +120,57 @@ function pathFromWaypoints(waypoints: [number, number][]): { d: string; points: 
 
 const indiaPos = project(INDIA)
 
+// Renders one overlay layer's GeoJSON lines with the shared map projection.
+// Only mounted while its layer is toggled on, so the fetch hook runs on
+// demand. `pathGenerator` already speaks GeoJSON [lon,lat], so each feature
+// draws directly — no per-point projection needed here.
+function OverlayLayerPaths({
+  layer,
+  onHover,
+  onLeave,
+}: {
+  layer: OverlayLayer
+  onHover: (label: string, e: ReactMouseEvent) => void
+  onLeave: () => void
+}) {
+  const { data } = useOverlayLayer(layer, true)
+  if (!data) return null
+  return (
+    <g>
+      {data.features.map((f, i) => {
+        const d = pathGenerator(f)
+        if (!d) return null
+        const name = (f.properties?.name as string) ?? layer.label
+        const proposed = f.properties?.status === 'proposed'
+        const label = `${name}${proposed ? ' · proposed' : ''}`
+        return (
+          <g
+            key={`${layer.key}-${i}`}
+            className="overlay-feature"
+            onMouseMove={(e) => onHover(label, e)}
+            onMouseLeave={onLeave}
+          >
+            {/* wide invisible hit target so thin lines are easy to hover */}
+            <path d={d} fill="none" stroke="transparent" strokeWidth={12} style={{ pointerEvents: 'stroke' }} />
+            <path
+              className="overlay-line"
+              d={d}
+              fill="none"
+              stroke={layer.color}
+              strokeWidth={1}
+              strokeOpacity={proposed ? 0.5 : 0.75}
+              strokeDasharray={proposed ? '3 3' : undefined}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ pointerEvents: 'none' }}
+            />
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
 function useClock() {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -154,6 +207,23 @@ export default function CorridorRiskMap({
 }) {
   const now = useClock()
   const timeLabel = now.toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' })
+
+  const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set())
+  const toggleLayer = (key: string) =>
+    setActiveLayers((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+
+  // Hover tooltip for overlay lines (positioned relative to the map container).
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [hovered, setHovered] = useState<{ label: string; x: number; y: number } | null>(null)
+  const handleOverlayHover = (label: string, e: ReactMouseEvent) => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setHovered({ label, x: e.clientX - rect.left, y: e.clientY - rect.top })
+  }
 
   const svgRef = useRef<SVGSVGElement>(null)
   const zoomBehaviorRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null)
@@ -287,7 +357,7 @@ export default function CorridorRiskMap({
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative" ref={containerRef}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -329,6 +399,10 @@ export default function CorridorRiskMap({
               <path key={c.key} d={c.d} className="country-path">
                 <title>{c.name}</title>
               </path>
+            ))}
+
+            {OVERLAY_LAYERS.filter((l) => activeLayers.has(l.key)).map((l) => (
+              <OverlayLayerPaths key={l.key} layer={l} onHover={handleOverlayHover} onLeave={() => setHovered(null)} />
             ))}
 
             {routeEntries.map(({ key, d, color, points, waypoints, category: routeCategory, hasData, midpoint }) => {
@@ -454,6 +528,17 @@ export default function CorridorRiskMap({
             </g>
           </g>
         </svg>
+
+        <MapLayerPanel active={activeLayers} onToggle={toggleLayer} />
+
+        {hovered && (
+          <div
+            className="absolute z-30 pointer-events-none px-2 py-1 text-[11px] font-medium text-white bg-black/90 border border-white/15 whitespace-nowrap"
+            style={{ left: hovered.x + 12, top: hovered.y + 12 }}
+          >
+            {hovered.label}
+          </div>
+        )}
 
         <div className="absolute bottom-3 right-3 z-20 flex flex-col gap-1">
           <button

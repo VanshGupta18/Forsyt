@@ -69,6 +69,9 @@ type Props = {
   history: GprHistoryPoint[]
   indexDays?: number | null
   onRangeNote?: (note: string | null) => void
+  label?: string
+  valueLabel?: string
+  showBaseline?: boolean
 }
 
 function validPoints(history: GprHistoryPoint[]) {
@@ -96,6 +99,8 @@ function drawGprChart(
   hoverIndex: number | null,
   height: number,
   indexDays?: number | null,
+  label = 'Forsyt GPR index',
+  showBaseline = true,
 ) {
   const setup = setupCanvas(canvas, height)
   if (!setup) return
@@ -118,7 +123,7 @@ function drawGprChart(
   const hasMa7 = ma7.some(Number.isFinite)
   const hasMa30 = ma30.some(Number.isFinite)
 
-  const showBaselineLine = indexDays == null || indexDays >= 30
+  const showBaselineLine = showBaseline && (indexDays == null || indexDays >= 30)
   const allVals = [
     ...gprVals,
     ...(hasMa7 ? ma7.filter(Number.isFinite) : []),
@@ -199,7 +204,7 @@ function drawGprChart(
   ctx.fillStyle = CHART_PALETTE.white
   ctx.font = '600 13px Inter, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('Forsyt GPR index', pad.left, 18)
+  ctx.fillText(label, pad.left, 18)
   ctx.restore()
 }
 
@@ -213,6 +218,9 @@ export default function GprHistoryChart({
   history,
   indexDays,
   onRangeNote,
+  label = 'Forsyt GPR index',
+  valueLabel = 'GPR',
+  showBaseline = true,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -269,12 +277,12 @@ export default function GprHistoryChart({
     const canvas = canvasRef.current
     if (!canvas || !history.length) return
 
-    const render = () => drawGprChart(canvas, filtered, hoverIndex, chartHeight, indexDays)
+    const render = () => drawGprChart(canvas, filtered, hoverIndex, chartHeight, indexDays, label, showBaseline)
     render()
     const observer = new ResizeObserver(render)
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [filtered, history.length, hoverIndex, chartHeight, indexDays])
+  }, [filtered, history.length, hoverIndex, chartHeight, indexDays, label, showBaseline])
 
   const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const canvas = canvasRef.current
@@ -349,7 +357,7 @@ export default function GprHistoryChart({
                 className="pointer-events-none absolute top-3 right-3 rounded-md border border-white/10 bg-[#111827]/95 px-3 py-2 text-xs shadow-lg"
               >
                 <div className="text-gray-400">{formatDateLong(hoverRow.date)}</div>
-                <div className="text-white font-semibold mt-0.5">GPR {Number(hoverRow.gpr_index).toFixed(1)}</div>
+                <div className="text-white font-semibold mt-0.5">{valueLabel} {Number(hoverRow.gpr_index).toFixed(1)}</div>
                 {hoverRow.gpr_7ma != null && (
                   <div className="text-[#7aa2ff]">7MA {Number(hoverRow.gpr_7ma).toFixed(1)}</div>
                 )}
@@ -364,7 +372,7 @@ export default function GprHistoryChart({
 
       {rows.length > 0 && !compact && (
         <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-corridor-muted">
-          <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-corridor-alert inline-block" /> GPR</span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-corridor-alert inline-block" /> {valueLabel}</span>
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-primary inline-block" /> 7-day MA</span>
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 bg-corridor-muted inline-block" /> 30-day MA</span>
         </div>

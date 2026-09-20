@@ -27,6 +27,7 @@ from news_dataset.api.gpr_service import (
     get_gpr_current,
     get_gpr_history,
     get_gpr_panels,
+    get_oil_gpr_history,
     get_health_snapshot,
     get_platform_status_slim,
 )
@@ -108,6 +109,7 @@ def build_macro_bundle() -> dict:
         indicators=partial(compute_indicators, "nifty"),
         gpr_current=get_gpr_current,
         gpr_history=_safe_gpr_history,
+        oil_gpr_history=_safe_oil_gpr_history,
         corridors=get_corridors,
         market_histories=partial(
             fetch_histories_batch, SPARKLINE_SYMBOLS, period=MACRO_CHART_PERIOD
@@ -120,10 +122,19 @@ def build_macro_bundle() -> dict:
         "indicators": r["indicators"],
         "gpr_current": r["gpr_current"],
         "gpr_history": {"history": r["gpr_history"]},
+        "oil_gpr_history": {"history": r["oil_gpr_history"]},
         "corridors": r["corridors"],
         "market_histories": r["market_histories"],
         "status": r["status"],
     }
+
+
+def _safe_oil_gpr_history() -> list[dict]:
+    try:
+        return get_oil_gpr_history()
+    except Exception:
+        logger.exception("oil gpr history unavailable for macro bundle")
+        return []
 
 
 def build_news_bundle(*, limit: int = 50) -> dict:
