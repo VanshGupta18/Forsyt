@@ -1,104 +1,156 @@
-# Forsyt — 3-Minute Submission Video
+# Forsyt — 3-Minute Video
 
-Covers the four required points: **About the project · Tech stack & architecture · How you used AWS · Learning and growth.**
+A story-led script. It still hits the four required points — **about the project · tech stack & architecture · how you used AWS · learning and growth** — but carries them inside a story, so the viewer feels the problem before they see a single screen.
 
-Target runtime **2:50** (hard ceiling 3:00). Word budget ≈ 430 words at a calm 150 wpm. Every second below is accounted for — if you overrun, cut from §1, never from §3 (AWS) .
+**Positioning line (say it once, exactly like this):**
+> Forsyt turns the news into a number you can track — India's geopolitical risk, priced daily.
 
----
-
-## Pre-record checklist
-
-- [ ] Backend up: `python -m news_dataset.api.server` (port 5001) — or `finch compose up`
-- [ ] Frontend up: `npm run dev` in `frontend/` → http://127.0.0.1:5173
-- [ ] Browser at **1920×1080**, zoom 100%, bookmarks bar hidden, one clean window
-- [ ] Pre-open tabs in this order so you never fumble: **Home → News → Trade Corridor → Macro → Quality**
-- [ ] Editor pre-opened at `template.yaml` and `news_dataset/api/cache.py` (for the AWS beat)
-- [ ] A terminal with `sam validate --lint` typed but **not run** (run it on camera — it's one clean line of proof)
-- [ ] Architecture diagram ready: **`docs/forsyt-architecture.png`** (1920×1080, built for this video — drop it straight on the timeline, no export step needed). Its five stages are numbered 1–5 so you can highlight each one as you narrate that hop.
-- [ ] Record at 1080p/30fps, mic test first — audio quality matters more than video quality
-- [ ] Upload as **Unlisted** (or Public) on YouTube, **not Private** — verify by opening the link in an incognito window before submitting
+**Runtime: 463 spoken words ≈ 2:54 at 160 wpm.** That is a normal brisk presentation pace. If you speak slower than 160, you *will* run over — use the cut list at the bottom, it's sized for exactly that.
 
 ---
 
-## Full video architecture (shot list)
+## The spine of the story
+
+Three beats, in this order. Everything else hangs off them.
+
+1. **A real loss.** Something moves in the world → it reaches an ordinary Indian investor weeks later as *"markets fell on global cues."* That sentence is where the information died.
+2. **A number instead of a sentence.** Forsyt makes the invisible thing measurable — daily, India-first, down to the specific shipping lane.
+3. **It shows its work.** Every score cites the headlines behind it, so the viewer is never asked to trust a black box.
+
+The video is built to make the viewer feel beat 1 before you show them anything. A judge who feels the problem will want the product. A judge shown the product first will merely grade it.
 
 ![Forsyt system architecture](forsyt-architecture.png)
 
-| # | Time | Duration | On screen | Audio |
-|---|------|----------|-----------|-------|
-| 1 | 0:00–0:08 | 8s | Title card: *Forsyt — Geopolitical Risk Intelligence for Indian Markets*, name, team | Hook line |
-| 2 | 0:08–0:35 | 27s | **Live dashboard Home page**, scrolling slowly: GPR gauge, regime badge, threat panels | §1 About the project |
-| 3 | 0:35–0:55 | 20s | **Demo A** — News page: theme filter click, tagged article feed | §1 continued |
-| 4 | 0:55–1:15 | 20s | **Demo B** — Trade Corridor page: map, click a corridor, AI explanation panel opens | §1 continued |
-| 5 | 1:15–1:50 | 35s | **`docs/forsyt-architecture.png`** full-screen; highlight stages 1→5 left→right in time with the narration | §2 Tech stack & architecture |
-| 6 | 1:50–2:30 | 40s | **Split**: `template.yaml` on screen → `cache.py` backend switch → terminal running `sam validate --lint` → `docker-compose.yml` localstack/opensearch services. If a shot fails, cut to the orange **AWS band** at the bottom of the diagram | §3 How I used AWS |
-| 7 | 2:30–2:48 | 18s | Back to dashboard, slow zoom-out on Home; or Quality page showing validation numbers | §4 Learning and growth |
-| 8 | 2:48–2:55 | 7s | End card: repo URL + live URL + thanks | Close |
+---
 
-**Editing notes**
-- No transitions longer than 0.3s. Hard cuts only.
-- Burn in small lower-third captions for each section title ("Architecture", "AWS Usage") so a reviewer skimming still hits all four points.
-- Keep your webcam either off, or a small circle in the bottom-right for §1 and §4 only. Screen must dominate during §2 and §3.
-- Record narration and screen separately if you can — it is far easier to hit 3:00 when the voice track is cut first and the screen is matched to it.
+## Shot list
+
+| # | Time | Words | On screen | Beat |
+|---|------|-------|-----------|------|
+| 1 | 0:00–0:21 | 55 | **Cold open.** No dashboard. A news clip or headline of a shipping/border event, then a plain black card: *"markets fell on global cues"* | The loss |
+| 2 | 0:21–0:34 | 37 | Full-screen: **170,000,000+ demat accounts** — then hold on one ordinary trading screen or news feed | Who this is for |
+| 3 | 0:34–1:03 | 119 (shots 3+4) | **Home page** — the GPR number, the regime badge, the history chart | The number |
+| 4 | 1:03–1:19 | ↑ | **Trade Corridor page** — the map, click a corridor, the explanation panel citing real headlines | Specificity + trust |
+| 5 | 1:19–1:34 | 39 | **The dual-signal panel**, held still. Ideally on a day the two dials diverge | The thesis |
+| 6 | 1:34–1:55 | 56 | **`docs/forsyt-architecture.png`**, highlighting stages 1→5 | Tech stack & architecture |
+| 7 | 1:55–2:30 | 94 | `template.yaml` → `cache.py` → terminal running `sam validate --lint` → the orange AWS band on the diagram | How I used AWS |
+| 8 | 2:30–2:45 | 41 | Back to the Home page, slow push in on the index number | Why I built it |
+| 9 | 2:45–2:54 | 22 | End card: live URL, repo URL | Close |
+
+**Direction notes**
+
+- **Do not open on the dashboard.** Every other submission opens on a dashboard. Open on the problem — you have roughly eight seconds before a judge decides what kind of video this is.
+- Shot 1 has **no UI at all**. It's the only thing that earns you the right to show a product.
+- Shot 5 is worth hunting for: find a day in the history chart where geo risk is elevated and market volatility is calm, and freeze there. That single frame *is* the idea.
+- Hard cuts, no transitions. Burn the URL in small at the bottom-right from shot 3 onward — if a judge wants to open it mid-video, let them.
+- Slow down on the numbers, speed up slightly on the architecture. Energy rises into shot 5, then drops and goes quiet for shot 8. Shot 8 is the only part you deliver softly.
 
 ---
 
 ## The script
 
-### §0 — Hook · 0:00–0:08
+### Cold open · 0:00–0:21 · 55 words
 
-> Hi, I'm Devasya. This is **Forsyt** — a platform that turns Indian news into a daily, measurable geopolitical risk score for Indian financial markets.
+> A tanker takes fire in the Red Sea.
+>
+> Within hours, shipping lines reroute around Africa. Freight rates jump. The cost of everything India moves through that lane starts to change.
+>
+> Three weeks later, it reaches an ordinary Indian investor as a single sentence: **"markets fell on global cues."**
+>
+> That sentence is where the information died.
 
-### §1 — About the project · 0:08–1:15 *(over live demo)*
+### Who this is for · 0:21–0:34 · 37 words
 
-> India's markets react to border tensions, sanctions and shipping-lane disruptions, but the risk indices analysts use are Western-sourced, global, and published monthly with a lag.
->
-> Forsyt closes that gap. It polls **nine Indian news sources** on a schedule, tags every article with a geopolitical theme, a tone score and location tags, and aggregates them into a **daily India GPR Index** — calibrated so an average day reads 100, and validated against the Caldara–Iacoviello academic benchmark.
->
-> *(cut to News page)* Here's the tagged event feed, filterable by theme.
->
-> *(cut to Corridor page)* And here's what makes it India-specific — **twelve trade corridors**, from the Strait of Hormuz to the India–China border, each scored independently. Click one, and an AI-generated explanation tells you *which headlines* moved that score. It's a decision-support tool, not a trading system.
+> There are more than **170 million demat accounts** in India. Behind a lot of them is someone checking their portfolio between other things — watching a number move against them, and getting one sentence that explains nothing.
 
-### §2 — Tech stack & architecture · 1:15–1:50 *(over diagram)*
+*Add back only if you finish under 2:45:* “The information exists — it's just scattered, written for specialists, and priced in by the time it's readable.” (+7s)
 
-> The architecture is a one-way pipeline.
->
-> RSS feeds land in **PostgreSQL**. An NLP layer — sentence-transformer embeddings for theme classification, lexicon scoring for tone, regex extraction for locations — tags each article. Those tags export as Parquet into the **GPR scoring engine**, which writes the daily index and corridor scores back to Postgres.
->
-> A **Flask API** served by Gunicorn exposes it, and a **React 19 + TypeScript + Vite** dashboard consumes it across six pages. A separate NIFTY volatility model plugs in as a second signal, shown side-by-side rather than blended — because our own validation showed GPR features did *not* improve out-of-sample volatility forecasts, and we report that honestly.
->
-> Scheduled **GitHub Actions** keep every stage fresh with no machine of mine running.
+### What Forsyt is · 0:34–1:19 · 119 words
 
-### §3 — How I used AWS · 1:50–2:30 *(over code + terminal)*
+> **Forsyt turns the news into a number you can track.**
+>
+> Every twenty-five minutes it reads nine Indian news sources, tags each article for geopolitical theme, tone and location, and rolls them into one daily figure — the **India GPR Index** — calibrated so an ordinary day reads 100.
+>
+> *(cut to Corridor page)* And underneath it, the part that changes a decision: **twelve trade corridors** — Hormuz, Malacca, the Red Sea, the India–China border — each scored on its own.
+>
+> Because "global risk is up" isn't a decision. **"The lane carrying your crude is up"** is.
+>
+> Click any one, and it explains itself — citing the headlines that moved the score. You're never asked to just trust it; you can read what's behind it.
 
-> AWS shows up at the infrastructure seam.
->
-> The API's hot-read cache was an in-process dictionary — which pinned us to a single Gunicorn worker, because two workers each hold their own copy and clients see inconsistent state. I defined a **DynamoDB** table in **AWS SAM** — `template.yaml` — as a shared, out-of-process cache backend: on-demand billing, a constant partition key so prefix invalidation is a `begins_with` query instead of a table scan, and native **TTL** for garbage collection.
->
-> *(run `sam validate --lint`)* It validates as real infrastructure-as-code.
->
-> The backend is swappable by one environment variable, and fails open — a DynamoDB error is logged as a cache miss, never raised.
->
-> For development I run it against **LocalStack**, so the whole AWS path is testable locally. **OpenSearch** provides k-NN vector search over the article embeddings we already compute, and **Finch**, AWS's open-source container CLI, builds the local stack. The frontend is served through **AWS Amplify and CloudFront**.
+### The thesis · 1:19–1:34 · 39 words
 
-### §4 — Learning and growth · 2:30–2:48
-
-> The biggest lesson was that infrastructure choices are trade-offs, not defaults. I kept the heavy NLP on GitHub Actions instead of Lambda, because `torch` and sentence-transformers don't fit a fifteen-minute ceiling — and moved only the piece that genuinely pays for itself onto AWS. I also learned to report negative results: when GPR features failed to beat a market-only baseline, we published that instead of hiding it.
+> This is the panel I'd put on a billboard.
 >
-> Thank you for watching.
+> Geopolitical risk on one side, market volatility on the other — two independent signals, side by side, **never blended**. When they pull apart, that gap is the thing worth seeing.
+
+### Tech stack and architecture · 1:34–1:55 · 56 words
+
+> It's a one-way pipeline. RSS into **PostgreSQL**. An NLP layer tags every article for theme, tone and location. A scoring engine writes the daily index and corridor scores. A **Flask** API, and a **React and TypeScript** dashboard on top.
+>
+> **GitHub Actions** keeps it fresh on a schedule — nothing of mine has to be switched on.
+
+### How I used AWS · 1:55–2:30 · 94 words
+
+> AWS sits at the seam where this stops being a prototype.
+>
+> The API's cache lived inside one process, pinning the service to a single worker. I moved it onto **DynamoDB**, declared as infrastructure-as-code in **AWS SAM** — on-demand billing, a partition key shaped so invalidation is a query rather than a table scan, and a fail-open policy: a cache error costs a recomputation, never a request.
+>
+> *(run `sam validate --lint`)*
+>
+> I build that path locally against **LocalStack** — no AWS account needed. **OpenSearch** does vector search over embeddings the pipeline already had. **Amplify and CloudFront** serve the frontend.
+
+### Why I built it · 2:30–2:45 · 41 words
+
+> I kept reading that same sentence, and realised nobody was going to fix it.
+>
+> What I learned is that the hard part was never the modelling. It was making risk **legible** to someone who isn't an analyst and has ninety seconds.
+
+### Close · 2:45–2:54 · 22 words
+
+> Forsyt is live, and it runs without me.
+>
+> So the next time markets fall on global cues — you'll know which cue.
 
 ---
 
-## Timing safety valves
+## Delivery notes
 
-If you run long, cut in this order:
+- **"markets fell on global cues"** appears at the open and again at the close. That repetition is structural — it closes the loop, and it's the one thing a judge will still remember an hour later. Say it identically both times; don't paraphrase.
+- Pause a full beat after *"That sentence is where the information died."* It needs the silence.
+- Shot 2 is where the viewer either joins you or doesn't. Don't read it as a market-size statistic — read it as a description of a person. The number is there to make one person feel like many.
+- The AWS section is the only part written to be spoken quickly and precisely — it's evidence, not persuasion. Judges scoring that rubric point listen for named services, each with a reason attached. Every service in that paragraph has a *because*. Keep the becauses.
+- Don't say "we built", "we implemented", "our project", or "hackathon". Describe what it *does*, present tense, as a thing that exists.
 
-1. The News-page sentence in §1 (−6s)
-2. The NIFTY/validation sentence in §2 (−10s)
-3. The "fails open" sentence in §3 (−5s)
+### Optional: make the cold open yours
 
-Never cut the SAM/DynamoDB sentences or the `sam validate` shot — that is the load-bearing AWS evidence.
+The tanker open works because it's concrete. It's stronger still if you have a true version — a moment you or someone close to you got blindsided by a move nobody explained. If you do, put it in shot 1 in your own words and keep the *"global cues"* card as the punchline. Only if it's genuinely true: a judge can hear a manufactured anecdote, and the tanker version stands on its own.
 
-## One thing to verify before recording
+---
 
-The stack doc (`docs/STACK_GAP_AND_IMPLEMENTATION_PLAN.md`) records the frontend on **Amplify + CloudFront** and notes Elastic Beanstalk was decommissioned, leaving the backend without a live host. Confirm the Amplify deployment is still live before you claim it on camera — if it isn't, change that line to "the frontend is built for Amplify and CloudFront hosting" and show the dashboard locally.
+## Verify before you claim it
+
+Three lines assert things about the world or the deployment. Check each or soften it — a judge who catches one wrong number discounts everything after it.
+
+1. **"more than 170 million demat accounts"** — from the project README, as of 2024. Confirm the current figure, or say "over 170 million as of 2024".
+2. **"Amplify and CloudFront serve the frontend"** — `docs/STACK_GAP_AND_IMPLEMENTATION_PLAN.md` records the frontend there, but also notes Elastic Beanstalk was decommissioned, leaving the backend without a live host. If it isn't live, say "built to deploy on Amplify and CloudFront" and demo locally.
+3. **"Forsyt is live, and it runs without me"** — the *pipelines* genuinely run unattended on GitHub Actions. If the site itself isn't hosted right now, change it to "The pipeline runs without me" — still true, still impressive.
+
+Two things to keep out of the script:
+
+- **Don't claim users, traction or revenue.** There aren't any yet, and one follow-up question exposes it. The story rests on the problem being real, not on the product being adopted — it doesn't need traction to work.
+- **Don't imply the index predicts the market.** The dual-signal line is written as two independent signals shown side by side, never blended — which is both accurate and the more interesting claim. An unprovable prediction claim is the one thing that could cost you the room in Q&A.
+
+---
+
+## Cut list
+
+Only if you're running long. In this order:
+
+1. "This is the panel I'd put on a billboard." (−9 words, −3s) — the panel still lands without the intro
+2. "calibrated so an ordinary day reads 100" (−8 words, −3s)
+3. "A scoring engine writes the daily index and corridor scores." (−10 words, −4s)
+4. "What I learned is that the hard part was never the modelling." (−13 words, −5s) — keep the *legible* sentence after it
+
+That's 21 seconds of slack, enough to absorb a 140-wpm delivery.
+
+**Never cut:** the cold open, the *"global cues"* card, the corridor line ("the lane carrying your crude"), the citations line, the DynamoDB/SAM sentences, or `sam validate`. Three are load-bearing for the story, two for the AWS rubric point, one for trust.
