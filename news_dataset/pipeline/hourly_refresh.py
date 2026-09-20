@@ -5,8 +5,9 @@ Beginner note — the full order of operations for run_platform_refresh():
     the NLP scheduler, so freshly-tagged articles are ready). Unlike
     daily_index.py (which finalizes ONE past day), this job keeps TODAY and
     YESTERDAY's numbers current throughout the day:
-    1. If any articles are still missing NLP tags, run a small batch
-       (run_nlp(), default 200 articles — see PLATFORM_REFRESH_NLP_BATCH).
+    1. Tag articles missing NLP tags, today+yesterday first (the days this job
+       re-exports, up to PLATFORM_REFRESH_NLP_WINDOW_MAX), then spend what is
+       left of PLATFORM_REFRESH_NLP_BATCH on the older backlog.
     2. backfill_missing_parquets() + re-export today's and yesterday's
        Parquet files (via run_daily_index(..., skip_gpr=True) reused from
        pipeline/daily_index.py) so they reflect the newest articles.
@@ -27,7 +28,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import date, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 
 REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -47,6 +48,9 @@ from news_dataset.pipeline.daily_index import (  # noqa: E402
 
 STAGE = "platform_refresh"
 NLP_BATCH = int(os.environ.get("PLATFORM_REFRESH_NLP_BATCH", "200"))
+# Ceiling for the today+yesterday catch-up pass. Must exceed a normal 2-day
+# article volume or those days export half-tagged; tune if scrape volume grows.
+NLP_WINDOW_MAX = int(os.environ.get("PLATFORM_REFRESH_NLP_WINDOW_MAX", "1000"))
 
 
 def _warm_api_caches() -> dict:
@@ -80,17 +84,34 @@ def _warm_api_caches() -> dict:
 
 
 def run_platform_refresh(*, skip_nlp: bool = False, skip_dual_signal: bool = False) -> dict:
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     yesterday = today - timedelta(days=1)
     details: dict = {"day": today.isoformat()}
 
     if not skip_nlp:
         pending = db.count_articles_pending_nlp(NLP_MODEL_VERSION)
         details["nlp_pending_before"] = pending
-        if pending > 0:
-            updated, failed = run_nlp(limit=NLP_BATCH)
-            details["nlp_updated"] = updated
-            details["nlp_failed"] = failed
+        # The two days re-exported below must be fully tagged BEFORE that
+        # export: a day's GPR is threat-tagged articles / total articles, so
+        # exporting a day whose articles are still untagged scores it ~0.
+        # get_articles_pending_nlp() is oldest-first, so any backlog bigger
+        # than one batch spends the whole budget on old rows and starves today
+        # indefinitely. Drain today+yesterday first, backlog gets the rest.
+        window_start = datetime.combine(yesterday, time.min, tzinfo=timezone.utc)
+        window_pending = db.count_articles_pending_nlp(
+            NLP_MODEL_VERSION, start=window_start
+        )
+        details["nlp_window_pending_before"] = window_pending
+        updated = failed = 0
+        if window_pending > 0:
+            updated, failed = run_nlp(limit=NLP_WINDOW_MAX, start=window_start)
+        backlog_budget = max(0, NLP_BATCH - updated)
+        if backlog_budget > 0 and pending > window_pending:
+            backlog_updated, backlog_failed = run_nlp(limit=backlog_budget)
+            updated += backlog_updated
+            failed += backlog_failed
+        details["nlp_updated"] = updated
+        details["nlp_failed"] = failed
 
     backfilled = backfill_missing_parquets(today, allow_incomplete_denominator=True)
     if backfilled:

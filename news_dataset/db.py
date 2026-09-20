@@ -93,8 +93,18 @@ def release_connection(conn) -> None:
 
 
 def _enable_rls(cur) -> None:
-    """Enable row-level security on app tables (fixes Supabase 'RLS disabled' lint)."""
+    """Enable row-level security on app tables (fixes Supabase 'RLS disabled' lint).
+
+    Skips tables that already have it: ALTER TABLE takes an ACCESS EXCLUSIVE
+    lock even when RLS is already on, and init_db() runs on every process
+    boot, so concurrent boots contended for that lock until one hit
+    statement_timeout and killed the pipeline at import.
+    """
     for table in PUBLIC_TABLES:
+        cur.execute("SELECT relrowsecurity FROM pg_class WHERE oid = to_regclass(%s);", (table,))
+        row = cur.fetchone()
+        if row and row[0]:
+            continue
         cur.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY;')
 
 
