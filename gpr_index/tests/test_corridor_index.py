@@ -12,6 +12,7 @@ from gpr_index import main as gpr_main
 from gpr_index.scripts.corridor_index import (
     HIT_COLUMNS,
     aggregate_corridor_day,
+    aggregate_corridor_hits,
     corridor_article_hits,
     normalize_corridor_index,
 )
@@ -61,6 +62,15 @@ class CorridorAggregationTests(unittest.TestCase):
         # match belongs to an inactive corridor and the bare "India" mention
         # is correctly rejected by the land-corridor ADM1 rule.
         self.assertEqual(hormuz["matched_positive_articles"], 1)
+
+    def test_zero_hit_day_keeps_float_ratio(self) -> None:
+        # Object dtype here crashed normalization under pandas 3 (CI, Sep 2026).
+        daily = aggregate_corridor_hits(
+            pd.DataFrame(columns=HIT_COLUMNS),
+            pd.DataFrame([{"date": "2025-01-01", "total_articles": 10,
+                           "positive_articles": 0, "matched_positive_articles": 0}]),
+        )
+        self.assertEqual(daily["raw_ratio"].dtype, float)
 
     def test_normalization_keeps_threat_and_exposure_layers(self) -> None:
         rows = pd.DataFrame(

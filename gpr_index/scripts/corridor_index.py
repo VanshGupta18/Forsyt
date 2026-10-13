@@ -152,6 +152,9 @@ def _aggregate_hits_day(
         {"gpr_sum": 0.0, "corridor_hit_count": 0}
     )
     out.insert(0, "date", date_val)
+    # Zero-hit days merge an untyped empty frame → object dtype; pandas 3 then
+    # refuses to write it into float columns during normalization.
+    out["gpr_sum"] = out["gpr_sum"].astype(float)
     out["corridor_hit_count"] = out["corridor_hit_count"].astype(int)
     out["total_articles"] = int(total_articles)
     out["positive_articles"] = int(positive_articles)
