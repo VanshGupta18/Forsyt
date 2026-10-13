@@ -170,6 +170,13 @@ export default function MacroDashboard() {
         </div>
       )}
 
+      {vol?.stale && !volUnavailable && (
+        <div className="corridor-alert-banner px-4 py-3 text-sm">
+          NIFTY price data is from {vol.as_of} ({vol.trading_days_old} trading days old) — the vol
+          forecast and joint stress may not reflect current markets.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <JointStressPanel dual={dual} volUnavailable={volUnavailable} />
         <MacroMetricTable

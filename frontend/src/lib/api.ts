@@ -309,6 +309,9 @@ export type DualSignalPayload = {
   }
   nifty_volatility?: {
     available?: boolean
+    as_of?: string
+    stale?: boolean
+    trading_days_old?: number
     reason?: string
     vol_forecast_5d?: number
     regime?: string
