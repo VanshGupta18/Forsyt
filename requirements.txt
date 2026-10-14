@@ -8,3 +8,4 @@ pandas>=2.0
 pyarrow>=14.0
 yfinance>=0.2
 gunicorn>=21.2.0
+strands-agents>=0.1  # Ask Forsyt agent (optional at runtime; /api/ask degrades without it)

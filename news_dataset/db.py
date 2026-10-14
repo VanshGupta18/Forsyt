@@ -14,6 +14,7 @@ Beginner note — what is a "connection pool"?
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -704,6 +705,21 @@ def upsert_corridor_daily(rows):
         release_connection(conn)
 
 
+def get_corridor_daily_all(start=None, limit=20000):
+    """All corridor rows across days — the raw columns needed to derive gpr_oil."""
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """SELECT date, corridor, threat_index, energy_exposure, score_status
+           FROM corridor_daily WHERE date >= %s ORDER BY date LIMIT %s""",
+        (_index_start(start), limit),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    release_connection(conn)
+    return [dict(row) for row in rows]
+
+
 def get_corridors_latest():
     conn = get_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -955,3 +971,40 @@ def _init_db_with_retry() -> None:
 
 if _should_run_init_db():
     _init_db_with_retry()
+
+
+# Title weighted above body; OR-ed terms so a stray word in the query doesn't zero recall.
+_NEWS_DOC = ("setweight(to_tsvector('english', title), 'A') || "
+             "setweight(to_tsvector('english', content), 'B')")
+
+
+def build_news_search_sql(query: str, days: int = 14, limit: int = 8):
+    """(sql, params) for full-text news search over the last `days` (clamped 1..90)."""
+    days = max(1, min(int(days), 90))
+    sql = f"""SELECT title, source, published_at, link FROM articles,
+                to_tsquery('english', replace(plainto_tsquery('english', %s)::text, ' & ', ' | ')) q
+              WHERE duplicate_of IS NULL
+                AND published_at >= now() - make_interval(days => %s)
+                AND ({_NEWS_DOC}) @@ q
+              ORDER BY ts_rank({_NEWS_DOC}, q) DESC, published_at DESC
+              LIMIT %s"""
+    # ponytail: no GIN index — the published_at filter keeps it ~50ms at 14d / ~330ms at 90d;
+    # add a stored tsvector column + GIN if the window or table grows a lot.
+    return sql, (query, days, limit)
+
+
+def search_news(query: str, days: int = 14, limit: int = 8) -> list[dict]:
+    if not (query or "").strip():
+        return []
+    sql, params = build_news_search_sql(query, days, limit)
+    conn = get_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        release_connection(conn)
+    return [{**r, "title": html.unescape(r["title"]),
+             "published_at": r["published_at"].date().isoformat() if r["published_at"] else None}
+            for r in rows]

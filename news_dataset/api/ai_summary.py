@@ -122,6 +122,61 @@ def _gemini_enabled() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY"))
 
 
+def generate_summary(prompt: str, fallback: str) -> dict:
+    """Reusable Gemini-or-fallback helper: {summary, source}. Never raises."""
+    if not _gemini_enabled():
+        return {"summary": fallback, "source": "deterministic"}
+    try:
+        text = _gemini_summary(prompt, os.environ.get("GEMINI_MODEL", DEFAULT_MODEL))
+        return {"summary": text, "source": "gemini"}
+    except Exception:
+        logger.exception("gemini summary failed; using deterministic fallback")
+        return {"summary": fallback, "source": "fallback"}
+
+
+def _country_deterministic(b: dict) -> str:
+    """India-relative country brief from the numbers alone (no LLM)."""
+    name = b.get("country", {}).get("name", "This country")
+    sc = b.get("score") or {}
+    ch = b.get("channels") or {}
+    cor = b.get("corridors") or []
+    parts = []
+    if sc.get("value") is not None:
+        parts.append(
+            f"{name}'s geopolitical risk toward India is {sc['value']}"
+            + (f" ({sc.get('band')}, {sc.get('trend')})." if sc.get("band") else ".")
+        )
+    if ch:
+        top = sorted(ch.items(), key=lambda kv: _num(kv[1]), reverse=True)[:2]
+        top = [f"{k.replace('_', ' ')} ({v})" for k, v in top if _num(v) > 0]
+        if top:
+            parts.append("Dominant channels: " + ", ".join(top) + ".")
+    if cor:
+        parts.append("Corridors implicated: " + ", ".join(c.get("name", "") for c in cor) + ".")
+    if sc.get("low_confidence"):
+        parts.append("Coverage is thin for this country — treat as low-confidence.")
+    return " ".join(parts) or f"Not enough India-related news on {name} to summarise."
+
+
+def _country_prompt(b: dict) -> str:
+    return (
+        "You are a markets-risk explainer for an India-focused geopolitical-risk platform. "
+        "Given JSON for ONE country's risk RELATIVE TO INDIA, write a flowing prose summary of "
+        "3-5 short sentences: what the India-relative risk score and band mean, the dominant "
+        "pressure channel (border/military, diplomatic, sanctions, nuclear, etc.), the 30-day "
+        "trend, and which trade/energy corridors are implicated. If coverage is low-confidence, "
+        "say so. Write only the summary; no labels, no numbering, no markdown. Ground every claim "
+        "strictly in the numbers provided; never invent figures or tickers. Neutral and factual. "
+        "This is NOT investment advice.\n\n"
+        f"COUNTRY_ANALYSIS: {json.dumps(b, default=str)}"
+    )
+
+
+def country_summary(bundle: dict) -> dict:
+    """India-relative country brief: {summary, source}. Reuses the Gemini path + fallback."""
+    return generate_summary(_country_prompt(bundle), _country_deterministic(bundle))
+
+
 def register_ai_summary(app: Flask) -> None:
     @app.post("/api/portfolio/summary")
     def api_portfolio_summary():

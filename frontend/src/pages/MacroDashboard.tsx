@@ -38,6 +38,13 @@ import {
   volUnavailableBanner,
 } from '../lib/macroCopy'
 import { queryKeys } from '../lib/queryClient'
+import AskForsyt from '../components/AskForsyt'
+
+const MARKET_SUGGESTIONS = [
+  'Why is market stress elevated today?',
+  'Which headlines are driving India news risk?',
+  'How is oil-GPR trending this week?',
+]
 
 const MACRO_POLL_MS = 15 * 60 * 1000
 const CORRIDOR_ELEVATED_RISK = 50
@@ -222,6 +229,14 @@ export default function MacroDashboard() {
       {showAnalog && <HistoricalAnalogPanel analog={dual?.historical_analog} />}
 
       {showCorridorCard && <TopCorridorCard corridorId={topCorridor} />}
+
+      <div className="rounded border border-white/10 bg-[#111111] p-4">
+        <AskForsyt
+          title="market analyst"
+          suggestions={MARKET_SUGGESTIONS}
+          placeholder="Ask about today's market stress, headlines or a country…"
+        />
+      </div>
 
       <section id="holdings" className="border-t border-white/5 pt-8 space-y-4 scroll-mt-24">
         <div className="max-w-2xl">

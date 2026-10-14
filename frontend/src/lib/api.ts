@@ -688,6 +688,90 @@ export async function fetchPortfolioSummary(analysis: PortfolioAnalysis): Promis
   return data
 }
 
+// ---------------------------------------------------------------------------
+// Country cards (India-relative bilateral risk) + Ask Forsyt agent.
+// ---------------------------------------------------------------------------
+export type CountryMeta = { fips: string; name: string; iso2: string; corridors: string[] }
+export type CountryScore = {
+  value: number | null
+  band: 'Low' | 'Normal' | 'Elevated' | 'High' | null
+  trend: 'rising' | 'falling' | 'stable' | null
+  low_confidence: boolean
+}
+export type CountryBundle = {
+  country: CountryMeta
+  score: CountryScore
+  channels: Record<string, number>
+  history: Array<{ date: string; value: number }>
+  corridors: Array<{ id: string; name: string; risk_7ma: number | null }>
+  market: { index: string | null; last: number | null; chg_week_pct: number | null } | null
+  facts?: {
+    flag?: string | null
+    population?: number | null
+    capital?: string | null
+    region?: string | null
+    income_level?: string | null
+  } | null
+  macro?: {
+    gdp_growth_pct?: number
+    gdp_growth_pct_year?: string
+    inflation_pct?: number
+    inflation_pct_year?: string
+    unemployment_pct?: number
+    unemployment_pct_year?: string
+  } | null
+  ports?: Array<{
+    name?: string
+    vessels?: number | null
+    tankers?: number | null
+    containers?: number | null
+    import_share?: number | null
+    export_share?: number | null
+    top_industry?: string | null
+  }> | null
+  energy?: {
+    year?: number
+    mix?: Record<string, number>
+    fossil_pct?: number
+    renewable_pct?: number
+    nuclear_pct?: number
+  } | null
+  top_events?: Array<{ title?: string; link?: string; source?: string; published_at?: string }>
+  summary: string
+}
+export type AskAnswer = { answer: string; source: 'agent' | 'fallback' | 'deterministic'; error?: string }
+
+// GET /api/countries — the tracked country list (name + FIPS code).
+export function fetchCountries() {
+  return fetchJSON<{ countries: CountryMeta[] }>('/api/countries')
+}
+
+// GET /api/pages/country/<fips> — one country's India-relative risk brief.
+export function fetchCountry(fips: string) {
+  return fetchJSON<CountryBundle>(`/api/pages/country/${fips}`)
+}
+
+// POST /api/ask — Ask Forsyt: an India-relative analyst agent. Degrades to a
+// deterministic answer server-side when the LLM/agent isn't available.
+export async function askForsyt(question: string): Promise<AskAnswer> {
+  const url = `${API_BASE}/api/ask`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+  })
+  const data = (await res.json()) as AskAnswer
+  if (!res.ok) throw new Error(data.error || `${url} -> ${res.status}`)
+  return data
+}
+
+export function countryBandColor(band: CountryScore['band']): string {
+  if (band === 'High' || band === 'Elevated') return 'text-corridor-alert'
+  if (band === 'Normal') return 'text-corridor-watch'
+  if (band === 'Low') return 'text-corridor-clear'
+  return 'text-corridor-muted'
+}
+
 export async function analyzePortfolio(csv: string): Promise<PortfolioAnalysis> {
   const url = `${API_BASE}/api/portfolio/analyze`
   const res = await fetch(url, {
