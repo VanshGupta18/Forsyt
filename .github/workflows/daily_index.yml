@@ -60,7 +60,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add gpr_index/outputs/*.csv nifty-50/data/NIFTY.csv nifty-50/data/USDINR.csv nifty-50/data/BRENT.csv
+          git add gpr_index/outputs/*.csv nifty-50/data/NIFTY.csv nifty-50/data/USDINR.csv nifty-50/data/BRENT.csv nifty-50/data/INDIAVIX.csv
           if git diff --cached --quiet; then
             echo "No index changes to commit."
           else

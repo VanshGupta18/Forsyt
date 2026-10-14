@@ -147,6 +147,27 @@ def market_features(price: pd.Series, windows=MA_WINDOWS) -> pd.DataFrame:
     return X
 
 
+def production_features(price: pd.Series) -> pd.DataFrame:
+    """market_features + India VIX: the live vol model's inputs.
+
+    India VIX is the options market's own 30-day vol forecast. In the purged
+    walk-forward (2011-10..2026-07, 5d horizon) it lifts XGB R2 0.405 -> 0.446
+    and HIGH_VOL ROC-AUC 0.828 -> 0.859 (logistic); no other model beat XGB on
+    market features. Falls back to market_features if INDIAVIX.csv is absent.
+    Kept out of the research blocks so the market-vs-GPR comparison is unchanged.
+    """
+    from .data import DATA, load_price
+
+    X = market_features(price)
+    if not (DATA / "INDIAVIX.csv").exists():
+        return X
+    vix = load_price("INDIAVIX").reindex(price.index).ffill()
+    X["vix"] = vix
+    X["vix_chg5"] = vix.pct_change(5, fill_method=None) * 100
+    X["vix_minus_rv22"] = vix - X["rv22"]   # implied minus realized: fear premium
+    return X
+
+
 def assemble(gf: pd.DataFrame, price: pd.Series, target: pd.Series):
     """Align GPR features, market features and the target on trading days.
 

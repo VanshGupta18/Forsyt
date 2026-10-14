@@ -98,11 +98,13 @@ def _cache_valid(key: str) -> bool:
 
 # Committed price CSVs the models read, keyed by Yahoo ticker. They used to be
 # one-off snapshots nothing updated, so the vol forecast (NIFTY), the portfolio
-# FX pressure (USD/INR) and the oil index (Brent) quietly froze.
+# FX pressure (USD/INR) and the oil index (Brent) quietly froze. India VIX
+# feeds the vol model.
 PRICE_CSVS: dict[str, Path] = {
     "^NSEI": NIFTY_CSV,
     "INR=X": NIFTY_CSV.parent / "USDINR.csv",
     "BZ=F": NIFTY_CSV.parent / "BRENT.csv",
+    "^INDIAVIX": NIFTY_CSV.parent / "INDIAVIX.csv",
 }
 
 
