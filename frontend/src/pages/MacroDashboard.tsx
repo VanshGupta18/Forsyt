@@ -9,6 +9,7 @@ import ApiErrorBanner from '../components/ApiErrorBanner'
 import DrivingHeadlines from '../components/DrivingHeadlines'
 import RiskChartsPanel from '../components/RiskChartsPanel'
 import HistoricalAnalogPanel from '../components/HistoricalAnalogPanel'
+import GprReactionPanel from '../components/GprReactionPanel'
 import JointStressPanel from '../components/JointStressPanel'
 import MacroMetricTable from '../components/MacroMetricTable'
 import MacroPulseStrip from '../components/MacroPulseStrip'
@@ -227,6 +228,8 @@ export default function MacroDashboard() {
       />
 
       {showAnalog && <HistoricalAnalogPanel analog={dual?.historical_analog} />}
+
+      <GprReactionPanel />
 
       {showCorridorCard && <TopCorridorCard corridorId={topCorridor} />}
 
