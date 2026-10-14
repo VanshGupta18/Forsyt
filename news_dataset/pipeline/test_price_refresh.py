@@ -72,6 +72,16 @@ def test_vol_staleness_flag():
     assert old["stale"] is True
 
 
+def test_live_vol_model_uses_refreshed_india_vix():
+    from forsyt_gpr import data
+    from forsyt_gpr.features import production_features
+
+    assert "^INDIAVIX" in market_service.PRICE_CSVS
+    X = production_features(data.load_price("NIFTY"))
+    assert {"vix", "vix_chg5", "vix_minus_rv22"} <= set(X.columns)
+    assert X["vix"].iloc[-1] > 0
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
