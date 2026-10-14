@@ -96,14 +96,21 @@ def _cache_valid(key: str) -> bool:
     return age < _cache_ttl_seconds()
 
 
-def refresh_nifty_csv(path: Path = NIFTY_CSV) -> str | None:
-    """Append recent ^NSEI closes to NIFTY.csv and return its last date.
+# Committed price CSVs the models read, keyed by Yahoo ticker. They used to be
+# one-off snapshots nothing updated, so the vol forecast (NIFTY), the portfolio
+# FX pressure (USD/INR) and the oil index (Brent) quietly froze.
+PRICE_CSVS: dict[str, Path] = {
+    "^NSEI": NIFTY_CSV,
+    "INR=X": NIFTY_CSV.parent / "USDINR.csv",
+    "BZ=F": NIFTY_CSV.parent / "BRENT.csv",
+}
 
-    NIFTY.csv is the vol model's only price source (forsyt_gpr.data.load_price),
-    and it used to be a one-off committed snapshot that nothing updated, so the
-    dual-signal vol forecast froze at its last row. Called by the pipeline's
-    dual-signal refresh. Merges rather than overwrites, so a failed or short
-    Yahoo response never loses history; on any fetch error the CSV is unchanged.
+
+def refresh_price_csv(path: Path, ticker: str) -> str | None:
+    """Merge recent closes for `ticker` into a Date,<price> CSV; return its last date.
+
+    Merges rather than overwrites, so a failed or short Yahoo response never
+    loses history; on any fetch error the CSV is unchanged.
     """
     old = pd.read_csv(path, dtype={0: str})
     date_col, close_col = old.columns[:2]
@@ -111,9 +118,9 @@ def refresh_nifty_csv(path: Path = NIFTY_CSV) -> str | None:
     if yf is not None:
         start = date.fromisoformat(str(old[date_col].iloc[-1])[:10]) - timedelta(days=7)
         try:
-            hist = yf.Ticker(SYMBOLS["nifty"]["ticker"]).history(start=start.isoformat(), auto_adjust=False)
+            hist = yf.Ticker(ticker).history(start=start.isoformat(), auto_adjust=False)
         except Exception:
-            logger.warning("NIFTY history fetch failed — keeping %s as is", path.name, exc_info=True)
+            logger.warning("%s history fetch failed — keeping %s as is", ticker, path.name, exc_info=True)
             hist = pd.DataFrame()
         if not hist.empty and "Close" in hist:
             new = pd.DataFrame({
@@ -127,6 +134,11 @@ def refresh_nifty_csv(path: Path = NIFTY_CSV) -> str | None:
             )
             old.to_csv(path, index=False)
     return str(old[date_col].iloc[-1])[:10]
+
+
+def refresh_price_csvs() -> dict[str, str | None]:
+    """Top up every PRICE_CSVS file; one failing ticker never blocks the others."""
+    return {path.stem: refresh_price_csv(path, ticker) for ticker, path in PRICE_CSVS.items()}
 
 
 def _nifty_from_csv() -> dict | None:

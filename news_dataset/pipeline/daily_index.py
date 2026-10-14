@@ -328,11 +328,11 @@ def run_daily_index(
 
 def _refresh_dual_signal() -> str | None:
     from news_dataset.api.gpr_service import build_dual_signal_payload
-    from news_dataset.api.market_service import refresh_nifty_csv
+    from news_dataset.api.market_service import refresh_price_csvs
     from forsyt_gpr import data  # on sys.path once gpr_service is imported
 
-    # NIFTY.csv feeds the vol half of the signal; top it up before rebuilding.
-    refresh_nifty_csv()
+    # NIFTY/USDINR/Brent CSVs feed the vol model, portfolio FX and oil index.
+    refresh_price_csvs()
     data.load_price.cache_clear()
     payload = build_dual_signal_payload(refresh=True)
     as_of = payload["geopolitical"]["as_of"]
