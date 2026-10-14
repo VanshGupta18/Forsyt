@@ -23,6 +23,7 @@ from datetime import time as dt_time
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -936,7 +937,26 @@ def _normalize_dual_signal(payload: dict) -> dict:
         if ev.get("themes") and not ev.get("nlp_themes"):
             ev["nlp_themes"] = ev.pop("themes")
     _attach_dual_explain(payload)
+    _flag_vol_staleness(payload.get("nifty_volatility") or {})
     return payload
+
+
+VOL_STALE_AFTER_TRADING_DAYS = 3
+
+
+def _flag_vol_staleness(vol: dict, today: date | None = None) -> None:
+    """Mark the NIFTY vol reading stale when its price data lags >3 trading days.
+
+    Lag = weekdays strictly between as_of and today, so Friday data on Monday
+    is 0 days old.
+    """
+    # ponytail: weekdays only, ignores NSE holidays; add an NSE calendar if false alarms bite.
+    as_of = str(vol.get("as_of") or "")[:10]
+    if not as_of:
+        return
+    lag = int(np.busday_count(np.datetime64(as_of) + 1, np.datetime64(today or date.today())))
+    vol["trading_days_old"] = max(lag, 0)
+    vol["stale"] = lag > VOL_STALE_AFTER_TRADING_DAYS
 
 
 def _dual_signal_cache_stale(cached: dict) -> bool:

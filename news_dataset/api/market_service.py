@@ -96,6 +96,39 @@ def _cache_valid(key: str) -> bool:
     return age < _cache_ttl_seconds()
 
 
+def refresh_nifty_csv(path: Path = NIFTY_CSV) -> str | None:
+    """Append recent ^NSEI closes to NIFTY.csv and return its last date.
+
+    NIFTY.csv is the vol model's only price source (forsyt_gpr.data.load_price),
+    and it used to be a one-off committed snapshot that nothing updated, so the
+    dual-signal vol forecast froze at its last row. Called by the pipeline's
+    dual-signal refresh. Merges rather than overwrites, so a failed or short
+    Yahoo response never loses history; on any fetch error the CSV is unchanged.
+    """
+    old = pd.read_csv(path, dtype={0: str})
+    date_col, close_col = old.columns[:2]
+    yf = _get_yfinance()
+    if yf is not None:
+        start = date.fromisoformat(str(old[date_col].iloc[-1])[:10]) - timedelta(days=7)
+        try:
+            hist = yf.Ticker(SYMBOLS["nifty"]["ticker"]).history(start=start.isoformat(), auto_adjust=False)
+        except Exception:
+            logger.warning("NIFTY history fetch failed — keeping %s as is", path.name, exc_info=True)
+            hist = pd.DataFrame()
+        if not hist.empty and "Close" in hist:
+            new = pd.DataFrame({
+                date_col: pd.to_datetime(hist.index).tz_localize(None).strftime("%Y-%m-%d"),
+                close_col: hist["Close"].to_numpy(),
+            }).dropna()
+            old = (
+                pd.concat([old, new])
+                .drop_duplicates(subset=date_col, keep="last")
+                .sort_values(date_col)
+            )
+            old.to_csv(path, index=False)
+    return str(old[date_col].iloc[-1])[:10]
+
+
 def _nifty_from_csv() -> dict | None:
     if not NIFTY_CSV.exists():
         return None
