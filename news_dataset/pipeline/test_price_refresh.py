@@ -61,6 +61,8 @@ def test_daily_workflow_commits_every_refreshed_csv():
     for path in market_service.PRICE_CSVS.values():
         assert path.exists(), path
         assert f"nifty-50/data/{path.name}" in wf, path.name
+    # global AI-GPR behind the market-reaction study (gpr_service.get_gpr_reaction)
+    assert "download_data.py" in wf and "nifty-50/data/ai_gpr_data_daily.csv" in wf
 
 
 def test_vol_staleness_flag():
