@@ -11,6 +11,8 @@ frontend
 # follow the exclude.
 gpr_index/outputs
 !gpr_index/outputs/validation
+# Top-level output CSVs are read at runtime too (country cards, corridors, oil GPR).
+!gpr_index/outputs/*.csv
 gpr_index/data
 nifty-50/output
 !nifty-50/output/sector_factors.json
