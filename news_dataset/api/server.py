@@ -102,6 +102,17 @@ from news_dataset.api.ai_summary import register_ai_summary  # noqa: E402
 
 register_ai_summary(app)
 
+# India-relative country cards (GET /api/pages/country/<fips>, /api/countries).
+from news_dataset.api.country import register_country  # noqa: E402
+
+register_country(app)
+
+# Ask Forsyt — India-relative analyst agent (POST /api/ask). Strands + Gemini
+# when available, deterministic fallback otherwise.
+from news_dataset.api.agent import register_agent  # noqa: E402
+
+register_agent(app)
+
 
 @app.before_request
 def _require_api_key():

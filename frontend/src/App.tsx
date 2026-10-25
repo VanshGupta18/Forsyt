@@ -12,6 +12,7 @@ import AccuracyDashboard from './pages/AccuracyDashboard'
 import NewsDashboard from './pages/NewsDashboard'
 import MacroDashboard from './pages/MacroDashboard'
 import CorridorRiskDashboard from './pages/CorridorRiskDashboard'
+import CountryRiskDashboard from './pages/CountryRiskDashboard'
 
 function App() {
   return (
@@ -38,6 +39,8 @@ function App() {
           {/* "/trade-corridor" — Trade & Corridor Risk: interactive world map
               of shipping lanes / border crossings and their risk levels. */}
           <Route path="/trade-corridor" element={<CorridorRiskDashboard />} />
+          {/* "/countries" — India-relative country risk cards + Ask Forsyt agent. */}
+          <Route path="/countries" element={<CountryRiskDashboard />} />
           {/* "/portfolio-exposure" — merged into the Markets page (the holdings
               analyzer now lives there); kept as a redirect so old links resolve. */}
           <Route path="/portfolio-exposure" element={<Navigate to="/macroeconomics#holdings" replace />} />
