@@ -8,5 +8,15 @@
 # silently unavailable — so the image ships them.
 -r news_dataset/requirements-ai.txt
 
+# The API imports forsyt_gpr (nifty-50/) at request time: the vol forecast
+# (xgboost, scikit-learn) and /api/market/gpr-reaction (statsmodels). Listed
+# here rather than `-r nifty-50/requirements.txt`, which also pulls research-only
+# shap + matplotlib (shap is optional in the API: it degrades without it).
+numpy>=1.26
+scipy>=1.11
+scikit-learn>=1.3
+statsmodels>=0.14
+xgboost>=2.0
+
 # Only extra the container needs beyond the app itself: the WSGI server the CMD runs.
 gunicorn>=21.2.0
