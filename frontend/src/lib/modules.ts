@@ -41,6 +41,16 @@ export const modules: {
     navLabel: 'Corridors',
   },
   {
+    to: '/countries',
+    title: 'Country Risk (India-relative)',
+    description:
+      'Bilateral geopolitical risk between India and 15 high-relevance countries, plus the Ask Forsyt analyst.',
+    icon: 'public',
+    tier: 'core',
+    kicker: 'Countries',
+    navLabel: 'Countries',
+  },
+  {
     to: '/quality',
     title: 'Platform Quality & Accuracy',
     description:

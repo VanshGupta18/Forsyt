@@ -472,8 +472,27 @@ def _threats_acts() -> dict | None:
     }
 
 
+def _oil_dataframe() -> pd.DataFrame:
+    """Oil-GPR series derived LIVE from DB corridor data (stays fresh like GPR/
+    corridor), falling back to the committed gpr_oil_daily.csv when the DB is
+    unavailable. Oil has no table of its own — it's a pure transform of corridor
+    threat — so deriving it here avoids the stale-CSV freeze the file path had.
+    """
+    if _database_configured():
+        try:
+            rows = db.get_corridor_daily_all()
+            if rows:
+                from gpr_index.scripts.oil_index import build_oil_index
+                oil = build_oil_index(pd.DataFrame(rows))
+                if not oil.empty:
+                    return oil
+        except Exception:
+            logger.exception("oil-from-db derivation failed; falling back to CSV")
+    return _read_output_csv("gpr_oil_daily.csv")
+
+
 def _oil_gpr() -> dict | None:
-    df = _read_output_csv("gpr_oil_daily.csv")
+    df = _oil_dataframe()
     if df.empty or "gpr_oil_index" not in df.columns:
         return None
     idx = pd.to_numeric(df["gpr_oil_index"], errors="coerce")
@@ -498,7 +517,7 @@ def get_oil_gpr_history(limit: int = 400) -> list[dict]:
     existing interactive GprHistoryChart can render it directly — the values
     are the oil-GPR index and its moving averages.
     """
-    df = _read_output_csv("gpr_oil_daily.csv")
+    df = _oil_dataframe()
     if df.empty or "gpr_oil_index" not in df.columns:
         return []
     df = df.dropna(subset=["gpr_oil_index"]).tail(limit)

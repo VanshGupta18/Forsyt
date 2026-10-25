@@ -228,6 +228,10 @@ def run_gpr_range(
               "--corridor-csv", str(OUTPUT_DIR / "gpr_corridor_daily.csv"),
               "--output-csv", str(OUTPUT_DIR / "gpr_oil_daily.csv")])
 
+    # India-relative bilateral (per-country) GPR from the live news DB (the
+    # articles table already carries this run's fresh nlp_locations/themes).
+    _run_cmd([sys.executable, "gpr_index/main.py", "bilateral", "--source", "db"])
+
 
 def run_daily_index(
     day: date,

@@ -20,3 +20,4 @@ xgboost>=2.0
 
 # Only extra the container needs beyond the app itself: the WSGI server the CMD runs.
 gunicorn>=21.2.0
+strands-agents>=0.1  # Ask Forsyt agent (optional at runtime; /api/ask degrades without it)
