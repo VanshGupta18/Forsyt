@@ -36,6 +36,7 @@ export const queryKeys = {
   health: ['health'] as const,
   home: ['pages', 'home'] as const,
   macro: ['pages', 'macro'] as const,
+  gprReaction: ['market', 'gpr-reaction'] as const,
   news: (limit: number) => ['pages', 'news', limit] as const,
   corridor: (corridor: string | null, limit: number) => ['pages', 'corridor', corridor, limit] as const,
   portfolio: ['pages', 'portfolio'] as const,

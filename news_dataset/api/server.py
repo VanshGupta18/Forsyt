@@ -39,6 +39,7 @@ load_dotenv(NEWS_DATASET / ".env")
 from news_dataset.api.gpr_service import (  # noqa: E402
     build_dual_signal_payload,
     get_events_feed,
+    get_gpr_reaction,
     get_health_snapshot,
     get_platform_status,
 )
@@ -127,6 +128,7 @@ def root():
             "news_image": "/api/news/image",
             "news_related": "/api/news/related?article_id=",
             "dual_signal": "/api/market/dual-signal",
+            "gpr_reaction": "/api/market/gpr-reaction",
             "pages_home": "/api/pages/home",
             "pages_macro": "/api/pages/macro",
             "pages_news": "/api/pages/news",
@@ -216,6 +218,18 @@ def api_dual_signal():
         return jsonify(payload)
     except Exception as exc:
         logger.exception("dual-signal failed")
+        return jsonify({"error": str(exc)}), 500
+
+
+# How markets reacted to past geopolitical-risk spikes: event study + impulse
+# responses per asset (NIFTY, S&P 500, Brent, USD/INR, India VIX).
+@app.get("/api/market/gpr-reaction")
+def api_gpr_reaction():
+    refresh = request.args.get("refresh", "").lower() in {"1", "true", "yes"}
+    try:
+        return jsonify(get_gpr_reaction(refresh=refresh))
+    except Exception as exc:
+        logger.exception("gpr-reaction failed")
         return jsonify({"error": str(exc)}), 500
 
 

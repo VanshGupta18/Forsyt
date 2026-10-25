@@ -11,7 +11,8 @@ METHOD (per the "benchmark now, India index plugs in later" pattern):
     mirror portfolio_service._SECTOR_SEED). Constituents have decades of history;
     Yahoo's NSE sector *indices* mostly don't.
   * Regressors (weekly shocks): broad geopolitical risk = Caldara global GPR
-    (GPR_AI), oil = Brent return, fx = USD/INR return. India-native gpr_oil is
+    (GPR_AI), oil = Brent return net of the S&P 500 (supply shock, see
+    _load_regressors), fx = USD/INR return. India-native gpr_oil is
     too short to train on, so we train on Brent (India imports ~85% of crude —
     directly relevant) and feed the native gpr_oil in only at inference.
   * For each sector: OLS with Newey-West/HAC standard errors (statsmodels).
@@ -40,6 +41,7 @@ DATA_DIR = os.path.join(HERE, "data")
 CALDARA_CSV = os.path.join(DATA_DIR, "ai_gpr_data_daily.csv")
 BRENT_CSV = os.path.join(DATA_DIR, "BRENT.csv")
 USDINR_CSV = os.path.join(DATA_DIR, "USDINR.csv")
+SP500_CSV = os.path.join(DATA_DIR, "SP500.csv")
 OUT_TABLE = os.path.join(HERE, "output", "tables", "sector_betas.csv")
 OUT_JSON = os.path.join(HERE, "output", "sector_factors.json")
 
@@ -99,7 +101,15 @@ def _load_regressors() -> pd.DataFrame:
         ).dropna()
         return _weekly_logret(s).rename(name)
 
-    oil_shock = _price_ret(BRENT_CSV, "oil_shock")
+    # Oil SUPPLY shock = the part of the Brent move global equities don't
+    # explain. Raw Brent mostly tracks global demand (oil and stocks rally
+    # together), which fitted every sector as *helped* by oil and made the
+    # portfolio's oil-crisis scenario lower risk. The S&P 500-orthogonal
+    # residual is the standard supply/demand split (Kilian; Ready 2018).
+    brent = _price_ret(BRENT_CSV, "brent")
+    spx = _price_ret(SP500_CSV, "spx")
+    both = pd.concat([brent, spx], axis=1).dropna()
+    oil_shock = sm.OLS(both["brent"], sm.add_constant(both["spx"])).fit().resid.rename("oil_shock")
     fx_shock = _price_ret(USDINR_CSV, "fx_shock")
     return pd.concat([gpr_shock, oil_shock, fx_shock], axis=1).dropna()
 

@@ -55,16 +55,22 @@ jobs:
           PARQUET_BACKFILL_LOOKBACK_DAYS: '14'
         run: python -m news_dataset.pipeline.daily_index
 
+      # Global AI-GPR benchmark (published ~monthly) behind the market-reaction
+      # study; best-effort, the script keeps the old file on any failure.
+      - name: Refresh global AI-GPR benchmark
+        working-directory: nifty-50
+        run: python download_data.py
+
       - name: Commit refreshed index CSVs
         if: success()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add gpr_index/outputs/*.csv nifty-50/data/NIFTY.csv
+          git add gpr_index/outputs/*.csv nifty-50/data/NIFTY.csv nifty-50/data/USDINR.csv nifty-50/data/BRENT.csv nifty-50/data/INDIAVIX.csv nifty-50/data/ai_gpr_data_daily.csv
           if git diff --cached --quiet; then
             echo "No index changes to commit."
           else
-            git commit -m "chore(data): refresh GPR index + NIFTY CSVs [skip ci]"
+            git commit -m "chore(data): refresh GPR index + market price CSVs [skip ci]"
             git push origin HEAD:${{ github.ref_name }}
           fi
 

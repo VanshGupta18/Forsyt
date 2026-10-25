@@ -1,4 +1,4 @@
-"""Regression: the NIFTY price CSV behind the vol forecast must keep refreshing.
+"""Regression: the market price CSVs (NIFTY, USD/INR, Brent) must keep refreshing.
 
 NIFTY.csv was a one-off snapshot no job updated, so nifty_volatility.as_of froze
 at 2026-07-16 while the GPR side stayed current. Checks the dual-signal refresh
@@ -31,7 +31,7 @@ def test_refresh_appends_new_closes_and_keeps_history():
         fake_yf = mock.Mock()
         fake_yf.Ticker.return_value.history.return_value = pd.DataFrame({"Close": [102.0, 200.0]}, index=idx)
         with mock.patch.object(market_service, "_get_yfinance", return_value=fake_yf):
-            assert market_service.refresh_nifty_csv(csv) == "2026-10-13"
+            assert market_service.refresh_price_csv(csv, "^NSEI") == "2026-10-13"
         out = pd.read_csv(csv)
         assert list(out.columns) == ["Date", "NIFTY"]
         assert list(out["Date"]) == ["2026-07-15", "2026-07-16", "2026-10-13"]
@@ -39,7 +39,7 @@ def test_refresh_appends_new_closes_and_keeps_history():
 
         fake_yf.Ticker.return_value.history.side_effect = RuntimeError("yahoo down")
         with mock.patch.object(market_service, "_get_yfinance", return_value=fake_yf):
-            assert market_service.refresh_nifty_csv(csv) == "2026-10-13"
+            assert market_service.refresh_price_csv(csv, "^NSEI") == "2026-10-13"
         assert len(pd.read_csv(csv)) == 3
 
 
@@ -47,7 +47,7 @@ def test_dual_signal_refresh_tops_up_nifty_first():
     calls = []
     payload = {"geopolitical": {"as_of": "2026-10-13"}}
     with (
-        mock.patch.object(market_service, "refresh_nifty_csv", side_effect=lambda: calls.append("nifty")),
+        mock.patch.object(market_service, "refresh_price_csvs", side_effect=lambda: calls.append("nifty")),
         mock.patch.object(gpr_service, "build_dual_signal_payload",
                           side_effect=lambda **_: calls.append("build") or payload),
         mock.patch.object(daily_index.db, "upsert_dual_signal"),
@@ -56,9 +56,13 @@ def test_dual_signal_refresh_tops_up_nifty_first():
     assert calls == ["nifty", "build"]
 
 
-def test_daily_workflow_commits_nifty_csv():
+def test_daily_workflow_commits_every_refreshed_csv():
     wf = (ROOT / ".github/workflows/daily_index.yml").read_text()
-    assert "nifty-50/data/NIFTY.csv" in wf
+    for path in market_service.PRICE_CSVS.values():
+        assert path.exists(), path
+        assert f"nifty-50/data/{path.name}" in wf, path.name
+    # global AI-GPR behind the market-reaction study (gpr_service.get_gpr_reaction)
+    assert "download_data.py" in wf and "nifty-50/data/ai_gpr_data_daily.csv" in wf
 
 
 def test_vol_staleness_flag():
@@ -68,6 +72,16 @@ def test_vol_staleness_flag():
     old = {"as_of": "2026-07-16"}
     gpr_service._flag_vol_staleness(old, today=date(2026, 10, 14))
     assert old["stale"] is True
+
+
+def test_live_vol_model_uses_refreshed_india_vix():
+    from forsyt_gpr import data
+    from forsyt_gpr.features import production_features
+
+    assert "^INDIAVIX" in market_service.PRICE_CSVS
+    X = production_features(data.load_price("NIFTY"))
+    assert {"vix", "vix_chg5", "vix_minus_rv22"} <= set(X.columns)
+    assert X["vix"].iloc[-1] > 0
 
 
 if __name__ == "__main__":

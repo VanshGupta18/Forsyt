@@ -590,6 +590,11 @@ def demo() -> None:
         fin = _score([{"weight": 1.0, "sector": "Financial Services"}], p)
         hc = _score([{"weight": 1.0, "sector": "Healthcare"}], p)
         assert fin > hc, (fin, hc)  # banks more INR-sensitive than pharma
+        # Regression: betas fit on raw Brent (a global-demand proxy) made every
+        # sector *helped* by oil, so the oil-crisis scenario lowered risk. With
+        # supply-shock oil only commodity producers may carry a negative loading.
+        helped = {s for s, f in SECTOR_FACTORS.items() if f.get("energy", 0.0) < 0}
+        assert helped <= {"Basic Materials", "Utilities", "Energy"}, helped
     else:  # prior fallback
         p = {"broad": 60.0, "energy": 70.0, "trade": 40.0}
         assert _score([{"weight": 1.0, "sector": "Energy"}], p) > \
