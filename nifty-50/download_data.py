@@ -29,9 +29,13 @@ for filename, url in files_to_download.items():
     print(f"Downloading {filename} from {url}...")
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req) as response:
-            with open(path, 'wb') as out_file:
-                out_file.write(response.read())
+        with urllib.request.urlopen(req, timeout=60) as response:
+            body = response.read()
+        # Read fully before touching the file: a dropped connection must not
+        # leave a truncated CSV that the daily workflow then commits.
+        with open(path + ".tmp", 'wb') as out_file:
+            out_file.write(body)
+        os.replace(path + ".tmp", path)
         print(f"Successfully downloaded {filename}. Size: {os.path.getsize(path)} bytes")
     except Exception as e:
         print(f"Failed to download {filename}: {e}")

@@ -993,6 +993,32 @@ def _dual_signal_cache_stale(cached: dict) -> bool:
     return False
 
 
+def get_gpr_reaction(*, refresh: bool = False) -> dict:
+    """How NIFTY, S&P 500, Brent, USD/INR and India VIX react to GPR spikes.
+
+    Event study + local-projection impulse responses (forsyt_gpr.reaction) on
+    the long-history global AI-GPR. Explanation, not a forecast: it shows the
+    channels geopolitical risk moves markets through. Cached 6h.
+    """
+    key = "market:gpr_reaction"
+    if not refresh:
+        hit = cache_get(key, ttl_seconds=6 * 3600)
+        if hit is not _MISSING:
+            return hit
+    from forsyt_gpr import data, reaction
+
+    nifty = data.load_price("NIFTY")
+    prices = pd.DataFrame({"NIFTY": nifty})
+    for name in ("SP500", "BRENT", "USDINR", "INDIAVIX"):
+        if (data.DATA / f"{name}.csv").exists():
+            # limit: a series that stopped updating must not be carried flat
+            prices[name] = data.load_price(name).reindex(nifty.index).ffill(limit=3)
+    payload = reaction.reaction_study(data.load_aigpr_daily()["gpr"].dropna(), prices)
+    payload["gpr_source"] = "Caldara–Iacoviello AI-GPR (global, daily)"
+    cache_set(key, payload)
+    return payload
+
+
 def build_dual_signal_payload(*, refresh: bool = False) -> dict:
     """Return the combined "geopolitical risk + NIFTY market volatility" reading, using a cached copy unless refresh=True.
 

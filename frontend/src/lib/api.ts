@@ -435,6 +435,43 @@ export function fetchDualSignal(refresh = false) {
   return fetchJSON<DualSignalPayload>(`/api/market/dual-signal${qs}`)
 }
 
+export type GprReactionSeries = {
+  label: string
+  unit: '%' | 'pts'
+  mean: (number | null)[]
+  p25: (number | null)[]
+  p75: (number | null)[]
+}
+
+export type GprReactionIrf = {
+  asset: string
+  label: string
+  unit: '%' | 'pts'
+  h: number
+  regime: 'all' | 'elevated'
+  effect: number
+  ci_low: number
+  ci_high: number
+  t: number
+  significant: boolean
+  n: number
+}
+
+export type GprReactionPayload = {
+  gpr_as_of: string
+  gpr_source: string
+  threshold_z: number
+  events: { date: string; shock_z: number }[]
+  path: { days: number[]; series: Record<string, GprReactionSeries> }
+  irf: GprReactionIrf[]
+}
+
+// Calls GET /api/market/gpr-reaction — how markets moved around past GPR
+// spikes (event study) and per 1-SD GPR jump (impulse responses).
+export function fetchGprReaction() {
+  return fetchJSON<GprReactionPayload>('/api/market/gpr-reaction')
+}
+
 export const MARKET_SYMBOL_ORDER = ['nifty', 'sensex', 'india_vix', 'usd_inr', 'brent'] as const
 
 export const MARKET_SYMBOL_LABELS: Record<(typeof MARKET_SYMBOL_ORDER)[number], string> = {
