@@ -23,9 +23,9 @@ jobs:
         id: parquet-cache
         with:
           path: gpr_index/data/india_processed
-          key: india-processed-parquets-v1
+          key: india-processed-parquets-v2-${{ github.run_id }}
           restore-keys: |
-            india-processed-parquets-v1
+            india-processed-parquets-v2-
 
       - name: Ensure parquet directory exists
         run: mkdir -p gpr_index/data/india_processed
@@ -52,7 +52,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           INDIA_GPR_INDEX_START: '2026-08-09'
           MIN_PARQUET_DAYS_FOR_GPR: '7'
-          PARQUET_BACKFILL_LOOKBACK_DAYS: '14'
+          PARQUET_BACKFILL_LOOKBACK_DAYS: '365'
         run: python -m news_dataset.pipeline.daily_index
 
       # Global AI-GPR benchmark (published ~monthly) behind the market-reaction
@@ -79,7 +79,7 @@ jobs:
         if: success()
         with:
           path: gpr_index/data/india_processed
-          key: india-processed-parquets-v1
+          key: india-processed-parquets-v2-${{ github.run_id }}
 
       # Generates each corridor's daily "why this score" explanation. Runs a
       # small local model via Ollama on this runner (installed + pulled fresh

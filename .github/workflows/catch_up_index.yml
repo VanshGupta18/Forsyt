@@ -29,9 +29,9 @@ jobs:
         id: parquet-cache
         with:
           path: gpr_index/data/india_processed
-          key: india-processed-parquets-v1
+          key: india-processed-parquets-v2-${{ github.run_id }}
           restore-keys: |
-            india-processed-parquets-v1
+            india-processed-parquets-v2-
 
       - name: Ensure parquet directory exists
         run: mkdir -p gpr_index/data/india_processed
@@ -58,7 +58,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           INDIA_GPR_INDEX_START: '2026-08-09'
           MIN_PARQUET_DAYS_FOR_GPR: '7'
-          PARQUET_BACKFILL_LOOKBACK_DAYS: '14'
+          PARQUET_BACKFILL_LOOKBACK_DAYS: '365'
         run: |
           TO_DATE="${{ github.event.inputs.to_date }}"
           if [ -z "$TO_DATE" ]; then
@@ -86,4 +86,4 @@ jobs:
         if: success()
         with:
           path: gpr_index/data/india_processed
-          key: india-processed-parquets-v1
+          key: india-processed-parquets-v2-${{ github.run_id }}
